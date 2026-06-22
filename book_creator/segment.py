@@ -61,9 +61,9 @@ def segment_prose(text: str, lang: str = "default") -> list[str]:
     terminators = _TERMINATORS.get(lang, _TERMINATORS["default"])
     term_class = re.escape(terminators)
 
-    # Collapse hard-wrapped lines within a paragraph into single spaces, but keep
-    # blank-line paragraph breaks.
-    paragraphs = re.split(r"\n\s*\n", text)
+    # Collapse hard-wrapped lines within a paragraph into single spaces, keeping
+    # paragraph breaks (handles double-spaced sources too).
+    paragraphs = _paragraphs(text)
     sentences: list[str] = []
     splitter = re.compile(rf"(?<=[{term_class}])\s+")
 
@@ -80,6 +80,49 @@ def segment_prose(text: str, lang: str = "default") -> list[str]:
                 merged.append(piece)
         sentences.extend(s.strip() for s in merged if s.strip())
     return sentences
+
+
+def _paragraphs(text: str) -> list[str]:
+    """Split text into paragraphs, joining hard-wrapped lines.
+
+    Handles both normally-spaced text (paragraphs separated by a blank line) and
+    double-spaced sources (a blank line after *every* wrapped line, common in
+    older Gutenberg files). For double-spaced text a single blank line is a wrap,
+    not a paragraph break — otherwise sentences shatter at line boundaries.
+    """
+    lines = text.split("\n")
+
+    # Measure blank-line runs between content lines to detect double-spacing.
+    runs: list[int] = []
+    run = 0
+    seen = False
+    for line in lines:
+        if line.strip() == "":
+            if seen:
+                run += 1
+        else:
+            if seen and run:
+                runs.append(run)
+            run = 0
+            seen = True
+    double_spaced = bool(runs) and runs.count(1) > len(runs) / 2
+    threshold = 2 if double_spaced else 1
+
+    paragraphs: list[str] = []
+    buffer: list[str] = []
+    blanks = 0
+    for line in lines:
+        if line.strip() == "":
+            blanks += 1
+            continue
+        if buffer and blanks >= threshold:
+            paragraphs.append(" ".join(buffer))
+            buffer = []
+        buffer.append(line.strip())
+        blanks = 0
+    if buffer:
+        paragraphs.append(" ".join(buffer))
+    return paragraphs
 
 
 def _is_abbrev_tail(sentence: str) -> bool:

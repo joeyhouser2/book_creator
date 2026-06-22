@@ -7,3 +7,6 @@ output/*.pdf
 fonts/*.ttf
 fonts/*.otf
 .DS_Store
+
+# Large extracted test fixtures (reproducible from Gutenberg)
+input/caesar_*.txt
