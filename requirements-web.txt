@@ -1,0 +1,4 @@
+# Web UI: search Gutenberg, queue builds, preview rendered pages.
+#   pip install -r requirements-web.txt
+flask>=3.0
+PyMuPDF>=1.23

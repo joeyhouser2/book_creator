@@ -1,0 +1,5 @@
+# Optional: meaning-based alignment with LaBSE cross-lingual embeddings.
+# Pulls in PyTorch (large). Install only if you want the "embed" aligner:
+#   pip install -r requirements-embed.txt
+# The model (~1.8 GB) downloads automatically on first use and is then cached.
+sentence-transformers>=2.2

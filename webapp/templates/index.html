@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>book_creator</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>book_creator <span class="sub">dual-language POD builder</span></h1>
+  </header>
+
+  <div class="pd-banner">
+    ⚠ A translator owns copyright on their translation, separately from the
+    public-domain original. Only build with a translation you've verified is
+    public domain (US: first published before 1929), then tick the box below.
+  </div>
+
+  <main>
+    <!-- ============ LEFT: search + build ============ -->
+    <section class="col">
+      <h2>1 · Search Project Gutenberg</h2>
+      <div class="search-row">
+        <input id="q" type="text" placeholder="title or author, e.g. Gallic War">
+        <select id="lang">
+          <option value="">any language</option>
+          <option value="la">Latin (la)</option>
+          <option value="fr">French (fr)</option>
+          <option value="de">German (de)</option>
+          <option value="el">Greek (el)</option>
+          <option value="en">English (en)</option>
+        </select>
+        <button id="searchBtn">Search</button>
+      </div>
+      <div id="results" class="results"></div>
+
+      <h2>2 · Selected editions</h2>
+      <div class="slots">
+        <div class="slot" id="slot-src">
+          <div class="slot-label">Original</div>
+          <div class="slot-body muted">none selected</div>
+        </div>
+        <div class="slot" id="slot-tgt">
+          <div class="slot-label">Translation</div>
+          <div class="slot-body muted">none selected</div>
+        </div>
+      </div>
+
+      <h2>3 · Options</h2>
+      <div class="opts">
+        <label>Title <input id="title" type="text"></label>
+        <label>Author <input id="author" type="text"></label>
+        <label>Original language
+          <select id="srcLang">
+            <option value="la">Latin</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="el">Greek</option>
+          </select>
+        </label>
+        <label>Mode
+          <select id="mode">
+            <option value="prose">prose (sentences)</option>
+            <option value="verse">verse (lines)</option>
+          </select>
+        </label>
+        <label>Aligner
+          <select id="aligner">
+            <option value="auto">auto</option>
+            <option value="embed">embed (LaBSE)</option>
+            <option value="gale-church">gale-church</option>
+          </select>
+        </label>
+        <label>First line
+          <select id="first">
+            <option value="src">original first</option>
+            <option value="tgt">translation first</option>
+          </select>
+        </label>
+        <label>Font
+          <select id="font">
+            <option value="Cardo">Cardo</option>
+            <option value="GentiumPlus">Gentium Plus</option>
+            <option value="NotoSerif">Noto Serif</option>
+          </select>
+        </label>
+        <label>Margin art
+          <select id="margin">
+            <option value="none">none</option>
+            <option value="rule">rule</option>
+            <option value="corners">corners</option>
+            <option value="frame">frame</option>
+          </select>
+        </label>
+        <label>Chapter ornament
+          <select id="chapter">
+            <option value="fleuron">fleuron</option>
+            <option value="rule">rule</option>
+            <option value="none">none</option>
+          </select>
+        </label>
+        <label class="trim">Trim (in)
+          <span><input id="trimW" type="number" step="0.1" value="6"> ×
+          <input id="trimH" type="number" step="0.1" value="9"></span>
+        </label>
+      </div>
+      <label class="confirm"><input id="pd" type="checkbox">
+        I have verified this translation is public domain.</label>
+
+      <button id="buildBtn" class="primary">Build book</button>
+      <pre id="log" class="log"></pre>
+    </section>
+
+    <!-- ============ RIGHT: preview ============ -->
+    <section class="col preview-col">
+      <h2>Preview</h2>
+      <div class="preview-nav">
+        <button id="prev">‹ Prev</button>
+        <span id="pageLabel">— / —</span>
+        <button id="next">Next ›</button>
+        <a id="download" class="dl" href="#" style="display:none">Download PDF</a>
+      </div>
+      <div id="previewWrap" class="preview-wrap">
+        <p class="muted">Build a book to see rendered pages here.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

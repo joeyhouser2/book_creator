@@ -1,0 +1,50 @@
+# Each entry produces one PDF in output/.
+#
+# Find Gutenberg ids in the URL of a book's page, e.g.
+#   https://www.gutenberg.org/ebooks/228   ->  id 228
+#
+# IMPORTANT: translation_pd_confirmed must be true to suppress the copyright
+# warning. Only set it true once you have verified the TRANSLATION (not just the
+# original) is public domain — in the US that generally means first published
+# before 1929. The originals below are ancient/public-domain; the *translations*
+# must be checked individually.
+
+books:
+  - title: "The Gallic War"
+    author: "Julius Caesar"
+    src_lang: la          # Latin original
+    tgt_lang: en
+    src_gutenberg_id: 218     # De Bello Gallico (Latin)  -- verify the id on gutenberg.org
+    tgt_gutenberg_id: 10657   # an English translation     -- verify PD status!
+    mode: prose
+    aligner: auto         # auto | embed (LaBSE, meaning-based) | gale-church (length)
+    first: src            # Latin line first, then English
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: false
+    translation_source_note: "Replace with a translation confirmed public domain."
+    font: Cardo           # shorthand: family name. Or a full block (see below).
+    decorations:
+      margin: corners     # none | rule | corners | frame
+      chapter: fleuron    # none | fleuron | rule
+      color: "#8a7a5c"    # ornament ink color
+
+  - title: "Meditations"
+    author: "Marcus Aurelius"
+    src_lang: grc         # Greek original (use grc for Greek terminators ; and ·)
+    tgt_lang: en
+    src_path: "input/meditations_grc.txt"   # or a Gutenberg id
+    tgt_gutenberg_id: 2680                   # Long's translation (1862, public domain)
+    mode: prose
+    aligner: embed         # force the meaning-based aligner for this one
+    first: tgt             # English first, Greek second
+    translation_pd_confirmed: true
+    translation_source_note: "George Long translation, 1862 — public domain."
+    font:                  # full font block with explicit files
+      family: GentiumPlus
+      regular: GentiumPlus-Regular.ttf
+      italic: GentiumPlus-Italic.ttf
+      bold: GentiumPlus-Bold.ttf
+    decorations:
+      margin: frame
+      chapter: fleuron
+      # corner_image: art/corner.png    # optional: your own PNG, mirrored into corners
