@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
+from book_creator import fonts
 from book_creator.model import BookSpec, DecorSpec, FontSpec
 from book_creator.pipeline import build_book
 
@@ -34,6 +35,12 @@ def index():
 # --------------------------------------------------------------------------- #
 # Search
 # --------------------------------------------------------------------------- #
+@app.route("/api/fonts")
+def api_fonts():
+    """Installed font families, grouped/sorted for the picker."""
+    return jsonify({"fonts": fonts.catalog()})
+
+
 @app.route("/api/search")
 def api_search():
     query = request.args.get("q", "").strip()

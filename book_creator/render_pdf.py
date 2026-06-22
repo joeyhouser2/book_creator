@@ -7,8 +7,6 @@ from pathlib import Path
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.units import inch
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -20,74 +18,19 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import ParagraphStyle
 
-from . import decorations
+from . import decorations, fonts
 from .model import Bead, Chapter, DecorSpec, FontSpec
-
-FONTS_DIR = Path("fonts")
-
-# Fonts that cover Latin + polytonic Greek. Drop any of these .ttf files in
-# fonts/ and they'll be picked up automatically. Cardo (OFL) is recommended.
-_FONT_CANDIDATES = [
-    ("Cardo", "Cardo-Regular.ttf", "Cardo-Italic.ttf", "Cardo-Bold.ttf"),
-    ("Gentium", "GentiumPlus-Regular.ttf", "GentiumPlus-Italic.ttf", "GentiumPlus-Bold.ttf"),
-    ("NotoSerif", "NotoSerif-Regular.ttf", "NotoSerif-Italic.ttf", "NotoSerif-Bold.ttf"),
-]
-
-
-def _resolve_path(name: str | None) -> str | None:
-    """Find a font file by name in fonts/ first, then as an absolute/relative path."""
-    if not name:
-        return None
-    in_fonts = FONTS_DIR / name
-    if in_fonts.exists():
-        return str(in_fonts)
-    direct = Path(name)
-    if direct.exists():
-        return str(direct)
-    return None
 
 
 def _register_font(spec: FontSpec | None) -> tuple[str, str, str]:
-    """Register the requested font (or auto-detect one).
+    """Register the requested font via the dynamic fonts registry.
 
-    Resolution order: explicit file overrides -> named family's known filenames
-    -> any available candidate -> built-in Times (no Greek coverage).
-    Returns (regular, italic, bold) registered font names.
+    Returns (regular, italic, bold) registered font names; falls back to the
+    built-in Times family (no Greek coverage) when fonts/ is empty.
     """
     spec = spec or FontSpec()
-    family = spec.family or "Cardo"
-    reg = _resolve_path(spec.regular)
-    ital = _resolve_path(spec.italic)
-    bold = _resolve_path(spec.bold)
-
-    # Fill gaps from the known filenames for the requested family.
-    if not reg:
-        for fam, r, i, b in _FONT_CANDIDATES:
-            if fam.lower() == family.lower():
-                reg = reg or _resolve_path(r)
-                ital = ital or _resolve_path(i)
-                bold = bold or _resolve_path(b)
-                break
-
-    # Still nothing? Auto-detect any installed candidate.
-    if not reg:
-        for fam, r, i, b in _FONT_CANDIDATES:
-            rp = _resolve_path(r)
-            if rp:
-                family, reg, ital, bold = fam, rp, _resolve_path(i), _resolve_path(b)
-                break
-
-    if not reg:
-        return "Times-Roman", "Times-Italic", "Times-Bold"
-
-    reg_name, ital_name, bold_name = family, f"{family}-Italic", f"{family}-Bold"
-    pdfmetrics.registerFont(TTFont(reg_name, reg))
-    pdfmetrics.registerFont(TTFont(ital_name, ital or reg))
-    pdfmetrics.registerFont(TTFont(bold_name, bold or reg))
-    pdfmetrics.registerFontFamily(
-        family, normal=reg_name, bold=bold_name, italic=ital_name, boldItalic=bold_name,
-    )
-    return reg_name, ital_name, bold_name
+    overrides = {"regular": spec.regular, "italic": spec.italic, "bold": spec.bold}
+    return fonts.register(spec.family, overrides)
 
 
 def _gutter_for_page_count(pages: int) -> float:

@@ -13,6 +13,55 @@ const state = {
 };
 
 // --------------------------------------------------------------------------- //
+// Fonts (populated from installed fonts on load)
+// --------------------------------------------------------------------------- //
+const CATEGORY_LABELS = {
+  serif: "Classic serif", medieval: "Medieval / display",
+  greek: "Greek display", other: "Other",
+};
+let FONTS = [];
+
+async function loadFonts() {
+  try {
+    const data = await (await fetch("/api/fonts")).json();
+    FONTS = data.fonts || [];
+  } catch { FONTS = []; }
+  const sel = $("font");
+  sel.innerHTML = "";
+  if (!FONTS.length) {
+    sel.innerHTML = `<option value="Cardo">Cardo (none installed — run download_fonts.py)</option>`;
+    return;
+  }
+  const byCat = {};
+  for (const f of FONTS) (byCat[f.category] ||= []).push(f);
+  for (const cat of ["serif", "medieval", "greek", "other"]) {
+    if (!byCat[cat]) continue;
+    const group = document.createElement("optgroup");
+    group.label = CATEGORY_LABELS[cat] || cat;
+    for (const f of byCat[cat]) {
+      const o = document.createElement("option");
+      o.value = f.id;
+      o.textContent = f.label + (f.greek ? "  ·  ✔ Greek" : "");
+      group.appendChild(o);
+    }
+    sel.appendChild(group);
+  }
+  if (FONTS.some((f) => f.id === "cardo")) sel.value = "cardo";
+  updateFontNote();
+}
+
+function updateFontNote() {
+  const f = FONTS.find((x) => x.id === $("font").value);
+  const note = $("fontNote");
+  if (!f) { note.textContent = ""; return; }
+  const isGreek = $("srcLang").value === "el" || $("srcLang").value === "grc";
+  if (isGreek && f.greek === false)
+    note.textContent = "⚠ This font lacks Greek glyphs — pick a ✔ Greek font.";
+  else
+    note.textContent = "";
+}
+
+// --------------------------------------------------------------------------- //
 // Search
 // --------------------------------------------------------------------------- //
 async function doSearch() {
@@ -177,6 +226,9 @@ function escapeHtml(s) {
 $("searchBtn").onclick = doSearch;
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
 $("buildBtn").onclick = doBuild;
+$("font").addEventListener("change", updateFontNote);
+$("srcLang").addEventListener("change", updateFontNote);
+loadFonts();
 $("prev").onclick = () => showPage(state.page - 1);
 $("next").onclick = () => showPage(state.page + 1);
 document.addEventListener("keydown", (e) => {

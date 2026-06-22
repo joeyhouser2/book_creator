@@ -111,10 +111,29 @@ proofread the output, especially around chapter starts.
 
 ## Fonts
 
-Set `font` to a family name (`Cardo`, `GentiumPlus`, `NotoSerif`) or a full block
-with explicit `regular`/`italic`/`bold` filenames. Files are looked up in
-`fonts/` first, then as given paths. See [`fonts/README.md`](fonts/README.md).
-Greek needs a Greek-capable font present or glyphs render blank.
+Fonts are **auto-discovered** from `fonts/`: drop a font's `.ttf` files in and the
+tool groups them into a family, infers regular/italic/bold from the filenames, and
+exposes it to the CLI (`--font <id>`), the `font:` config field, and the web UI's
+picker (grouped by category, with a ✔ Greek badge). Set `font` to a family id
+(e.g. `cardo`, `imfellenglish`, `gfsdidot`) or a full block with explicit
+`regular`/`italic`/`bold` files.
+
+Install a curated, **commercially-licensable** set (all SIL Open Font License,
+which permits embedding in books you sell) with:
+
+```bash
+python download_fonts.py            # all, or: serif | medieval | greek
+```
+
+| Category | Families | Greek |
+|----------|----------|-------|
+| Classic serif | Cardo, EB Garamond, Gentium Book Plus, Old Standard, Libre Baskerville, IM Fell English, IM Fell DW Pica | most ✔ |
+| Medieval / display | UnifrakturMaguntia, UnifrakturCook (blackletter), Grenze Gotisch, Pirata One, MedievalSharp | — |
+| Greek display | GFS Didot, GFS Neohellenic | ✔ |
+
+Greek (polytonic) needs a ✔ Greek font, or glyphs render blank. Cardo and Old
+Standard are good all-rounders that cover both Latin and polytonic Greek. The
+medieval/display faces are Latin-only — best for titles, not Greek body text.
 
 ## Decorations
 
@@ -137,6 +156,7 @@ point `corner_image` at it — it's auto-mirrored so each corner faces inward.
 |--------|------|
 | `fetch.py` | download Gutenberg text, strip the license banner, cache locally |
 | `segment.py` | detect chapters; split into sentences (prose) or lines (verse) |
+| `fonts.py` | auto-discover font families in fonts/, register, expose catalog |
 | `align.py` | shared alignment DP + Gale-Church backend |
 | `align_embed.py` | LaBSE embedding (meaning-based) backend |
 | `aligners.py` | backend selection (`auto` / `embed` / `gale-church`) |
