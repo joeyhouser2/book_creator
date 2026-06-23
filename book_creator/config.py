@@ -83,6 +83,7 @@ def load_specs(path: str) -> list[BookSpec]:
             tgt_path=raw.get("tgt_path"),
             mode=raw.get("mode", "prose"),
             aligner=raw.get("aligner", "auto"),
+            clean=bool(raw.get("clean", True)),
             toc=bool(raw.get("toc", True)),
             src_range=_parse_range(raw.get("src_range")),
             tgt_range=_parse_range(raw.get("tgt_range")),

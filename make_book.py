@@ -97,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-copyright", action="store_true", help="Omit the copyright page.")
     p.add_argument("--no-toc", action="store_true",
                    help="Omit the table of contents.")
+    p.add_argument("--no-clean", action="store_true",
+                   help="Don't strip inline section markers (I.--, XLIX.--) etc.")
     args = p.parse_args(argv)
 
     if args.outline:
@@ -109,7 +111,8 @@ def main(argv: list[str] | None = None) -> int:
             title=args.title, author=args.author, src_lang=args.src_lang,
             src_gutenberg_id=args.src_id, tgt_gutenberg_id=args.tgt_id,
             src_path=args.src_path, tgt_path=args.tgt_path,
-            mode=args.mode, aligner=args.aligner, first=args.first, toc=not args.no_toc,
+            mode=args.mode, aligner=args.aligner, first=args.first,
+            toc=not args.no_toc, clean=not args.no_clean,
             src_range=_parse_range(args.src_range),
             tgt_range=_parse_range(args.tgt_range),
             translation_pd_confirmed=args.confirm_pd,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import aligners, fetch, render_pdf, segment
+from . import aligners, clean, fetch, render_pdf, segment
 from .model import BookSpec, Chapter
 
 
@@ -77,6 +77,9 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
     for (s_title, s_body), (t_title, t_body) in paired:
         src_segs = segment.segment(s_body, spec.mode, spec.src_lang)
         tgt_segs = segment.segment(t_body, spec.mode, spec.tgt_lang)
+        if spec.clean:
+            src_segs = clean.clean_segments(src_segs)
+            tgt_segs = clean.clean_segments(tgt_segs)
         beads = aligners.align(src_segs, tgt_segs, method=spec.aligner, log=log)
         chapters.append(Chapter(title=t_title or s_title, src_segments=src_segs,
                                 tgt_segments=tgt_segs, beads=beads))

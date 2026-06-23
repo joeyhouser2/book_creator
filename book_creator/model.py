@@ -110,6 +110,10 @@ class BookSpec:
     # Alignment backend: "auto" | "embed" | "gale-church".
     aligner: str = "auto"
 
+    # Strip inline section markers ("I.--", "XLIX.--") and stray boilerplate from
+    # segments before alignment.
+    clean: bool = True
+
     # Optional (first, last) division indices to include, 1-based inclusive, per
     # side — so you can scope both editions to the same content (e.g. just Book
     # I). None = whole text. See segment.outline() for the division list.
