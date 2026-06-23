@@ -32,6 +32,13 @@ books:
       margin: corners     # none | rule | corners | frame
       chapter: fleuron    # none | fleuron | rule
       color: "#8a7a5c"    # ornament ink color
+    copyright:            # the copyright page (set `copyright: false` to omit)
+      publisher: "Houser Classics"
+      holder: "Joey Houser"        # holds the *compilation* copyright only
+      year: 2026
+      isbn: ""                     # KDP can assign a free ISBN
+      translator: "W. A. McDevitte and W. S. Bohn"
+      # rights: "..."              # optional: replace the generated text entirely
 
   - title: "Meditations"
     author: "Marcus Aurelius"

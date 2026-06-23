@@ -6,7 +6,23 @@ from pathlib import Path
 
 import yaml
 
-from .model import BookSpec, DecorSpec, FontSpec
+from .model import BookSpec, CopyrightSpec, DecorSpec, FontSpec
+
+
+def _parse_copyright(raw) -> CopyrightSpec:
+    if raw is None:
+        return CopyrightSpec()
+    if raw is False:
+        return CopyrightSpec(enabled=False)
+    return CopyrightSpec(
+        enabled=bool(raw.get("enabled", True)),
+        publisher=raw.get("publisher", ""),
+        holder=raw.get("holder", ""),
+        year=raw.get("year"),
+        isbn=str(raw.get("isbn", "")),
+        translator=raw.get("translator", ""),
+        rights=raw.get("rights"),
+    )
 
 
 def _parse_range(raw) -> tuple[int, int] | None:
@@ -76,5 +92,6 @@ def load_specs(path: str) -> list[BookSpec]:
             slug=raw.get("slug"),
             font=_parse_font(raw.get("font")),
             decor=_parse_decor(raw.get("decorations")),
+            copyright=_parse_copyright(raw.get("copyright")),
         ))
     return specs

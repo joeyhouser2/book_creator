@@ -101,6 +101,8 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         estimated_pages=pages,
         font_spec=spec.font,
         decor=spec.decor,
+        copyright=spec.copyright,
+        translation_note=spec.translation_source_note,
     )
     log(f"✓ Done: {out_path}")
     return out_path

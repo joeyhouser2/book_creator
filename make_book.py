@@ -25,7 +25,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from book_creator import fetch, segment
 from book_creator.config import load_specs
-from book_creator.model import BookSpec, DecorSpec, FontSpec
+from book_creator.model import BookSpec, CopyrightSpec, DecorSpec, FontSpec
 from book_creator.pipeline import build_book
 
 
@@ -87,6 +87,14 @@ def main(argv: list[str] | None = None) -> int:
                    default="fleuron", help="Ornament under each chapter title.")
     p.add_argument("--decor-color", default="#8a7a5c", help="Ornament ink color (hex).")
     p.add_argument("--corner-image", help="PNG/JPG placed (mirrored) at text-block corners.")
+    # Copyright page.
+    p.add_argument("--publisher", default="", help="Imprint name for the copyright page.")
+    p.add_argument("--copyright-holder", default="",
+                   help="Who holds the compilation copyright.")
+    p.add_argument("--edition-year", type=int, help="Edition year for the copyright page.")
+    p.add_argument("--isbn", default="", help="ISBN for the copyright page.")
+    p.add_argument("--translator", default="", help="Translator name (public-domain credit).")
+    p.add_argument("--no-copyright", action="store_true", help="Omit the copyright page.")
     args = p.parse_args(argv)
 
     if args.outline:
@@ -109,6 +117,14 @@ def main(argv: list[str] | None = None) -> int:
                 chapter=args.chapter_ornament,
                 color=args.decor_color,
                 corner_image=args.corner_image,
+            ),
+            copyright=CopyrightSpec(
+                enabled=not args.no_copyright,
+                publisher=args.publisher,
+                holder=args.copyright_holder,
+                year=args.edition_year,
+                isbn=args.isbn,
+                translator=args.translator,
             ),
         )]
     else:

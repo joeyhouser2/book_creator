@@ -68,6 +68,25 @@ class DecorSpec:
 
 
 @dataclass
+class CopyrightSpec:
+    """Copyright-page content.
+
+    Important: the original and a pre-1929 translation are public domain, so the
+    text itself can't be copyrighted (that would be copyfraud). What you may
+    claim is the *compilation* — the parallel arrangement, typography, and any
+    new material. The default wording says exactly that.
+    """
+
+    enabled: bool = True
+    publisher: str = ""        # imprint name, e.g. "Houser Classics"
+    holder: str = ""           # who holds the compilation copyright
+    year: int | None = None    # edition year
+    isbn: str = ""
+    translator: str = ""       # translator name, for the public-domain credit
+    rights: str | None = None  # full override of the generated rights text
+
+
+@dataclass
 class BookSpec:
     """Definition of one book to build, loaded from YAML."""
 
@@ -114,3 +133,4 @@ class BookSpec:
     # Typography / ornamentation.
     font: FontSpec = field(default_factory=FontSpec)
     decor: DecorSpec = field(default_factory=DecorSpec)
+    copyright: CopyrightSpec = field(default_factory=CopyrightSpec)

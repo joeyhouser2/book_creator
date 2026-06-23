@@ -161,6 +161,30 @@ Greek (polytonic) needs a ✔ Greek font, or glyphs render blank. Cardo and Old
 Standard are good all-rounders that cover both Latin and polytonic Greek. The
 medieval/display faces are Latin-only — best for titles, not Greek body text.
 
+## Copyright page
+
+A copyright page is generated on the title page's verso (it's unnumbered, like
+the title page; body pagination starts after it). Crucially, it claims **only the
+compilation** — the parallel arrangement, typography, and design — and explicitly
+states the original and translation are public domain. Claiming copyright on the
+PD texts themselves would be copyfraud, so don't.
+
+Config block (or CLI: `--publisher`, `--copyright-holder`, `--edition-year`,
+`--isbn`, `--translator`, `--no-copyright`):
+
+```yaml
+copyright:
+  publisher: "Houser Classics"
+  holder: "Your Name"      # compilation copyright holder
+  year: 2026
+  isbn: ""                 # KDP issues a free ISBN if you don't have one
+  translator: "W. A. McDevitte and W. S. Bohn"
+  # rights: "..."          # optional: replace the generated wording entirely
+```
+
+Set `copyright: false` to omit the page. You still set metadata and pricing in
+the KDP dashboard — this only produces the interior page.
+
 ## Decorations
 
 Make the page look like a real published book:

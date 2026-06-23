@@ -19,7 +19,16 @@ from reportlab.platypus import (
 from reportlab.lib.styles import ParagraphStyle
 
 from . import decorations, fonts
-from .model import Bead, Chapter, DecorSpec, FontSpec
+from .model import Bead, Chapter, CopyrightSpec, DecorSpec, FontSpec
+
+_LANG_NAMES = {
+    "la": "Latin", "fr": "French", "grc": "Ancient Greek", "el": "Greek",
+    "de": "German", "it": "Italian", "es": "Spanish", "en": "English",
+}
+
+
+def _lang_name(code: str) -> str:
+    return _LANG_NAMES.get(code, code.upper())
 
 
 def _register_font(spec: FontSpec | None) -> tuple[str, str, str]:
@@ -49,10 +58,13 @@ def _gutter_for_page_count(pages: int) -> float:
 class _BookDoc(BaseDocTemplate):
     """Two mirrored page templates (recto/verso) for correct gutter placement."""
 
-    def __init__(self, filename, trim, gutter, title, decor: DecorSpec, **kw):
+    def __init__(self, filename, trim, gutter, title, decor: DecorSpec,
+                 front_matter_pages: int = 1, **kw):
         w, h = trim[0] * inch, trim[1] * inch
         self.book_title = title
         self.decor = decor or DecorSpec()
+        # Leading pages (title, copyright) get no margin art and no page number.
+        self._front_matter_pages = front_matter_pages
         super().__init__(filename, pagesize=(w, h), **kw)
 
         outside = 0.5 * inch
@@ -81,14 +93,15 @@ class _BookDoc(BaseDocTemplate):
         ])
 
     def _furniture(self, canvas, doc):
+        # Front matter (title, copyright) stays clean and unnumbered.
+        if doc.page <= self._front_matter_pages:
+            return
         recto = (doc.page % 2 == 1)
-        # Title page (page 1) stays clean.
-        if doc.page > 1:
-            geom = self._geom_recto if recto else self._geom_verso
-            decorations.draw_margin(
-                canvas, geom, recto, self.decor.margin, self.decor.color,
-                self.decor.corner_image,
-            )
+        geom = self._geom_recto if recto else self._geom_verso
+        decorations.draw_margin(
+            canvas, geom, recto, self.decor.margin, self.decor.color,
+            self.decor.corner_image,
+        )
         canvas.saveState()
         canvas.setFont("Times-Roman", 9)
         canvas.drawCentredString(self._page_w / 2.0, 0.35 * inch, str(doc.page))
@@ -118,7 +131,58 @@ def _styles(fonts: tuple[str, str, str], first: str):
     sub = ParagraphStyle(
         "sub", fontName=font, fontSize=14, leading=20, alignment=TA_CENTER,
     )
-    return {"src": src, "tgt": tgt, "head": head, "title": title, "sub": sub}
+    cr = ParagraphStyle(
+        "cr", fontName=font, fontSize=8.5, leading=12.5,
+        textColor=HexColor("#333333"), spaceAfter=7,
+    )
+    return {"src": src, "tgt": tgt, "head": head, "title": title, "sub": sub, "cr": cr}
+
+
+def _copyright_flowables(cr: CopyrightSpec, *, title: str, author: str,
+                         src_lang: str, translation_note: str,
+                         trim: tuple[float, float], style) -> list:
+    """Build the copyright page — claims compilation rights only, never the PD text."""
+    lang = _lang_name(src_lang)
+    paras: list[str] = []
+
+    if cr.rights:
+        paras.append(_esc(cr.rights))
+    else:
+        holder = cr.holder or cr.publisher
+        if holder:
+            year = f" {cr.year}" if cr.year else ""
+            paras.append(
+                f"This parallel edition &mdash; its translation arrangement, "
+                f"typography, and design &mdash; copyright &copy;{year} {_esc(holder)}."
+            )
+        trans = (f" The English translation by {_esc(cr.translator)} is in the "
+                 "public domain." if cr.translator
+                 else " The English translation is in the public domain.")
+        paras.append(
+            f"The original {lang} text by {_esc(author)} is in the public domain."
+            + trans + " No copyright is claimed on these public-domain texts."
+        )
+        src_line = "Source texts: Project Gutenberg (www.gutenberg.org)."
+        if translation_note:
+            src_line += " Translation: " + _esc(translation_note)
+        paras.append(src_line)
+
+    tail: list[str] = []
+    if cr.publisher:
+        tail.append(_esc(cr.publisher))
+    if cr.isbn:
+        tail.append("ISBN " + _esc(cr.isbn))
+    tail.append("Printed in the United States of America.")
+
+    # Sit the block in the lower portion of the page, like a traditional colophon.
+    top_pad = max(40, (trim[1] * 72 - 1.2 * 72) - 250)
+    flows: list = [Spacer(1, top_pad)]
+    for p in paras:
+        flows.append(Paragraph(p, style))
+    flows.append(Spacer(1, 6))
+    for t in tail:
+        flows.append(Paragraph(t, style))
+    return flows
 
 
 def _esc(text: str) -> str:
@@ -138,25 +202,43 @@ def render(
     estimated_pages: int = 200,
     font_spec: FontSpec | None = None,
     decor: DecorSpec | None = None,
+    copyright: CopyrightSpec | None = None,
+    translation_note: str = "",
 ) -> str:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     decor = decor or DecorSpec()
+    copyright = copyright or CopyrightSpec()
     font = _register_font(font_spec)
     gutter = _gutter_for_page_count(estimated_pages)
     st = _styles(font, first)
 
-    doc = _BookDoc(out_path, trim, gutter, title, decor, author=author)
+    # Title page + (optional) copyright page are unnumbered front matter.
+    front_matter_pages = 2 if copyright.enabled else 1
+    doc = _BookDoc(out_path, trim, gutter, title, decor,
+                   front_matter_pages=front_matter_pages, author=author)
 
     story = []
-    # --- Title page ---
+    # --- Title page (recto) ---
     story.append(Paragraph(_esc(title), st["title"]))
     story.append(Paragraph(_esc(author), st["sub"]))
     story.append(Spacer(1, 40))
     story.append(Paragraph(
         f"{src_lang.upper()} &ndash; {tgt_lang.upper()} parallel edition", st["sub"]
     ))
-    story.append(NextPageTemplate("verso"))
-    story.append(PageBreak())
+
+    # --- Copyright page (verso) ---
+    if copyright.enabled:
+        story.append(NextPageTemplate("verso"))
+        story.append(PageBreak())
+        story.extend(_copyright_flowables(
+            copyright, title=title, author=author, src_lang=src_lang,
+            translation_note=translation_note, trim=trim, style=st["cr"],
+        ))
+        story.append(NextPageTemplate("recto"))
+        story.append(PageBreak())
+    else:
+        story.append(NextPageTemplate("verso"))
+        story.append(PageBreak())
 
     # --- Body ---
     for ch in chapters:
