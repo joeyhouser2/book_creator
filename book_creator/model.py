@@ -87,6 +87,18 @@ class CopyrightSpec:
 
 
 @dataclass
+class CoverSpec:
+    """Wraparound KDP cover (back + spine + front) with a per-language motif."""
+
+    enabled: bool = False
+    # Paper stock sets the spine thickness per page: white | cream | color.
+    paper: str = "white"
+    background: str = "#f4ead5"      # parchment
+    accent: str | None = None        # override the per-language accent color
+    blurb: str = ""                  # back-cover description
+
+
+@dataclass
 class BookSpec:
     """Definition of one book to build, loaded from YAML."""
 
@@ -142,3 +154,4 @@ class BookSpec:
     font: FontSpec = field(default_factory=FontSpec)
     decor: DecorSpec = field(default_factory=DecorSpec)
     copyright: CopyrightSpec = field(default_factory=CopyrightSpec)
+    cover: CoverSpec = field(default_factory=CoverSpec)

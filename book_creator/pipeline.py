@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import aligners, clean, fetch, render_pdf, segment
+from . import aligners, clean, cover, fetch, render_pdf, segment
 from .model import BookSpec, Chapter
 
 
@@ -93,7 +93,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
     out_path = str(Path(out_dir) / f"{slug}.pdf")
 
     log(f"• Rendering PDF (≈{pages} pages) → {out_path}")
-    render_pdf.render(
+    _, actual_pages = render_pdf.render(
         chapters,
         out_path=out_path,
         title=spec.title,
@@ -109,5 +109,20 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         translation_note=spec.translation_source_note,
         include_toc=spec.toc,
     )
-    log(f"✓ Done: {out_path}")
+    log(f"✓ Done: {out_path} ({actual_pages} pages)")
+
+    if spec.cover.enabled:
+        cover_path = str(Path(out_dir) / f"{slug}-cover.pdf")
+        _, dims = cover.render_cover(
+            cover_path,
+            title=spec.title, author=spec.author,
+            src_lang=spec.src_lang, tgt_lang=spec.tgt_lang,
+            trim=spec.trim, pages=actual_pages, paper=spec.cover.paper,
+            font_spec=spec.font, background=spec.cover.background,
+            accent=spec.cover.accent, blurb=spec.cover.blurb,
+            publisher=spec.copyright.publisher,
+        )
+        w, h, spine = dims
+        log(f"✓ Cover: {cover_path} ({w:.3f} × {h:.3f} in, spine {spine:.3f} in)")
+
     return out_path

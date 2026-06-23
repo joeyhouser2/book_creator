@@ -39,6 +39,9 @@ books:
       isbn: ""                     # KDP can assign a free ISBN
       translator: "W. A. McDevitte and W. S. Bohn"
       # rights: "..."              # optional: replace the generated text entirely
+    cover:                # wraparound cover -> output/<slug>-cover.pdf
+      paper: white        # white | cream | color (sets spine width)
+      blurb: "Caesar's account of the conquest of Gaul, with the original Latin and a classic English translation on facing lines."
 
   - title: "Meditations"
     author: "Marcus Aurelius"

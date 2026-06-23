@@ -7,7 +7,21 @@ from pathlib import Path
 import yaml
 
 from . import translators
-from .model import BookSpec, CopyrightSpec, DecorSpec, FontSpec
+from .model import BookSpec, CopyrightSpec, CoverSpec, DecorSpec, FontSpec
+
+
+def _parse_cover(raw) -> CoverSpec:
+    if raw is None or raw is False:
+        return CoverSpec(enabled=False)
+    if raw is True:
+        return CoverSpec(enabled=True)
+    return CoverSpec(
+        enabled=bool(raw.get("enabled", True)),
+        paper=raw.get("paper", "white"),
+        background=raw.get("background", "#f4ead5"),
+        accent=raw.get("accent"),
+        blurb=raw.get("blurb", ""),
+    )
 
 
 def _parse_copyright(raw) -> CopyrightSpec:
@@ -100,5 +114,6 @@ def load_specs(path: str) -> list[BookSpec]:
             font=_parse_font(raw.get("font")),
             decor=_parse_decor(raw.get("decorations")),
             copyright=_parse_copyright(raw.get("copyright")),
+            cover=_parse_cover(raw.get("cover")),
         ))
     return specs

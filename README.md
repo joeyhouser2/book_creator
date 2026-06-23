@@ -226,6 +226,40 @@ layout (a two-pass `multiBuild`), with dotted leaders and right-aligned numbers.
 Front matter (title, copyright, contents) is unnumbered; body pagination starts
 after it. Disable with `toc: false` in config or `--no-toc`.
 
+## Cover
+
+Generates a **KDP wraparound cover** (back + spine + front in one PDF), sized
+from the trim, the real interior page count (which sets the spine width), the
+paper stock, and 0.125″ bleed. The bottom-right of the back cover is left clear
+for KDP's barcode.
+
+Each source language gets an **ornamental motif** — a vector emblem plus an
+accent colour:
+
+| Language | Emblem | Accent |
+|----------|--------|--------|
+| Latin (`la`) | laurel wreath | imperial oxblood |
+| Greek (`grc`/`el`) | Greek key (meander) | Aegean blue |
+| French (`fr`) | fleur-de-lis | royal azure |
+| German (`de`) | oak leaf + acorns | forest green |
+
+Enable with `--cover` (CLI) or a `cover:` block (config). The cover lands at
+`output/<slug>-cover.pdf`:
+
+```bash
+python make_book.py --src-id 218 --tgt-id 10657 --src-lang la --src-range 2-5 \
+    --tgt-range 2-5 --title "The Gallic War" --author "Julius Caesar" \
+    --cover --paper white --blurb "Caesar's account of the conquest of Gaul." --confirm-pd
+```
+
+```yaml
+cover:
+  paper: white            # white | cream | color (sets spine width)
+  blurb: "Back-cover description."
+  background: "#f4ead5"   # parchment
+  accent: "#7c2128"       # optional: override the per-language accent colour
+```
+
 ## Decorations
 
 Make the page look like a real published book:
@@ -256,7 +290,8 @@ point `corner_image` at it — it's auto-mirrored so each corner faces inward.
 | `aligners.py` | backend selection (`auto` / `embed` / `mt` / `gale-church`) |
 | `decorations.py` | vector ornaments + chapter dividers |
 | `render_pdf.py` | KDP interior PDF: mirrored gutter margins, embedded fonts, page numbers |
-| `pipeline.py` | orchestrates fetch → segment → align → render |
+| `cover.py` | KDP wraparound cover with per-language ornamental motifs |
+| `pipeline.py` | orchestrates fetch → segment → align → render → cover |
 | `webapp/` | Flask UI: Gutendex search, background build jobs, PyMuPDF page preview |
 
 ## KDP notes

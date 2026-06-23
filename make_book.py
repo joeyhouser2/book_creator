@@ -25,7 +25,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from book_creator import fetch, segment
 from book_creator.config import load_specs
-from book_creator.model import BookSpec, CopyrightSpec, DecorSpec, FontSpec
+from book_creator.model import BookSpec, CopyrightSpec, CoverSpec, DecorSpec, FontSpec
 from book_creator.pipeline import build_book
 
 
@@ -95,6 +95,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--edition-year", type=int, help="Edition year for the copyright page.")
     p.add_argument("--isbn", default="", help="ISBN for the copyright page.")
     p.add_argument("--translator", default="", help="Translator name (public-domain credit).")
+    p.add_argument("--cover", action="store_true",
+                   help="Also generate a wraparound cover PDF (<slug>-cover.pdf).")
+    p.add_argument("--paper", choices=["white", "cream", "color"], default="white",
+                   help="Paper stock (sets spine width).")
+    p.add_argument("--blurb", default="", help="Back-cover description text.")
     p.add_argument("--no-copyright", action="store_true", help="Omit the copyright page.")
     p.add_argument("--no-toc", action="store_true",
                    help="Omit the table of contents.")
@@ -132,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
                 isbn=args.isbn,
                 translator=args.translator,
             ),
+            cover=CoverSpec(enabled=args.cover, paper=args.paper, blurb=args.blurb),
         )]
     else:
         p.error("Provide a config file, or --src-id/--src-path for a single book.")

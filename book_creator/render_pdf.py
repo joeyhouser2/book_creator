@@ -302,7 +302,7 @@ def render(
         doc.multiBuild(story)   # extra passes resolve TOC page numbers
     else:
         doc.build(story)
-    return out_path
+    return out_path, doc.page   # doc.page is the final page count
 
 
 def _render_bead(story, bead: Bead, st, first: str):
