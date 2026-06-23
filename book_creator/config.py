@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from . import translators
 from .model import BookSpec, CopyrightSpec, DecorSpec, FontSpec
 
 
@@ -64,8 +65,12 @@ def _parse_decor(raw) -> DecorSpec:
 
 def load_specs(path: str) -> list[BookSpec]:
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    if isinstance(data, dict) and "books" in data:
-        data = data["books"]
+    if isinstance(data, dict):
+        # Optional top-level translators block registers MT-pivot endpoints.
+        if data.get("translators"):
+            translators.configure_from(data["translators"])
+        if "books" in data:
+            data = data["books"]
     if not isinstance(data, list):
         raise ValueError("Config must be a list of books, or a mapping with a 'books' list.")
 

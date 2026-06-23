@@ -135,6 +135,39 @@ Both anchor on chapter headings (when both editions agree on chapter count) to
 prevent drift over long texts. Alignment is automatic and *approximate*: always
 proofread the output, especially around chapter starts.
 
+### MT-pivot alignment (`mt`) — plug in your own translator
+
+A third backend aligns by **translation pivot**: it translates the source
+(Latin/Greek) into rough English with a model you provide, then aligns those
+machine translations against the real English edition. Matching English-to-English
+is far more reliable than cross-lingual matching — especially for Latin and
+Ancient Greek, where general models like LaBSE are weak. The machine translation
+only needs to be good enough to *match* sentences; the printed book still shows
+the real source and translation.
+
+Register a translator per language (any callable `texts -> english`):
+
+```python
+from book_creator import translators
+translators.register("la",  translators.HTTPTranslator("http://localhost:8001/translate", src_lang="la"))
+translators.register("grc", translators.HTTPTranslator("http://localhost:8002/translate", src_lang="grc"))
+```
+
+or in a config file:
+
+```yaml
+translators:
+  la:  { url: "http://localhost:8001/translate" }
+  grc: { url: "http://localhost:8002/translate" }
+books:
+  - ...
+```
+
+Once a translator is registered for a language, `aligner: auto` uses it
+automatically (falling back to embeddings / Gale-Church otherwise). The HTTP
+contract and a runnable reference server are in
+[`examples/translator_server.py`](examples/translator_server.py).
+
 ## Fonts
 
 Fonts are **auto-discovered** from `fonts/`: drop a font's `.ttf` files in and the
@@ -217,7 +250,10 @@ point `corner_image` at it — it's auto-mirrored so each corner faces inward.
 | `fonts.py` | auto-discover font families in fonts/, register, expose catalog |
 | `align.py` | shared alignment DP + Gale-Church backend |
 | `align_embed.py` | LaBSE embedding (meaning-based) backend |
-| `aligners.py` | backend selection (`auto` / `embed` / `gale-church`) |
+| `align_mt.py` | MT-pivot backend (translate source, align in English) |
+| `translators.py` | per-language translator registry + HTTP/callable adapters |
+| `clean.py` | strip inline section markers / boilerplate before alignment |
+| `aligners.py` | backend selection (`auto` / `embed` / `mt` / `gale-church`) |
 | `decorations.py` | vector ornaments + chapter dividers |
 | `render_pdf.py` | KDP interior PDF: mirrored gutter margins, embedded fonts, page numbers |
 | `pipeline.py` | orchestrates fetch → segment → align → render |

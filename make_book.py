@@ -65,10 +65,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--title", default="Untitled")
     p.add_argument("--author", default="Unknown")
     p.add_argument("--mode", choices=["prose", "verse"], default="prose")
-    p.add_argument("--aligner", choices=["auto", "embed", "gale-church"],
+    p.add_argument("--aligner", choices=["auto", "embed", "mt", "gale-church"],
                    default="auto",
-                   help="Alignment backend. 'embed' = LaBSE (meaning-based); "
-                        "'auto' uses it when installed, else Gale-Church.")
+                   help="Alignment backend. 'embed' = LaBSE; 'mt' = translate "
+                        "source then align in English (needs a registered "
+                        "translator); 'auto' picks the best available.")
     p.add_argument("--first", choices=["src", "tgt"], default="src",
                    help="Which language prints first in each pair.")
     p.add_argument("--src-range", help="Division range to include from the original, "

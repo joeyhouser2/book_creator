@@ -80,7 +80,8 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         if spec.clean:
             src_segs = clean.clean_segments(src_segs)
             tgt_segs = clean.clean_segments(tgt_segs)
-        beads = aligners.align(src_segs, tgt_segs, method=spec.aligner, log=log)
+        beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
+                               src_lang=spec.src_lang, log=log)
         chapters.append(Chapter(title=t_title or s_title, src_segments=src_segs,
                                 tgt_segments=tgt_segs, beads=beads))
 
