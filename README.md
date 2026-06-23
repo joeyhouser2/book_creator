@@ -56,6 +56,32 @@ search once in the source language (e.g. `bello gallico`, lang `la`) and again i
 English. The catalog uses the work's real title, so search `de bello gallico`,
 not `gallic war`, for the Latin edition.
 
+## Matching scope (range selection)
+
+The biggest real-world gotcha: the two editions must cover the **same content**.
+A Gutenberg "translation" often bundles extra works — e.g. the McDevitte Caesar
+(#10657) contains the Gallic War *and* the Civil War, while the Latin #218 is only
+Gallic War I–IV. Aligning them whole would be hopeless.
+
+So scope each side to matching **divisions** (books/chapters). List them first:
+
+```bash
+python make_book.py --src-id 218 --tgt-id 10657 --outline
+```
+
+Then pass a range per side (1-based, inclusive). Division 1 is usually front
+matter, so to take Gallic War Books I–IV from both:
+
+```bash
+python make_book.py --src-id 218 --tgt-id 10657 --src-lang la \
+    --src-range 2-5 --tgt-range 2-5 --title "The Gallic War" \
+    --author "Julius Caesar" --aligner embed --confirm-pd
+```
+
+When both ranges resolve to the same number of divisions, they're **anchored
+book-by-book** (each aligned independently — no cross-book drift). In the web UI,
+the range is a pair of dropdowns under each selected edition.
+
 ## Command-line usage
 
 **Single book** straight from two Gutenberg ids:

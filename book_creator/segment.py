@@ -4,16 +4,35 @@ from __future__ import annotations
 
 import re
 
-# Headings that mark a structural division, in the languages we target.
-_CHAPTER_RE = re.compile(
-    r"""^\s*(
-        (chapter|book|canto|part|section|liber|caput|chapitre|livre|kapitel|buch|teil)
-        \s+([ivxlcdm\d]+|[a-zÀ-ſ]+)
-        | [IVXLCDM]+\.?            # bare roman numeral line
-        | \d+\.?                   # bare arabic numeral line
-    )\s*$""",
-    re.I | re.X,
+# Division keywords across the languages we target.
+_DIV_KW = (r"book|chapter|chap|part|canto|section|argument"
+           r"|liber|caput|commentarius|chapitre|livre|partie|kapitel|buch|teil")
+_ROMAN = r"[ivxlcdm]+"
+# Latin ordinals (used in headings like "COMMENTARIUS PRIMUS").
+_LAT_ORD = (r"primus|secundus|tertius|quartus|quintus|sextus|septimus"
+            r"|octavus|nonus|decimus|undecimus|duodecimus")
+
+# A "<keyword> <number>" group appearing anywhere in a short heading line. This
+# catches "BOOK I", "CHAPTER 3", "Liber II", and "C. IULI ... COMMENTARIUS PRIMUS".
+_HEADING_KW_RE = re.compile(
+    rf"\b(?:{_DIV_KW})\b\.?\s+(?:{_ROMAN}|\d+|(?:{_LAT_ORD}))\b", re.I
 )
+# A line consisting only of a roman numeral, e.g. a bare "IV." chapter marker.
+# Bare arabic numbers are intentionally excluded — they're too often footnote
+# markers, page numbers, or list items in back matter.
+_BARE_NUM_RE = re.compile(r"^[IVXLCDM]{1,7}\.?$")
+
+
+def _is_heading(line: str) -> bool:
+    """Heuristic: is this physical line a structural-division heading?"""
+    s = line.strip()
+    if not s or len(s) > 60:
+        return False
+    if _BARE_NUM_RE.match(s):
+        return True
+    # A keyword+number heading, but only on a short title-like line (so a prose
+    # sentence that merely mentions "book i" isn't treated as a heading).
+    return bool(_HEADING_KW_RE.search(s)) and len(s.split()) <= 9
 
 # Sentence terminators by language. Greek uses ';' as its question mark and
 # '·' (ano teleia) as a colon (NOT a sentence end).
@@ -41,7 +60,7 @@ def detect_chapters(text: str) -> list[tuple[str, str]]:
     current_body: list[str] = []
 
     for line in lines:
-        if _CHAPTER_RE.match(line) and len(line.strip()) <= 40:
+        if _is_heading(line):
             if current_body:
                 chapters.append((current_title, current_body))
             current_title = line.strip()
@@ -54,6 +73,19 @@ def detect_chapters(text: str) -> list[tuple[str, str]]:
     if not chapters:
         return [("", text)]
     return [(title, "\n".join(body).strip()) for title, body in chapters]
+
+
+def outline(text: str) -> list[dict]:
+    """Structural divisions of a text, for UI display and range selection.
+
+    Returns [{index, title, chars}], index 1-based. Index 1 is usually the
+    front matter (text before the first heading).
+    """
+    divs = detect_chapters(text)
+    return [
+        {"index": i + 1, "title": title or "(front matter / untitled)", "chars": len(body)}
+        for i, (title, body) in enumerate(divs)
+    ]
 
 
 def segment_prose(text: str, lang: str = "default") -> list[str]:

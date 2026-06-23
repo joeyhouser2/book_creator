@@ -9,6 +9,17 @@ import yaml
 from .model import BookSpec, DecorSpec, FontSpec
 
 
+def _parse_range(raw) -> tuple[int, int] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        parts = [int(p) for p in raw.replace(":", "-").split("-") if p.strip()]
+        return (parts[0], parts[0]) if len(parts) == 1 else (parts[0], parts[1])
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        return (int(raw[0]), int(raw[1]))
+    return None
+
+
 def _parse_font(raw) -> FontSpec:
     if raw is None:
         return FontSpec()
@@ -56,6 +67,8 @@ def load_specs(path: str) -> list[BookSpec]:
             tgt_path=raw.get("tgt_path"),
             mode=raw.get("mode", "prose"),
             aligner=raw.get("aligner", "auto"),
+            src_range=_parse_range(raw.get("src_range")),
+            tgt_range=_parse_range(raw.get("tgt_range")),
             trim=(float(trim[0]), float(trim[1])),
             first=raw.get("first", "src"),
             translation_pd_confirmed=bool(raw.get("translation_pd_confirmed", False)),

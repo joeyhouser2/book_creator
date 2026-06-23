@@ -14,14 +14,19 @@ books:
     author: "Julius Caesar"
     src_lang: la          # Latin original
     tgt_lang: en
-    src_gutenberg_id: 218     # De Bello Gallico (Latin)  -- verify the id on gutenberg.org
-    tgt_gutenberg_id: 10657   # an English translation     -- verify PD status!
+    src_gutenberg_id: 218     # De Bello Gallico, Latin (Books I-IV)
+    tgt_gutenberg_id: 10657   # McDevitte & Bohn translation, 1869 (public domain)
     mode: prose
     aligner: auto         # auto | embed (LaBSE, meaning-based) | gale-church (length)
+    # Scope BOTH sides to the same content. #218 is Gallic War I-IV (divisions
+    # 2-5); #10657's Gallic War is also divisions 2-5 (run `--outline` to list
+    # them). Without this the texts mismatch (#10657 also has the Civil War).
+    src_range: 2-5
+    tgt_range: 2-5
     first: src            # Latin line first, then English
     trim: [6.0, 9.0]
-    translation_pd_confirmed: false
-    translation_source_note: "Replace with a translation confirmed public domain."
+    translation_pd_confirmed: true
+    translation_source_note: "W. A. McDevitte & W. S. Bohn, 1869 — public domain."
     font: Cardo           # shorthand: family name. Or a full block (see below).
     decorations:
       margin: corners     # none | rule | corners | frame

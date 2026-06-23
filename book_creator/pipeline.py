@@ -14,6 +14,17 @@ def _slugify(text: str) -> str:
     return s or "book"
 
 
+def _apply_range(divisions: list[tuple[str, str]],
+                 rng: tuple[int, int] | None) -> list[tuple[str, str]]:
+    """Keep divisions [first, last] (1-based, inclusive). None keeps everything."""
+    if not rng:
+        return divisions
+    first, last = rng
+    first = max(1, first)
+    last = min(len(divisions), last)
+    return divisions[first - 1:last]
+
+
 def _estimate_pages(chapters: list[Chapter]) -> int:
     """Rough page estimate so we can pick the right KDP gutter margin."""
     chars = sum(len(b.src_text) + len(b.tgt_text) for ch in chapters for b in ch.beads)
@@ -41,18 +52,25 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
     log(f"• Fetching translation ({spec.tgt_lang})…")
     tgt_text = fetch.load_text(path=spec.tgt_path, gid=spec.tgt_gutenberg_id)
 
-    # Structural anchoring: split both sides into chapters. Only trust the split
-    # if both sides agree on chapter count; otherwise align as one block.
-    src_chaps = segment.detect_chapters(src_text)
-    tgt_chaps = segment.detect_chapters(tgt_text)
-    log(f"• Chapters detected — source: {len(src_chaps)}, translation: {len(tgt_chaps)}")
+    # Structural anchoring: split both sides into divisions, optionally scoping
+    # each to a selected range so the two editions cover the same content.
+    src_chaps = _apply_range(segment.detect_chapters(src_text), spec.src_range)
+    tgt_chaps = _apply_range(segment.detect_chapters(tgt_text), spec.tgt_range)
+    rng = ""
+    if spec.src_range or spec.tgt_range:
+        rng = f" (range src={spec.src_range or 'all'}, tgt={spec.tgt_range or 'all'})"
+    log(f"• Divisions used — source: {len(src_chaps)}, translation: {len(tgt_chaps)}{rng}")
 
     if len(src_chaps) == len(tgt_chaps) and len(src_chaps) > 1:
         paired = list(zip(src_chaps, tgt_chaps))
-        log("• Anchoring on matched chapter boundaries.")
+        log("• Anchoring on matched division boundaries.")
     else:
-        paired = [(("", src_text), ("", tgt_text))]
-        log("• Chapter counts differ; aligning whole text as a single block.")
+        # Concatenate each side and align as one block.
+        src_body = "\n\n".join(b for _, b in src_chaps)
+        tgt_body = "\n\n".join(b for _, b in tgt_chaps)
+        paired = [(("", src_body), ("", tgt_body))]
+        if len(src_chaps) != len(tgt_chaps):
+            log("• Division counts differ; aligning selected text as a single block.")
 
     aligners.reset_announcement()
     chapters: list[Chapter] = []

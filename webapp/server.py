@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from book_creator import fonts
+from book_creator import fetch, fonts, segment
 from book_creator.model import BookSpec, DecorSpec, FontSpec
 from book_creator.pipeline import build_book
 
@@ -41,6 +41,19 @@ def api_fonts():
     return jsonify({"fonts": fonts.catalog()})
 
 
+@app.route("/api/outline")
+def api_outline():
+    """Division outline for a Gutenberg id, so the user can pick a range."""
+    gid = request.args.get("id", type=int)
+    if not gid:
+        return jsonify({"error": "missing id"}), 400
+    try:
+        text = fetch.fetch_gutenberg(gid)
+        return jsonify({"divisions": segment.outline(text)})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
+
+
 @app.route("/api/search")
 def api_search():
     query = request.args.get("q", "").strip()
@@ -57,6 +70,12 @@ def api_search():
 # --------------------------------------------------------------------------- #
 # Build
 # --------------------------------------------------------------------------- #
+def _range(v) -> tuple[int, int] | None:
+    if isinstance(v, (list, tuple)) and len(v) == 2 and all(v):
+        return (int(v[0]), int(v[1]))
+    return None
+
+
 def _spec_from_payload(p: dict) -> BookSpec:
     trim = p.get("trim", [6.0, 9.0])
     decor = p.get("decorations", {}) or {}
@@ -71,6 +90,8 @@ def _spec_from_payload(p: dict) -> BookSpec:
         tgt_path=p.get("tgt_path"),
         mode=p.get("mode", "prose"),
         aligner=p.get("aligner", "auto"),
+        src_range=_range(p.get("src_range")),
+        tgt_range=_range(p.get("tgt_range")),
         first=p.get("first", "src"),
         trim=(float(trim[0]), float(trim[1])),
         translation_pd_confirmed=bool(p.get("translation_pd_confirmed", False)),

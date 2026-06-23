@@ -83,6 +83,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   letter-spacing: .05em; margin-bottom: 4px; }
 .slot-body b { font-weight: 600; }
 .slot-body .clear { font-size: 12px; color: var(--err); cursor: pointer; margin-left: 6px; }
+.slot-range { margin-top: 8px; }
+.slot-range .rng { display: flex; align-items: center; gap: 5px; font-size: 12px;
+  color: var(--muted); flex-wrap: wrap; }
+.slot-range select { padding: 4px 6px; font-size: 12px; max-width: 110px; }
+.range-hint { font-size: 12px; margin: 8px 0 0; }
 
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .opts label { display: flex; flex-direction: column; font-size: 12px;

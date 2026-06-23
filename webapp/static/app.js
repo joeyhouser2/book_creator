@@ -105,8 +105,9 @@ function resultRow(b) {
 // Selection
 // --------------------------------------------------------------------------- //
 function selectEdition(which, b) {
-  state[which] = b;
+  state[which] = { ...b };
   renderSlot(which);
+  loadOutline(which);
   // Helpfully prefill title/author/language from the original.
   if (which === "src") {
     if (!$("title").value) $("title").value = b.title;
@@ -114,6 +115,43 @@ function selectEdition(which, b) {
     const lang = (b.languages[0] || "").toLowerCase();
     if ([...$("srcLang").options].some((o) => o.value === lang)) $("srcLang").value = lang;
   }
+}
+
+// --- Division outline + range picker (so both sides match in scope) --- //
+async function loadOutline(which) {
+  const b = state[which];
+  const box = $(which === "src" ? "range-src" : "range-tgt");
+  if (!b || !b.id) { box.innerHTML = ""; return; }
+  box.innerHTML = `<small class="muted">loading outline…</small>`;
+  try {
+    const data = await (await fetch(`/api/outline?id=${b.id}`)).json();
+    b.outline = data.divisions || [];
+  } catch { box.innerHTML = `<small class="muted">outline unavailable</small>`; return; }
+  renderRange(which);
+}
+
+function renderRange(which) {
+  const b = state[which];
+  const box = $(which === "src" ? "range-src" : "range-tgt");
+  const divs = b && b.outline;
+  if (!divs || divs.length <= 1) { box.innerHTML = ""; return; }
+  const opts = divs.map((d) => {
+    const t = d.title.length > 30 ? d.title.slice(0, 29) + "…" : d.title;
+    return `<option value="${d.index}">${d.index}. ${escapeHtml(t)}</option>`;
+  }).join("");
+  box.innerHTML = `<div class="rng">
+      <span>from</span><select data-end="from">${opts}</select>
+      <span>to</span><select data-end="to">${opts}</select></div>`;
+  // Default: skip front matter (division 1), span the remaining divisions.
+  box.querySelector('[data-end="from"]').value = divs.length > 1 ? "2" : "1";
+  box.querySelector('[data-end="to"]').value = String(divs[divs.length - 1].index);
+}
+
+function getRange(which) {
+  const box = $(which === "src" ? "range-src" : "range-tgt");
+  const from = box.querySelector('[data-end="from"]');
+  const to = box.querySelector('[data-end="to"]');
+  return from && to ? [parseInt(from.value, 10), parseInt(to.value, 10)] : null;
 }
 
 function renderSlot(which) {
@@ -131,7 +169,11 @@ function renderSlot(which) {
   body.innerHTML = `<b>${escapeHtml(b.title)}</b>
     <small class="muted">${escapeHtml(b.authors)} · #${b.id}</small>
     <span class="clear">clear</span>`;
-  body.querySelector(".clear").onclick = () => { state[which] = null; renderSlot(which); };
+  body.querySelector(".clear").onclick = () => {
+    state[which] = null;
+    renderSlot(which);
+    $(which === "src" ? "range-src" : "range-tgt").innerHTML = "";
+  };
 }
 
 // --------------------------------------------------------------------------- //
@@ -155,6 +197,8 @@ async function doBuild() {
     font: $("font").value,
     trim: [parseFloat($("trimW").value), parseFloat($("trimH").value)],
     translation_pd_confirmed: true,
+    src_range: getRange("src"),
+    tgt_range: getRange("tgt"),
     decorations: { margin: $("margin").value, chapter: $("chapter").value },
   };
 

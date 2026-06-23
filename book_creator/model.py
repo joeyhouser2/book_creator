@@ -91,6 +91,12 @@ class BookSpec:
     # Alignment backend: "auto" | "embed" | "gale-church".
     aligner: str = "auto"
 
+    # Optional (first, last) division indices to include, 1-based inclusive, per
+    # side — so you can scope both editions to the same content (e.g. just Book
+    # I). None = whole text. See segment.outline() for the division list.
+    src_range: tuple[int, int] | None = None
+    tgt_range: tuple[int, int] | None = None
+
     # KDP trim size in inches (width, height). 6x9 is the most common.
     trim: tuple[float, float] = (6.0, 9.0)
 

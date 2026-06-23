@@ -23,9 +23,35 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
+from book_creator import fetch, segment
 from book_creator.config import load_specs
 from book_creator.model import BookSpec, DecorSpec, FontSpec
 from book_creator.pipeline import build_book
+
+
+def _parse_range(text: str | None) -> tuple[int, int] | None:
+    """Parse '2-5' or '2:5' or single '3' into a (first, last) tuple."""
+    if not text:
+        return None
+    parts = text.replace(":", "-").split("-")
+    nums = [int(p) for p in parts if p.strip()]
+    if len(nums) == 1:
+        return (nums[0], nums[0])
+    return (nums[0], nums[1])
+
+
+def _print_outlines(args) -> int:
+    for label, gid, path in [("ORIGINAL", args.src_id, args.src_path),
+                             ("TRANSLATION", args.tgt_id, args.tgt_path)]:
+        if not (gid or path):
+            continue
+        text = fetch.load_text(path=path, gid=gid)
+        print(f"\n=== {label} outline ===")
+        for d in segment.outline(text):
+            print(f"  {d['index']:>3}. [{d['chars']:>8,} ch] {d['title'][:60]}")
+    print("\nUse --src-range / --tgt-range (e.g. 2-5) to scope both sides to "
+          "matching content.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,6 +71,11 @@ def main(argv: list[str] | None = None) -> int:
                         "'auto' uses it when installed, else Gale-Church.")
     p.add_argument("--first", choices=["src", "tgt"], default="src",
                    help="Which language prints first in each pair.")
+    p.add_argument("--src-range", help="Division range to include from the original, "
+                   "e.g. 2-5 (1-based, inclusive). See --outline.")
+    p.add_argument("--tgt-range", help="Division range to include from the translation.")
+    p.add_argument("--outline", action="store_true",
+                   help="Print each text's division outline and exit (use to pick ranges).")
     p.add_argument("--out", default="output", help="Output directory.")
     p.add_argument("--confirm-pd", action="store_true",
                    help="Affirm the translation is public domain (suppresses the warning).")
@@ -58,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--corner-image", help="PNG/JPG placed (mirrored) at text-block corners.")
     args = p.parse_args(argv)
 
+    if args.outline:
+        return _print_outlines(args)
+
     if args.config:
         specs = load_specs(args.config)
     elif args.src_id or args.src_path:
@@ -66,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
             src_gutenberg_id=args.src_id, tgt_gutenberg_id=args.tgt_id,
             src_path=args.src_path, tgt_path=args.tgt_path,
             mode=args.mode, aligner=args.aligner, first=args.first,
+            src_range=_parse_range(args.src_range),
+            tgt_range=_parse_range(args.tgt_range),
             translation_pd_confirmed=args.confirm_pd,
             font=FontSpec(family=args.font),
             decor=DecorSpec(
