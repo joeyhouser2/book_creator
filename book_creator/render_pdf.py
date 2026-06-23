@@ -9,6 +9,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     BaseDocTemplate,
+    Flowable,
     Frame,
     NextPageTemplate,
     PageBreak,
@@ -16,6 +17,7 @@ from reportlab.platypus import (
     Paragraph,
     Spacer,
 )
+from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.lib.styles import ParagraphStyle
 
 from . import decorations, fonts
@@ -29,6 +31,17 @@ _LANG_NAMES = {
 
 def _lang_name(code: str) -> str:
     return _LANG_NAMES.get(code, code.upper())
+
+
+class _BodyStart(Flowable):
+    """Zero-size sentinel marking where the body begins, so the document can tell
+    front matter (unnumbered, undecorated) from body pages."""
+
+    def wrap(self, *_):
+        return (0, 0)
+
+    def draw(self):
+        pass
 
 
 def _register_font(spec: FontSpec | None) -> tuple[str, str, str]:
@@ -58,13 +71,14 @@ def _gutter_for_page_count(pages: int) -> float:
 class _BookDoc(BaseDocTemplate):
     """Two mirrored page templates (recto/verso) for correct gutter placement."""
 
-    def __init__(self, filename, trim, gutter, title, decor: DecorSpec,
-                 front_matter_pages: int = 1, **kw):
+    def __init__(self, filename, trim, gutter, title, decor: DecorSpec, **kw):
         w, h = trim[0] * inch, trim[1] * inch
         self.book_title = title
         self.decor = decor or DecorSpec()
-        # Leading pages (title, copyright) get no margin art and no page number.
-        self._front_matter_pages = front_matter_pages
+        # First body page. Pages before it (title, copyright, contents) get no
+        # margin art and no page number. Set by afterFlowable (or directly when
+        # there's no TOC and a single build pass is used).
+        self._body_start_page: int | None = None
         super().__init__(filename, pagesize=(w, h), **kw)
 
         outside = 0.5 * inch
@@ -92,9 +106,16 @@ class _BookDoc(BaseDocTemplate):
             PageTemplate(id="verso", frames=[verso], onPage=self._furniture, autoNextPageTemplate="recto"),
         ])
 
+    def afterFlowable(self, flowable):
+        if isinstance(flowable, _BodyStart):
+            self._body_start_page = self.page
+        elif isinstance(flowable, Paragraph) and flowable.style.name == "head":
+            self.notify("TOCEntry", (0, flowable.getPlainText(), self.page))
+
     def _furniture(self, canvas, doc):
-        # Front matter (title, copyright) stays clean and unnumbered.
-        if doc.page <= self._front_matter_pages:
+        # Front matter (title, copyright, contents) stays clean and unnumbered.
+        bsp = self._body_start_page
+        if bsp is None or doc.page < bsp:
             return
         recto = (doc.page % 2 == 1)
         geom = self._geom_recto if recto else self._geom_verso
@@ -135,7 +156,15 @@ def _styles(fonts: tuple[str, str, str], first: str):
         "cr", fontName=font, fontSize=8.5, leading=12.5,
         textColor=HexColor("#333333"), spaceAfter=7,
     )
-    return {"src": src, "tgt": tgt, "head": head, "title": title, "sub": sub, "cr": cr}
+    toc_head = ParagraphStyle(
+        "tochead", fontName=bold, fontSize=16, leading=22,
+        alignment=TA_CENTER, spaceBefore=10, spaceAfter=22,
+    )
+    toc0 = ParagraphStyle(
+        "toc0", fontName=font, fontSize=11.5, leading=20,
+    )
+    return {"src": src, "tgt": tgt, "head": head, "title": title, "sub": sub,
+            "cr": cr, "tochead": toc_head, "toc0": toc0}
 
 
 def _copyright_flowables(cr: CopyrightSpec, *, title: str, author: str,
@@ -204,6 +233,7 @@ def render(
     decor: DecorSpec | None = None,
     copyright: CopyrightSpec | None = None,
     translation_note: str = "",
+    include_toc: bool = True,
 ) -> str:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     decor = decor or DecorSpec()
@@ -212,10 +242,11 @@ def render(
     gutter = _gutter_for_page_count(estimated_pages)
     st = _styles(font, first)
 
-    # Title page + (optional) copyright page are unnumbered front matter.
-    front_matter_pages = 2 if copyright.enabled else 1
-    doc = _BookDoc(out_path, trim, gutter, title, decor,
-                   front_matter_pages=front_matter_pages, author=author)
+    # A TOC is only meaningful when there are at least two titled divisions.
+    titled = [ch for ch in chapters if ch.title]
+    want_toc = include_toc and len(titled) >= 2
+
+    doc = _BookDoc(out_path, trim, gutter, title, decor, author=author)
 
     story = []
     # --- Title page (recto) ---
@@ -226,21 +257,31 @@ def render(
         f"{src_lang.upper()} &ndash; {tgt_lang.upper()} parallel edition", st["sub"]
     ))
 
-    # --- Copyright page (verso) ---
+    # --- Copyright page (verso) — pages auto-alternate recto/verso ---
     if copyright.enabled:
-        story.append(NextPageTemplate("verso"))
         story.append(PageBreak())
         story.extend(_copyright_flowables(
             copyright, title=title, author=author, src_lang=src_lang,
             translation_note=translation_note, trim=trim, style=st["cr"],
         ))
-        story.append(NextPageTemplate("recto"))
-        story.append(PageBreak())
-    else:
-        story.append(NextPageTemplate("verso"))
-        story.append(PageBreak())
 
-    # --- Body ---
+    # --- Table of contents ---
+    if want_toc:
+        story.append(PageBreak())
+        story.append(Paragraph("Contents", st["tochead"]))
+        toc = TableOfContents()
+        toc.dotsMinLevel = 0
+        toc.levelStyles = [st["toc0"]]
+        story.append(toc)
+
+    # --- Body begins here ---
+    story.append(PageBreak())
+    story.append(_BodyStart())
+    if not want_toc:
+        # Single build pass: the sentinel's afterFlowable fires after this page's
+        # furniture, so set the body-start page directly. Title (1) + copyright.
+        doc._body_start_page = 2 + (1 if copyright.enabled else 0)
+
     for ch in chapters:
         if ch.title:
             story.append(Paragraph(_esc(ch.title), st["head"]))
@@ -257,7 +298,10 @@ def render(
                     story.append(sep)
             _render_bead(story, bead, st, first)
 
-    doc.build(story)
+    if want_toc:
+        doc.multiBuild(story)   # extra passes resolve TOC page numbers
+    else:
+        doc.build(story)
     return out_path
 
 

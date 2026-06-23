@@ -122,6 +122,10 @@ class BookSpec:
     # Which side prints first in each bead: "src" (original first) or "tgt".
     first: str = "src"
 
+    # Include a table of contents (only rendered when there are 2+ titled
+    # divisions to list).
+    toc: bool = True
+
     # Public-domain status of the TRANSLATION. The tool will warn unless this
     # is explicitly affirmed, because translators hold their own copyright.
     translation_pd_confirmed: bool = False

@@ -103,6 +103,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         decor=spec.decor,
         copyright=spec.copyright,
         translation_note=spec.translation_source_note,
+        include_toc=spec.toc,
     )
     log(f"✓ Done: {out_path}")
     return out_path

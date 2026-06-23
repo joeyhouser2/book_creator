@@ -185,6 +185,14 @@ copyright:
 Set `copyright: false` to omit the page. You still set metadata and pricing in
 the KDP dashboard — this only produces the interior page.
 
+## Table of contents
+
+A contents page is generated automatically when the book has **two or more
+titled divisions** (e.g. Books I–IV). Page numbers are resolved against the real
+layout (a two-pass `multiBuild`), with dotted leaders and right-aligned numbers.
+Front matter (title, copyright, contents) is unnumbered; body pagination starts
+after it. Disable with `toc: false` in config or `--no-toc`.
+
 ## Decorations
 
 Make the page look like a real published book:
