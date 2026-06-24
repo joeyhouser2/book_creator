@@ -9,8 +9,10 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
+import yaml
+
 from book_creator import fetch, fonts, segment
-from book_creator.model import BookSpec, DecorSpec, FontSpec
+from book_creator.model import BookSpec, CopyrightSpec, CoverSpec, DecorSpec, FontSpec
 from book_creator.pipeline import build_book
 
 from . import gutendex, preview
@@ -95,12 +97,37 @@ def _spec_from_payload(p: dict) -> BookSpec:
         first=p.get("first", "src"),
         trim=(float(trim[0]), float(trim[1])),
         translation_pd_confirmed=bool(p.get("translation_pd_confirmed", False)),
+        toc=bool(p.get("toc", True)),
+        clean=bool(p.get("clean", True)),
         font=FontSpec(family=p.get("font", "Cardo")),
         decor=DecorSpec(
             margin=decor.get("margin", "none"),
             chapter=decor.get("chapter", "fleuron"),
             color=decor.get("color", "#8a7a5c"),
         ),
+        copyright=_copyright_from(p.get("copyright")),
+        cover=_cover_from(p.get("cover")),
+    )
+
+
+def _copyright_from(cr) -> CopyrightSpec:
+    cr = cr or {}
+    return CopyrightSpec(
+        enabled=bool(cr.get("enabled", True)),
+        publisher=cr.get("publisher", ""),
+        holder=cr.get("holder", ""),
+        year=int(cr["year"]) if cr.get("year") else None,
+        isbn=str(cr.get("isbn", "")),
+        translator=cr.get("translator", ""),
+    )
+
+
+def _cover_from(cov) -> CoverSpec:
+    cov = cov or {}
+    return CoverSpec(
+        enabled=bool(cov.get("enabled", False)),
+        paper=cov.get("paper", "white"),
+        blurb=cov.get("blurb", ""),
     )
 
 
@@ -114,9 +141,11 @@ def _run_build(job_id: str, spec: BookSpec) -> None:
     try:
         pdf_path = build_book(spec, out_dir=OUTPUT_DIR, verbose=False, on_log=on_log)
         pages = preview.page_count(pdf_path)
+        cover_cand = Path(pdf_path).with_name(Path(pdf_path).stem + "-cover.pdf")
         with _lock:
             job["pdf_path"] = pdf_path
             job["pages"] = pages
+            job["cover_path"] = str(cover_cand) if cover_cand.exists() else None
             job["status"] = "done"
     except Exception as exc:  # noqa: BLE001
         with _lock:
@@ -136,7 +165,7 @@ def api_build():
 
     job_id = uuid.uuid4().hex[:12]
     _jobs[job_id] = {"status": "running", "log": [], "pages": 0,
-                     "pdf_path": None, "error": None}
+                     "pdf_path": None, "cover_path": None, "error": None}
     spec = _spec_from_payload(payload)
     threading.Thread(target=_run_build, args=(job_id, spec), daemon=True).start()
     return jsonify({"job_id": job_id})
@@ -152,6 +181,7 @@ def api_status(job_id: str):
             "status": job["status"],
             "log": job["log"],
             "pages": job["pages"],
+            "has_cover": bool(job.get("cover_path")),
             "error": job["error"],
         })
 
@@ -172,6 +202,73 @@ def api_download(job_id: str):
         return Response("not ready", status=404)
     path = Path(job["pdf_path"]).resolve()
     return send_from_directory(path.parent, path.name, as_attachment=True)
+
+
+@app.route("/api/cover/<job_id>.png")
+def api_cover_preview(job_id: str):
+    job = _jobs.get(job_id)
+    if not job or not job.get("cover_path"):
+        return Response("no cover", status=404)
+    png = preview.render_page(job["cover_path"], 0, dpi=90)
+    return Response(png, mimetype="image/png")
+
+
+@app.route("/api/cover-download/<job_id>.pdf")
+def api_cover_download(job_id: str):
+    job = _jobs.get(job_id)
+    if not job or not job.get("cover_path"):
+        return Response("no cover", status=404)
+    path = Path(job["cover_path"]).resolve()
+    return send_from_directory(path.parent, path.name, as_attachment=True)
+
+
+def _payload_to_yaml(p: dict) -> dict:
+    """Translate a build payload into a config/books.yaml entry."""
+    book: dict = {"title": p.get("title", "Untitled"),
+                  "author": p.get("author", "Unknown"),
+                  "src_lang": p.get("src_lang", "la"),
+                  "tgt_lang": p.get("tgt_lang", "en")}
+    if p.get("src_id"):
+        book["src_gutenberg_id"] = p["src_id"]
+    if p.get("tgt_id"):
+        book["tgt_gutenberg_id"] = p["tgt_id"]
+    book["mode"] = p.get("mode", "prose")
+    book["aligner"] = p.get("aligner", "auto")
+    if p.get("src_range"):
+        book["src_range"] = list(p["src_range"])
+    if p.get("tgt_range"):
+        book["tgt_range"] = list(p["tgt_range"])
+    book["first"] = p.get("first", "src")
+    book["trim"] = [float(x) for x in p.get("trim", [6.0, 9.0])]
+    book["translation_pd_confirmed"] = bool(p.get("translation_pd_confirmed", False))
+    book["font"] = p.get("font", "Cardo")
+    if p.get("decorations"):
+        book["decorations"] = p["decorations"]
+    cr = {k: v for k, v in (p.get("copyright") or {}).items() if v not in ("", None)}
+    if cr:
+        book["copyright"] = cr
+    cov = p.get("cover") or {}
+    if cov.get("enabled"):
+        book["cover"] = {k: v for k, v in cov.items() if k != "enabled" and v != ""}
+        book["cover"].setdefault("paper", "white")
+    return book
+
+
+@app.route("/api/save-config", methods=["POST"])
+def api_save_config():
+    payload = request.get_json(force=True)
+    target = Path(payload.get("_config_path") or "config/books.yaml")
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    data: dict = {}
+    if target.exists():
+        loaded = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+        data = {"books": loaded} if isinstance(loaded, list) else loaded
+    data.setdefault("books", [])
+    data["books"].append(_payload_to_yaml(payload))
+    target.write_text(
+        yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return jsonify({"saved": str(target), "count": len(data["books"])})
 
 
 def main(host: str = "127.0.0.1", port: int = 5000) -> None:

@@ -99,6 +99,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   font-size: 13px; }
 .confirm input { width: auto; }
 
+.publishing { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px 12px 12px; background: #faf8f2; }
+.publishing summary { cursor: pointer; font-size: 13px; font-weight: 600;
+  color: var(--accent-dk); padding: 8px 0; text-transform: uppercase;
+  letter-spacing: .04em; }
+.publishing h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin: 12px 0 6px; }
+.opts label.wide { grid-column: 1 / -1; }
+.opts textarea { font: inherit; padding: 7px 9px; border-radius: 7px;
+  border: 1px solid var(--line); resize: vertical; color: var(--ink); }
+.actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.actions .primary { margin-top: 0; flex: 1; }
+.actions #saveBtn { white-space: nowrap; }
+
 .log { background: #1f1c18; color: #e9e2d2; border-radius: 8px; padding: 10px 12px;
   font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; max-height: 200px;
   overflow-y: auto; white-space: pre-wrap; margin-top: 12px; }

@@ -179,16 +179,11 @@ function renderSlot(which) {
 // --------------------------------------------------------------------------- //
 // Build
 // --------------------------------------------------------------------------- //
-async function doBuild() {
-  if (!state.src) return alert("Pick an Original edition.");
-  if (!state.tgt) return alert("Pick a Translation edition.");
-  if (!$("pd").checked)
-    return alert("Confirm the translation is public domain before building.");
-
-  const payload = {
-    src_id: state.src.id,
-    tgt_id: state.tgt.id,
-    title: $("title").value || state.src.title,
+function buildPayload() {
+  return {
+    src_id: state.src && state.src.id,
+    tgt_id: state.tgt && state.tgt.id,
+    title: $("title").value || (state.src && state.src.title) || "Untitled",
     author: $("author").value || "Unknown",
     src_lang: $("srcLang").value,
     mode: $("mode").value,
@@ -196,11 +191,34 @@ async function doBuild() {
     first: $("first").value,
     font: $("font").value,
     trim: [parseFloat($("trimW").value), parseFloat($("trimH").value)],
-    translation_pd_confirmed: true,
+    translation_pd_confirmed: $("pd").checked,
+    toc: $("tocSel").value === "yes",
     src_range: getRange("src"),
     tgt_range: getRange("tgt"),
     decorations: { margin: $("margin").value, chapter: $("chapter").value },
+    copyright: {
+      enabled: $("cpEnabled").checked,
+      publisher: $("cpPublisher").value,
+      holder: $("cpHolder").value,
+      year: $("cpYear").value ? parseInt($("cpYear").value, 10) : null,
+      isbn: $("cpIsbn").value,
+      translator: $("cpTranslator").value,
+    },
+    cover: {
+      enabled: $("cvEnabled").checked,
+      paper: $("cvPaper").value,
+      blurb: $("cvBlurb").value,
+    },
   };
+}
+
+async function doBuild() {
+  if (!state.src) return alert("Pick an Original edition.");
+  if (!state.tgt) return alert("Pick a Translation edition.");
+  if (!$("pd").checked)
+    return alert("Confirm the translation is public domain before building.");
+
+  const payload = buildPayload();
 
   $("buildBtn").disabled = true;
   $("log").textContent = "Queued…\n";
@@ -231,8 +249,14 @@ function pollStatus() {
       $("buildBtn").disabled = false;
       state.pages = data.pages;
       state.page = 0;
+      state.viewingCover = false;
       $("download").href = `/api/download/${state.job}.pdf`;
       $("download").style.display = "inline-block";
+      if (data.has_cover) {
+        $("coverToggle").style.display = "inline-block";
+        $("coverDownload").href = `/api/cover-download/${state.job}.pdf`;
+        $("coverDownload").style.display = "inline-block";
+      }
       showPage(0);
     } else if (data.status === "error") {
       clearInterval(state.poll);
@@ -246,17 +270,49 @@ function pollStatus() {
 // --------------------------------------------------------------------------- //
 function resetPreview() {
   state.pages = 0;
+  state.viewingCover = false;
   $("previewWrap").innerHTML = `<p class="muted">Building…</p>`;
   $("pageLabel").textContent = "— / —";
-  $("download").style.display = "none";
+  for (const id of ["download", "coverToggle", "coverDownload"])
+    $(id).style.display = "none";
 }
 
 function showPage(i) {
   if (!state.job || state.pages === 0) return;
+  state.viewingCover = false;
+  $("coverToggle").textContent = "View cover";
   state.page = Math.max(0, Math.min(i, state.pages - 1));
   const url = `/api/preview/${state.job}/${state.page}.png?t=${Date.now()}`;
   $("previewWrap").innerHTML = `<img alt="page ${state.page + 1}" src="${url}">`;
   $("pageLabel").textContent = `${state.page + 1} / ${state.pages}`;
+}
+
+function toggleCover() {
+  if (state.viewingCover) { showPage(state.page); return; }
+  state.viewingCover = true;
+  $("coverToggle").textContent = "View interior";
+  $("previewWrap").innerHTML =
+    `<img alt="cover" src="/api/cover/${state.job}.png?t=${Date.now()}">`;
+  $("pageLabel").textContent = "cover";
+}
+
+async function saveConfig() {
+  if (!state.src || !state.tgt)
+    return alert("Pick both editions before saving.");
+  try {
+    const res = await fetch("/api/save-config", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildPayload()),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const n = data.count;
+    $("log").textContent =
+      `✓ Saved to ${data.saved} — ${n} book${n === 1 ? "" : "s"} in config. ` +
+      `Build the whole file with: python make_book.py ${data.saved}`;
+  } catch (e) {
+    $("log").textContent = `⚠ ${e}`;
+  }
 }
 
 function escapeHtml(s) {
@@ -270,6 +326,8 @@ function escapeHtml(s) {
 $("searchBtn").onclick = doSearch;
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
 $("buildBtn").onclick = doBuild;
+$("saveBtn").onclick = saveConfig;
+$("coverToggle").onclick = toggleCover;
 $("font").addEventListener("change", updateFontNote);
 $("srcLang").addEventListener("change", updateFontNote);
 loadFonts();

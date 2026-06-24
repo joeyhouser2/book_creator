@@ -107,10 +107,50 @@
           <input id="trimH" type="number" step="0.1" value="9"></span>
         </label>
       </div>
+      <details class="publishing">
+        <summary>4 · Publishing — copyright &amp; cover</summary>
+        <h3>Copyright page</h3>
+        <div class="opts">
+          <label>Publisher / imprint <input id="cpPublisher" type="text"></label>
+          <label>Copyright holder <input id="cpHolder" type="text"
+                 placeholder="compilation only"></label>
+          <label>Edition year <input id="cpYear" type="number" placeholder="2026"></label>
+          <label>ISBN <input id="cpIsbn" type="text" placeholder="optional"></label>
+          <label class="wide">Translator (public-domain credit)
+            <input id="cpTranslator" type="text"></label>
+        </div>
+        <label class="confirm"><input id="cpEnabled" type="checkbox" checked>
+          Include the copyright page</label>
+
+        <h3>Cover</h3>
+        <label class="confirm"><input id="cvEnabled" type="checkbox">
+          Generate a wraparound cover (per-language motif)</label>
+        <div class="opts">
+          <label>Paper
+            <select id="cvPaper">
+              <option value="white">white</option>
+              <option value="cream">cream</option>
+              <option value="color">color</option>
+            </select>
+          </label>
+          <label>Table of contents
+            <select id="tocSel">
+              <option value="yes">include</option>
+              <option value="no">omit</option>
+            </select>
+          </label>
+          <label class="wide">Back-cover blurb
+            <textarea id="cvBlurb" rows="2"></textarea></label>
+        </div>
+      </details>
+
       <label class="confirm"><input id="pd" type="checkbox">
         I have verified this translation is public domain.</label>
 
-      <button id="buildBtn" class="primary">Build book</button>
+      <div class="actions">
+        <button id="buildBtn" class="primary">Build book</button>
+        <button id="saveBtn">Save to config.yaml</button>
+      </div>
       <pre id="log" class="log"></pre>
     </section>
 
@@ -121,7 +161,9 @@
         <button id="prev">‹ Prev</button>
         <span id="pageLabel">— / —</span>
         <button id="next">Next ›</button>
-        <a id="download" class="dl" href="#" style="display:none">Download PDF</a>
+        <button id="coverToggle" style="display:none">View cover</button>
+        <a id="download" class="dl" href="#" style="display:none">Interior PDF</a>
+        <a id="coverDownload" class="dl" href="#" style="display:none">Cover PDF</a>
       </div>
       <div id="previewWrap" class="preview-wrap">
         <p class="muted">Build a book to see rendered pages here.</p>
