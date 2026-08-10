@@ -46,9 +46,10 @@ def mt_align(src: list[str], tgt: list[str], *, translator, log=None) -> list[Be
     if not src and not tgt:
         return []
     if not src:
-        return [Bead(src=[], tgt=tgt)]
+        # One bead per segment (see align_embed.embed_align for why).
+        return [Bead(src=[], tgt=[t]) for t in tgt]
     if not tgt:
-        return [Bead(src=src, tgt=[])]
+        return [Bead(src=[s], tgt=[]) for s in src]
 
     mt = translator(list(src))  # rough English for each source segment
     if len(mt) != len(src):

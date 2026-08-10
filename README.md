@@ -56,6 +56,36 @@ search once in the source language (e.g. `bello gallico`, lang `la`) and again i
 English. The catalog uses the work's real title, so search `de bello gallico`,
 not `gallic war`, for the Latin edition.
 
+## Librarian agent (natural-language search)
+
+Instead of searching Gutendex yourself, describe the book and let a
+locally-run LLM find and pair the editions:
+
+```bash
+ollama pull llama3.1        # any tool-calling-capable model
+ollama serve
+
+python ask_librarian.py "Dante's Inferno, Italian with an English translation"
+python ask_librarian.py "Heine's Buch der Lieder, German with English" --build
+```
+
+It calls Ollama's tool-calling API to search Gutendex, inspect candidate
+editions (language, length, division outline), and pick a source + translation
+pair — scoping `src_range`/`tgt_range` itself if the two editions cover
+different amounts of the work. It's scoped to Gutenberg only (no open web
+crawling), so every source stays an auditable Gutenberg id, same as searching
+by hand.
+
+It never marks `translation_pd_confirmed: true` itself — Gutendex has no
+reliable translation-publication date, so that stays your call. It prints
+whatever evidence it found (translator name, any date) as
+`translation_source_note` and ready-to-paste YAML for `config/books.yaml`; add
+`--build` to render immediately with default styling, or `--confirm-pd` once
+you've verified the translation is actually public domain.
+
+Small local models are stochastic — if it loops without proposing a pairing,
+try a larger tool-calling model (`--model qwen3:14b`) or raise `--max-turns`.
+
 ## Matching scope (range selection)
 
 The biggest real-world gotcha: the two editions must cover the **same content**.
@@ -168,6 +198,28 @@ automatically (falling back to embeddings / Gale-Church otherwise). The HTTP
 contract and a runnable reference server are in
 [`examples/translator_server.py`](examples/translator_server.py).
 
+## Segment review (local LLM QA pass)
+
+After alignment (and restyle, if any), optionally ask a local LLM to flag
+beads that look wrong, so you know where to proofread instead of reading the
+whole book:
+
+```bash
+python make_book.py --src-id 218 --tgt-id 10657 --src-lang la --src-range 2-5 \
+    --tgt-range 2-5 --title "The Gallic War" --author "Julius Caesar" \
+    --confirm-pd --review --review-model llama3.1
+```
+
+or `review: true` in a config entry (plus `review_model`, `review_host`,
+`review_sample` to cap how many beads get sent for a quick spot-check on a
+long book). It writes `output/<slug>-review.md` listing each flagged bead —
+grouped by severity — with the reason: misalignment (the two sides don't
+correspond), leftover markup (uncleaned section numbers, `[Illustration]`
+captions, footnote markers), encoding artifacts, or a bad sentence split. It
+never edits content or blocks the build, and needs `ollama serve` running
+locally; if it can't reach Ollama, the build logs a warning and continues
+without a report.
+
 ## Fonts
 
 Fonts are **auto-discovered** from `fonts/`: drop a font's `.ttf` files in and the
@@ -187,7 +239,7 @@ python download_fonts.py            # all, or: serif | medieval | greek
 | Category | Families | Greek |
 |----------|----------|-------|
 | Classic serif | Cardo, EB Garamond, Gentium Book Plus, Old Standard, Libre Baskerville, IM Fell English, IM Fell DW Pica | most ✔ |
-| Medieval / display | UnifrakturMaguntia, UnifrakturCook (blackletter), Grenze Gotisch, Pirata One, MedievalSharp | — |
+| Medieval / display | UnifrakturMaguntia, UnifrakturCook (blackletter), Grenze Gotisch, Pirata One, MedievalSharp, Uncial Antiqua | — |
 | Greek display | GFS Didot, GFS Neohellenic | ✔ |
 
 Greek (polytonic) needs a ✔ Greek font, or glyphs render blank. Cardo and Old
@@ -267,13 +319,40 @@ Make the page look like a real published book:
 | setting | values | effect |
 |---------|--------|--------|
 | `margin` | `none` / `rule` / `corners` / `frame` | per-page art, gutter-aware (outer edge is correct on recto vs verso) |
-| `chapter` | `none` / `fleuron` / `rule` | ornament under each chapter title |
+| `chapter` | `none` / `fleuron` / `rule` / `medieval` / `victorian` / `classical` / `baroque` / `nouveau` / `rococo` / `artdeco` / `random` | ornament under each chapter title |
 | `color` | hex, e.g. `#8a7a5c` | ornament ink color |
 | `corner_image` | PNG/JPG path | your own art, mirrored into the four corners (overrides vector `corners`) |
 | `chapter_image` | PNG/JPG path | your own art centered under chapter titles |
+| `opener_font` | font family id, e.g. `uncialantiqua` | decorative display font for each chapter's opening bead (both languages) |
 
 Vector ornaments need no assets. For custom art, drop a PNG in (e.g.) `art/` and
 point `corner_image` at it — it's auto-mirrored so each corner faces inward.
+
+All styles are pure vector, no assets needed, and (except per-page `margin`)
+also render in the EPUB — rasterized to a transparent PNG from the same
+drawing code, so a font glyph is never required (some e-readers show a
+missing-glyph box for Unicode dingbats; a picture always renders correctly).
+
+| style | look | fits |
+|-------|------|------|
+| `fleuron` | line — diamond — line, with small end-curls | general-purpose, any era |
+| `medieval` | wavy vine, alternating ivy leaves, berry cluster | illuminated-manuscript / medieval texts |
+| `victorian` | central rosette flanked by acanthus scrollwork | 19th-century novels |
+| `classical` | laurel sprig flanking a sunburst medallion | Latin/Greek antiquity (Caesar, Marcus Aurelius) |
+| `baroque` | scallop-shell cartouche flanked by rocaille scrolls | 17th-18th century French (Molière, Racine, Voltaire) |
+| `nouveau` | flowing whiplash tendrils around a five-petal flower | fin-de-siècle French (Baudelaire, Huysmans) |
+| `rococo` | small asymmetric flower spray flanked by uneven, delicate C-scrolls | Louis XV-era French, lighter/more playful than baroque |
+| `artdeco` | stepped sunburst fan flanked by nested chevron wedges | 1920s-30s, bold and geometric rather than organic |
+
+`random` picks a different style (from every ornamented style above, i.e. all
+except `none`) for each chapter. The pick is deterministic — seeded by the
+chapter's index — so it isn't re-rolled between the PDF and EPUB editions of
+the same book, or between repeat builds.
+
+`opener_font` applies a decorative face (Uncial Antiqua ships as `uncialantiqua`)
+to just the first bead of each chapter — typically an epigraph or section
+subtitle — at a larger size, giving an illuminated chapter-opening feel without
+touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 
 ## Pipeline modules
 
@@ -290,9 +369,38 @@ point `corner_image` at it — it's auto-mirrored so each corner faces inward.
 | `aligners.py` | backend selection (`auto` / `embed` / `mt` / `gale-church`) |
 | `decorations.py` | vector ornaments + chapter dividers |
 | `render_pdf.py` | KDP interior PDF: mirrored gutter margins, embedded fonts, page numbers |
+| `render_epub.py` | reflowable EPUB3: embedded fonts, cover, nav TOC |
 | `cover.py` | KDP wraparound cover with per-language ornamental motifs |
-| `pipeline.py` | orchestrates fetch → segment → align → render → cover |
+| `pipeline.py` | orchestrates fetch → segment → align → render → cover → epub |
 | `webapp/` | Flask UI: Gutendex search, background build jobs, PyMuPDF page preview |
+| `ollama_client.py` | thin client for a local Ollama server's tool-calling chat API |
+| `librarian.py` | natural-language book search agent (finds + pairs Gutenberg editions) |
+| `reviewer.py` | post-alignment QA pass (LLM flags likely misalignment/formatting errors) |
+
+## EPUB
+
+Generates a reflowable EPUB3 alongside the PDF — same chapters, same
+dual-language beads, same copyright wording and per-language cover art, so the
+two editions stay in sync automatically:
+
+```bash
+pip install -r requirements-epub.txt   # ebooklib + pymupdf (rasterizes the cover)
+python make_book.py --src-id 798 --tgt-id 44747 --src-lang fr \
+    --title "Le Rouge et le Noir" --author "Stendhal" --epub --confirm-pd
+```
+
+or `epub: true` in a config entry. Output lands at `output/<slug>.epub`.
+
+What carries over from `decor`: `chapter_image` (shown under each chapter
+title, same as print), `bead_separator`, `opener_font`, the body font, and the
+cover motif are all identical to the PDF. `chapter` (fleuron/medieval/
+victorian/rule) has no vector drawing in reflowable text, so it falls back to
+a centered Unicode dingbat (❦ / ❧ / ❋, or a plain rule) — still readable,
+just not the full hand-drawn vector art.
+
+What doesn't carry over: `margin` and `corner_image` are inherently per-page
+(corner/frame art tied to a physical sheet), and EPUB has no fixed page to
+draw them on.
 
 ## KDP notes
 
@@ -310,4 +418,3 @@ point `corner_image` at it — it's auto-mirrored so each corner faces inward.
 - EPUB output for Kindle
 - Drop caps at chapter openings
 - Footnote/glossary support
-- Alignment confidence report (flag low-similarity beads for manual review)

@@ -35,7 +35,7 @@ FAMILIES: dict[str, list[str]] = {
     "serif": ["cardo", "ebgaramond", "gentiumbookplus", "oldstandardtt",
               "librebaskerville", "imfellenglish", "imfelldwpica"],
     "medieval": ["unifrakturmaguntia", "unifrakturcook", "medievalsharp",
-                 "grenzegotisch", "pirataone"],
+                 "grenzegotisch", "pirataone", "uncialantiqua"],
     "greek": ["gfsdidot", "gfsneohellenic"],
 }
 

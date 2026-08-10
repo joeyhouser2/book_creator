@@ -93,9 +93,12 @@ def align_segments(src: list[str], tgt: list[str]) -> list[Bead]:
     if not src and not tgt:
         return []
     if not src:
-        return [Bead(src=[], tgt=tgt)]
+        # One bead per segment, not one bead holding the whole list — bead
+        # text is space-joined for rendering, which would otherwise flatten
+        # verse lines (or prose paragraphs) into a single run-on block.
+        return [Bead(src=[], tgt=[t]) for t in tgt]
     if not tgt:
-        return [Bead(src=src, tgt=[])]
+        return [Bead(src=[s], tgt=[]) for s in src]
 
     s_len = [len(s) for s in src]
     t_len = [len(t) for t in tgt]

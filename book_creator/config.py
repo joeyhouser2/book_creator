@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from . import translators
+from . import restylers, translators
 from .model import BookSpec, CopyrightSpec, CoverSpec, DecorSpec, FontSpec
 
 
@@ -74,6 +74,7 @@ def _parse_decor(raw) -> DecorSpec:
         color=raw.get("color", "#8a7a5c"),
         corner_image=raw.get("corner_image"),
         chapter_image=raw.get("chapter_image"),
+        opener_font=raw.get("opener_font"),
     )
 
 
@@ -83,6 +84,10 @@ def load_specs(path: str) -> list[BookSpec]:
         # Optional top-level translators block registers MT-pivot endpoints.
         if data.get("translators"):
             translators.configure_from(data["translators"])
+        # Optional top-level restylers block registers post-alignment prose
+        # restylers (e.g. a "victorianizer"), keyed by tgt_lang.
+        if data.get("restylers"):
+            restylers.configure_from(data["restylers"])
         if "books" in data:
             data = data["books"]
     if not isinstance(data, list):
@@ -103,6 +108,7 @@ def load_specs(path: str) -> list[BookSpec]:
             mode=raw.get("mode", "prose"),
             aligner=raw.get("aligner", "auto"),
             clean=bool(raw.get("clean", True)),
+            restyle=bool(raw.get("restyle", True)),
             toc=bool(raw.get("toc", True)),
             src_range=_parse_range(raw.get("src_range")),
             tgt_range=_parse_range(raw.get("tgt_range")),
@@ -115,5 +121,10 @@ def load_specs(path: str) -> list[BookSpec]:
             decor=_parse_decor(raw.get("decorations")),
             copyright=_parse_copyright(raw.get("copyright")),
             cover=_parse_cover(raw.get("cover")),
+            epub=bool(raw.get("epub", False)),
+            review=bool(raw.get("review", False)),
+            review_model=raw.get("review_model", "llama3.1"),
+            review_host=raw.get("review_host", "http://localhost:11434"),
+            review_sample=raw.get("review_sample"),
         ))
     return specs

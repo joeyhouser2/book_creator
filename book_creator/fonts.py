@@ -38,6 +38,7 @@ _META: dict[str, tuple[str, str, bool]] = {
     "medievalsharp": ("MedievalSharp", "medieval", False),
     "grenzegotisch": ("Grenze Gotisch", "medieval", False),
     "pirataone": ("Pirata One", "medieval", False),
+    "uncialantiqua": ("Uncial Antiqua", "medieval", False),
     "gfsdidot": ("GFS Didot", "greek", True),
     "gfsneohellenic": ("GFS Neohellenic", "greek", True),
     "gfsporson": ("GFS Porson", "greek", True),

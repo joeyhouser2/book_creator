@@ -84,10 +84,19 @@ def main(argv: list[str] | None = None) -> int:
                    help="Font family name (Cardo, GentiumPlus, NotoSerif) or stem.")
     p.add_argument("--margin", choices=["none", "rule", "corners", "frame"],
                    default="none", help="Per-page margin decoration.")
-    p.add_argument("--chapter-ornament", choices=["none", "fleuron", "rule"],
-                   default="fleuron", help="Ornament under each chapter title.")
+    p.add_argument("--chapter-ornament",
+                   choices=["none", "fleuron", "rule", "medieval", "victorian",
+                            "classical", "baroque", "nouveau", "rococo", "artdeco",
+                            "random"],
+                   default="fleuron",
+                   help="Ornament under each chapter title. 'random' picks a "
+                        "different style per chapter (deterministic by chapter "
+                        "index, so PDF/EPUB and repeat builds agree).")
     p.add_argument("--decor-color", default="#8a7a5c", help="Ornament ink color (hex).")
     p.add_argument("--corner-image", help="PNG/JPG placed (mirrored) at text-block corners.")
+    p.add_argument("--opener-font", default="",
+                   help="Decorative display font for each chapter's opening line "
+                        "(both languages), e.g. UncialAntiqua. Omit to disable.")
     # Copyright page.
     p.add_argument("--publisher", default="", help="Imprint name for the copyright page.")
     p.add_argument("--copyright-holder", default="",
@@ -105,6 +114,22 @@ def main(argv: list[str] | None = None) -> int:
                    help="Omit the table of contents.")
     p.add_argument("--no-clean", action="store_true",
                    help="Don't strip inline section markers (I.--, XLIX.--) etc.")
+    p.add_argument("--no-restyle", action="store_true",
+                   help="Don't run a registered restyler (e.g. victorianizer) over "
+                        "the printed translation, even if one is registered.")
+    p.add_argument("--epub", action="store_true",
+                   help="Also generate a reflowable EPUB (<slug>.epub), needs "
+                        "requirements-epub.txt.")
+    p.add_argument("--review", action="store_true",
+                   help="After alignment, ask a local LLM (Ollama) to flag likely "
+                        "misalignment/formatting errors into <slug>-review.md. "
+                        "Advisory only; needs `ollama serve` running.")
+    p.add_argument("--review-model", default="llama3.1",
+                   help="Ollama model for --review (default: %(default)s).")
+    p.add_argument("--review-host", default="http://localhost:11434",
+                   help="Ollama host for --review (default: %(default)s).")
+    p.add_argument("--review-sample", type=int,
+                   help="Cap on beads reviewed (from the start), for a quick spot-check.")
     args = p.parse_args(argv)
 
     if args.outline:
@@ -118,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
             src_gutenberg_id=args.src_id, tgt_gutenberg_id=args.tgt_id,
             src_path=args.src_path, tgt_path=args.tgt_path,
             mode=args.mode, aligner=args.aligner, first=args.first,
-            toc=not args.no_toc, clean=not args.no_clean,
+            toc=not args.no_toc, clean=not args.no_clean, restyle=not args.no_restyle,
             src_range=_parse_range(args.src_range),
             tgt_range=_parse_range(args.tgt_range),
             translation_pd_confirmed=args.confirm_pd,
@@ -128,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
                 chapter=args.chapter_ornament,
                 color=args.decor_color,
                 corner_image=args.corner_image,
+                opener_font=args.opener_font or None,
             ),
             copyright=CopyrightSpec(
                 enabled=not args.no_copyright,
@@ -138,6 +164,11 @@ def main(argv: list[str] | None = None) -> int:
                 translator=args.translator,
             ),
             cover=CoverSpec(enabled=args.cover, paper=args.paper, blurb=args.blurb),
+            epub=args.epub,
+            review=args.review,
+            review_model=args.review_model,
+            review_host=args.review_host,
+            review_sample=args.review_sample,
         )]
     else:
         p.error("Provide a config file, or --src-id/--src-path for a single book.")

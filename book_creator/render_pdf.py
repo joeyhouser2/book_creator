@@ -129,7 +129,7 @@ class _BookDoc(BaseDocTemplate):
         canvas.restoreState()
 
 
-def _styles(fonts: tuple[str, str, str], first: str):
+def _styles(fonts: tuple[str, str, str], first: str, opener_font: str | None = None):
     font, italic, bold = fonts
     src_color = HexColor("#1a1a1a")
     tgt_color = HexColor("#555555")
@@ -141,6 +141,17 @@ def _styles(fonts: tuple[str, str, str], first: str):
         "tgt", fontName=italic, fontSize=10, leading=13.5,
         textColor=tgt_color, leftIndent=14, spaceBefore=0, spaceAfter=8,
     )
+    if opener_font:
+        src_open = ParagraphStyle(
+            "src_open", parent=src, fontName=opener_font, fontSize=15.5,
+            leading=20, spaceAfter=6,
+        )
+        tgt_open = ParagraphStyle(
+            "tgt_open", parent=tgt, fontName=opener_font, fontSize=13,
+            leading=17,
+        )
+    else:
+        src_open, tgt_open = src, tgt
     head = ParagraphStyle(
         "head", fontName=bold, fontSize=15, leading=20,
         alignment=TA_CENTER, spaceBefore=18, spaceAfter=14,
@@ -163,19 +174,28 @@ def _styles(fonts: tuple[str, str, str], first: str):
     toc0 = ParagraphStyle(
         "toc0", fontName=font, fontSize=11.5, leading=20,
     )
-    return {"src": src, "tgt": tgt, "head": head, "title": title, "sub": sub,
+    return {"src": src, "tgt": tgt, "src_open": src_open, "tgt_open": tgt_open,
+            "head": head, "title": title, "sub": sub,
             "cr": cr, "tochead": toc_head, "toc0": toc0}
 
 
-def _copyright_flowables(cr: CopyrightSpec, *, title: str, author: str,
-                         src_lang: str, translation_note: str,
-                         trim: tuple[float, float], style) -> list:
-    """Build the copyright page — claims compilation rights only, never the PD text."""
+def copyright_text(cr: CopyrightSpec, *, title: str, author: str,
+                   src_lang: str, translation_note: str) -> tuple[list[str], list[str]]:
+    """Copyright-page lines (ReportLab/XHTML markup, e.g. &mdash; / &copy; /
+    <i>...</i>, is allowed and NOT escaped further), shared by PDF and EPUB.
+
+    Claims compilation rights only, never the public-domain text itself.
+    `cr.rights`, like the auto-generated wording it replaces, is trusted
+    publisher-authored markup — not escaped, so it can use entities/<i> the
+    same way the generated paragraphs below do. Only genuinely dynamic,
+    untrusted fields (title/author/holder/translator names) get `_esc()`.
+    Returns (body_paragraphs, tail_lines) — tail is the imprint/ISBN/printed-in block.
+    """
     lang = _lang_name(src_lang)
     paras: list[str] = []
 
     if cr.rights:
-        paras.append(_esc(cr.rights))
+        paras.append(cr.rights)
     else:
         holder = cr.holder or cr.publisher
         if holder:
@@ -202,6 +222,15 @@ def _copyright_flowables(cr: CopyrightSpec, *, title: str, author: str,
     if cr.isbn:
         tail.append("ISBN " + _esc(cr.isbn))
     tail.append("Printed in the United States of America.")
+    return paras, tail
+
+
+def _copyright_flowables(cr: CopyrightSpec, *, title: str, author: str,
+                         src_lang: str, translation_note: str,
+                         trim: tuple[float, float], style) -> list:
+    """Build the copyright page flowables — see copyright_text() for the wording."""
+    paras, tail = copyright_text(cr, title=title, author=author, src_lang=src_lang,
+                                 translation_note=translation_note)
 
     # Sit the block in the lower portion of the page, like a traditional colophon.
     top_pad = max(40, (trim[1] * 72 - 1.2 * 72) - 250)
@@ -234,13 +263,15 @@ def render(
     copyright: CopyrightSpec | None = None,
     translation_note: str = "",
     include_toc: bool = True,
+    edition_line: str | None = None,
 ) -> str:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     decor = decor or DecorSpec()
     copyright = copyright or CopyrightSpec()
     font = _register_font(font_spec)
     gutter = _gutter_for_page_count(estimated_pages)
-    st = _styles(font, first)
+    opener_font = fonts.register(decor.opener_font)[0] if decor.opener_font else None
+    st = _styles(font, first, opener_font)
 
     # A TOC is only meaningful when there are at least two titled divisions.
     titled = [ch for ch in chapters if ch.title]
@@ -254,7 +285,8 @@ def render(
     story.append(Paragraph(_esc(author), st["sub"]))
     story.append(Spacer(1, 40))
     story.append(Paragraph(
-        f"{src_lang.upper()} &ndash; {tgt_lang.upper()} parallel edition", st["sub"]
+        edition_line or f"{src_lang.upper()} &ndash; {tgt_lang.upper()} parallel edition",
+        st["sub"],
     ))
 
     # --- Copyright page (verso) — pages auto-alternate recto/verso ---
@@ -282,11 +314,15 @@ def render(
         # furniture, so set the body-start page directly. Title (1) + copyright.
         doc._body_start_page = 2 + (1 if copyright.enabled else 0)
 
-    for ch in chapters:
+    for ch_idx, ch in enumerate(chapters):
+        if ch_idx > 0:
+            story.append(PageBreak())
         if ch.title:
             story.append(Paragraph(_esc(ch.title), st["head"]))
+        chapter_style = (decorations.pick_random_style(ch_idx)
+                        if decor.chapter == "random" else decor.chapter)
         orn = decorations.chapter_ornament(
-            decor.chapter, decor.color, image=decor.chapter_image,
+            chapter_style, decor.color, image=decor.chapter_image,
         )
         if orn is not None and (ch.title or decor.chapter_image):
             story.append(orn)
@@ -296,7 +332,7 @@ def render(
                 sep = decorations.chapter_ornament("fleuron", decor.color)
                 if sep is not None:
                     story.append(sep)
-            _render_bead(story, bead, st, first)
+            _render_bead(story, bead, st, first, opener=(i == 0 and opener_font))
 
     if want_toc:
         doc.multiBuild(story)   # extra passes resolve TOC page numbers
@@ -305,18 +341,20 @@ def render(
     return out_path, doc.page   # doc.page is the final page count
 
 
-def _render_bead(story, bead: Bead, st, first: str):
+def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):
     src_txt = _esc(bead.src_text)
     tgt_txt = _esc(bead.tgt_text)
+    src_style = st["src_open"] if opener else st["src"]
+    tgt_style = st["tgt_open"] if opener else st["tgt"]
     blocks = []
     if first == "tgt":
         if tgt_txt:
-            blocks.append(Paragraph(tgt_txt, st["src"]))
+            blocks.append(Paragraph(tgt_txt, src_style))
         if src_txt:
-            blocks.append(Paragraph(src_txt, st["tgt"]))
+            blocks.append(Paragraph(src_txt, tgt_style))
     else:
         if src_txt:
-            blocks.append(Paragraph(src_txt, st["src"]))
+            blocks.append(Paragraph(src_txt, src_style))
         if tgt_txt:
-            blocks.append(Paragraph(tgt_txt, st["tgt"]))
+            blocks.append(Paragraph(tgt_txt, tgt_style))
     story.extend(blocks)

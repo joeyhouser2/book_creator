@@ -10,6 +10,8 @@ import requests
 CACHE_DIR = Path("cache")
 USER_AGENT = "book_creator/0.1 (personal POD project; contact via local use)"
 
+GUTENDEX_API = "https://gutendex.com/books"
+
 # Gutenberg wraps every text in a START/END license banner. These markers are
 # stable across the corpus.
 _START_RE = re.compile(r"\*\*\*\s*START OF (THE|THIS) PROJECT GUTENBERG.*?\*\*\*", re.I)
@@ -58,6 +60,41 @@ def load_text(*, path: str | None = None, gid: int | None = None) -> str:
     if gid is not None:
         return fetch_gutenberg(gid)
     raise ValueError("Either path or gid must be provided.")
+
+
+def search_gutenberg(query: str, language: str | None = None, page: int = 1) -> dict:
+    """Search the Project Gutenberg catalog via the Gutendex JSON API.
+
+    Gutendex (https://gutendex.com) is a free, read-only API over the
+    Gutenberg catalog; the `id` it returns IS the ebook id `fetch_gutenberg`
+    needs. Shared by the web UI (webapp/gutendex.py) and the librarian agent
+    (librarian.py).
+    """
+    params: dict = {"search": query, "page": page}
+    if language:
+        params["languages"] = language
+    resp = requests.get(GUTENDEX_API, params=params, headers={"User-Agent": USER_AGENT},
+                        timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
+
+    results = []
+    for b in data.get("results", []):
+        formats = b.get("formats", {})
+        has_text = any(mime.startswith("text/plain") for mime in formats)
+        results.append({
+            "id": b["id"],
+            "title": b.get("title", "(untitled)"),
+            "authors": ", ".join(a["name"] for a in b.get("authors", [])) or "Unknown",
+            "languages": b.get("languages", []),
+            "downloads": b.get("download_count", 0),
+            "has_text": has_text,
+        })
+    return {
+        "count": data.get("count", 0),
+        "has_next": bool(data.get("next")),
+        "results": results,
+    }
 
 
 def strip_gutenberg_boilerplate(text: str) -> str:

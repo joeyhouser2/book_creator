@@ -8,6 +8,8 @@ round. Each source language gets its own accent colour and vector emblem.
 from __future__ import annotations
 
 import math
+import tempfile
+from pathlib import Path
 
 from reportlab.lib.colors import HexColor, Color
 from reportlab.lib.units import inch
@@ -229,7 +231,7 @@ def _ornament_frame(c, x0, y0, w, h, color, inset):
 
 
 def _draw_front(c, x0, y0, tw, th, *, title, author, src_lang, tgt_lang,
-                motif, font, accent, ink):
+                motif, font, accent, ink, edition_line=None):
     _ornament_frame(c, x0, y0, tw, th, accent, 0.45 * inch)
     cx = x0 + tw / 2.0
     max_w = tw - 1.4 * inch
@@ -251,12 +253,19 @@ def _draw_front(c, x0, y0, tw, th, *, title, author, src_lang, tgt_lang,
     # Central emblem
     _draw_emblem(c, motif, cx, y0 + th * 0.40, 1.5 * inch)
 
-    # Edition line near the bottom
-    lang = motif.get("name") or src_lang.upper()
-    label = f"{lang}–English Parallel Edition".upper()
-    c.setFont(font[0], 11.5)
-    c.setFillColor(accent)
-    c.drawCentredString(cx, y0 + 0.95 * inch, label)
+    # Edition line near the bottom. The default label is always short, but a
+    # custom edition_line can run long — wrap it (like the title above)
+    # instead of drawing one unchecked line that can overrun the panel edge.
+    if edition_line:
+        label = edition_line.upper()
+    else:
+        lang = motif.get("name") or src_lang.upper()
+        label = f"{lang}–English Parallel Edition".upper()
+    size = 11.5
+    leading = size * 1.25
+    n_lines = len(_wrap(c, label, font[0], size, max_w))
+    top_y = y0 + 0.95 * inch + (n_lines - 1) * leading
+    _centered(c, label, font[0], size, cx, top_y, accent, max_w, leading=leading)
 
 
 def _draw_spine(c, x0, y0, spine, th, *, title, author, motif, font, accent, ink, bg):
@@ -300,7 +309,7 @@ def render_cover(out_path: str, *, title: str, author: str, src_lang: str,
                  tgt_lang: str, trim, pages: int, paper: str = "white",
                  font_spec: FontSpec | None = None, background: str = "#f4ead5",
                  accent: str | None = None, blurb: str = "",
-                 publisher: str = "") -> tuple[str, tuple]:
+                 publisher: str = "", edition_line: str | None = None) -> tuple[str, tuple]:
     full_w, full_h, spine = cover_dimensions(trim, pages, paper)
     W, H = full_w * inch, full_h * inch
     c = canvas.Canvas(out_path, pagesize=(W, H))
@@ -331,8 +340,54 @@ def render_cover(out_path: str, *, title: str, author: str, src_lang: str,
                 motif=motif, font=font, accent=accent_color, ink=ink, bg=bg)
     _draw_front(c, front_x0, y0, tw, th, title=title, author=author,
                 src_lang=src_lang, tgt_lang=tgt_lang, motif=motif, font=font,
-                accent=accent_color, ink=ink)
+                accent=accent_color, ink=ink, edition_line=edition_line)
 
     c.showPage()
     c.save()
     return out_path, (full_w, full_h, spine)
+
+
+def render_ebook_cover(out_path: str, *, title: str, author: str, src_lang: str,
+                       tgt_lang: str, trim, font_spec: FontSpec | None = None,
+                       background: str = "#f4ead5", accent: str | None = None,
+                       dpi: int = 400, edition_line: str | None = None) -> str:
+    """Render just the front-cover panel (no spine/back/bleed) as a PNG, for EPUB.
+
+    Reuses _draw_front so the ebook cover matches the print wraparound's
+    per-language motif. Requires PyMuPDF (see requirements-epub.txt) to
+    rasterize the single-page PDF.
+    """
+    try:
+        import fitz
+    except ImportError as exc:
+        raise RuntimeError(
+            "render_ebook_cover needs PyMuPDF: pip install -r requirements-epub.txt"
+        ) from exc
+
+    tw, th = trim[0] * inch, trim[1] * inch
+    font = fonts.register(font_spec.family if font_spec else None,
+                          {"regular": getattr(font_spec, "regular", None),
+                           "italic": getattr(font_spec, "italic", None),
+                           "bold": getattr(font_spec, "bold", None)} if font_spec else None)
+    motif = _motif_for(src_lang, accent)
+    accent_color = HexColor(motif["color"])
+    ink = HexColor("#241f1a")
+    bg = HexColor(background)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_pdf = str(Path(tmp) / "front.pdf")
+        c = canvas.Canvas(tmp_pdf, pagesize=(tw, th))
+        c.setFillColor(bg)
+        c.rect(0, 0, tw, th, fill=1, stroke=0)
+        _draw_front(c, 0, 0, tw, th, title=title, author=author,
+                   src_lang=src_lang, tgt_lang=tgt_lang, motif=motif, font=font,
+                   accent=accent_color, ink=ink, edition_line=edition_line)
+        c.showPage()
+        c.save()
+
+        doc = fitz.open(tmp_pdf)
+        pix = doc[0].get_pixmap(dpi=dpi)
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        pix.save(out_path)
+        doc.close()
+    return out_path

@@ -1,0 +1,163 @@
+# Real, buildable book definitions (see config/books.example.yaml for a fuller
+# annotated reference). Run with:
+#   python make_book.py config/books.yaml
+
+books:
+  - title: "Le Rouge et le Noir"
+    author: "Stendhal"
+    src_lang: fr          # French original
+    tgt_lang: en
+    src_gutenberg_id: 798     # Le rouge et le noir, French
+    tgt_gutenberg_id: 44747   # Horace B. Samuel translation, 1916 (public domain)
+    mode: prose
+    aligner: auto
+    # Division 1 is front matter on both sides — on the English edition it's
+    # Samuel's own 1916 translator's introduction (no French counterpart), so
+    # it's excluded rather than force-aligned. 2-76 is the 75 real chapters,
+    # matched 1:1 on both sides (run --outline to re-check after a Gutenberg
+    # text update).
+    src_range: 2-76
+    tgt_range: 2-76
+    first: src            # French line first, then English
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Horace B. Samuel, 1916 — public domain."
+    font: OldStandard   # more distinctive antique-book character than Cardo
+    decorations:
+      margin: corners
+      chapter: victorian     # ornate 19th-century scrollwork, fits an 1830 novel
+      color: "#31437a"       # royal azure, matches the French cover motif
+      opener_font: uncialantiqua   # decorative face for each chapter's opening line
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Horace B. Samuel"
+    cover:
+      paper: white
+      blurb: "Stendhal's chronicle of ambition and desire in Restoration France, with the original French and Horace B. Samuel's classic 1916 English translation on facing lines."
+    epub: true
+
+  - title: "Notre-Dame de Paris"
+    author: "Victor Hugo"
+    src_lang: fr
+    tgt_lang: en
+    src_gutenberg_id: 19657    # Notre-Dame de Paris, French
+    tgt_gutenberg_id: 2610     # Isabel F. Hapgood translation, 1888 (public domain)
+    mode: prose
+    aligner: auto
+    # Both editions carry a fake front-of-book "table of contents" division
+    # (French: one bloated entry ending the listing; English: a full ~50-title
+    # dump) before the real text — excluded rather than force-aligned. 13-82 /
+    # 72-141 is the real 11-Livre / 11-Book structure, 59 chapters + 11 book
+    # headers matched 1:1 on both sides (run --outline to re-check after a
+    # Gutenberg text update).
+    src_range: 13-82
+    tgt_range: 72-141
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Isabel F. Hapgood, 1888 — public domain."
+    font: OldStandard    # covers the polytonic Greek chapter title (ἈΝÁΓΚΗ)
+    decorations:
+      margin: corners
+      chapter: medieval        # vine/ivy marginalia, fits the Gothic-cathedral setting
+      color: "#4a4a52"         # weathered limestone grey
+      opener_font: unifrakturmaguntia   # blackletter, evokes a Gothic illuminated hand
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Isabel F. Hapgood"
+    cover:
+      paper: white
+      blurb: "Victor Hugo's Gothic epic of medieval Paris — Quasimodo, Esmeralda, and the cathedral that binds their fates — with the original French and Isabel F. Hapgood's 1888 English translation on facing lines."
+    epub: true
+
+  - title: "Le Père Goriot"
+    author: "Honoré de Balzac"
+    src_lang: fr
+    tgt_lang: en
+    # No standalone French edition on Gutenberg — Balzac's Comédie humaine
+    # omnibus volumes bundle multiple novels per file with no chapter/title
+    # heading our detector recognizes (bare untitled title lines), so this is
+    # a locally extracted, verified-boundary excerpt rather than a Gutenberg
+    # id: lines 12746-22772 of "La Comédie humaine - Volume 09" (gutenberg.org
+    # ebook #55860), which is exactly and only Le Père Goriot (checked against
+    # its "LE PÈRE GORIOT." opening heading and "FIN DU NEUVIÈME VOLUME."
+    # closing marker).
+    src_path: "input/pere_goriot_fr.txt"
+    tgt_gutenberg_id: 1237     # Ellen Marriage translation, 1896 (public domain)
+    mode: prose
+    aligner: auto
+    # Neither edition has internal chapter headings (Balzac wrote it as one
+    # continuous narrative) — aligns as a single block across the whole novel.
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Ellen Marriage, 1896 — public domain."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: victorian
+      color: "#6b2737"         # deep wine, fits the boarding-house melodrama
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Ellen Marriage"
+    cover:
+      paper: white
+      blurb: "Balzac's tragedy of paternal devotion and Parisian ambition, with the original French and Ellen Marriage's classic English translation on facing lines."
+    epub: true
+
+  - title: "Buch der Lieder"
+    author: "Heinrich Heine"
+    src_lang: de
+    tgt_lang: en
+    src_gutenberg_id: 3498     # Buch der Lieder, German (227 poems)
+    tgt_gutenberg_id: 31726    # Emma Lazarus, "Poems and Ballads of Heinrich Heine", 1887 (public domain)
+    mode: verse
+    aligner: auto
+    # Division 1 is front matter on both sides; on the English side the last
+    # division is an unrelated Goethe biographical excerpt bundled into this
+    # Gutenberg edition. 2-226 / 2-126 excludes both, leaving 225 German poems
+    # against Lazarus's 125 (she translated a selection, not the complete
+    # collection). Counts don't match, so this pairs by meaning at the
+    # division (poem) level rather than 1:1 position — see
+    # pipeline._fuzzy_match_divisions. The ~100 poems with no surviving
+    # Lazarus translation print in German only; noted in the copyright page.
+    src_range: 2-226
+    tgt_range: 2-126
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Emma Lazarus, 1887 — public domain. A selection, not the complete collection: ~125 of the 227 poems have a surviving Lazarus translation."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: nouveau          # flowing, lyrical — fits a "Book of Songs"
+      color: "#5c3a5e"          # dusty plum, Romantic-era mood
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Emma Lazarus"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The original German poems by Heinrich Heine
+        (1797&ndash;1856) are in the public domain. The English translations
+        by Emma Lazarus (1887) are in the public domain. Emma Lazarus
+        translated a selection, not Heine's complete <i>Buch der Lieder</i>:
+        of its 227 poems, about 125 have a surviving Lazarus translation and
+        appear here with facing English text; the rest appear in German only.
+    cover:
+      paper: white
+      blurb: "Heinrich Heine's Book of Songs — the complete German text, with Emma Lazarus's classic English translations facing the poems she rendered."
+    epub: true

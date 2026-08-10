@@ -50,13 +50,17 @@ def _get_model(name: str):
     return _MODEL_CACHE[name]
 
 
-def embed_align(src: list[str], tgt: list[str], *, model_name: str = DEFAULT_MODEL) -> list[Bead]:
+def embed_align(src: list[str], tgt: list[str], *, model_name: str = DEFAULT_MODEL,
+                steps: list[tuple[int, int]] | None = None) -> list[Bead]:
     if not src and not tgt:
         return []
     if not src:
-        return [Bead(src=[], tgt=tgt)]
+        # One bead per segment, not one bead holding the whole list — bead.tgt
+        # is space-joined for rendering, which would otherwise flatten verse
+        # lines (or prose paragraphs) into a single run-on block.
+        return [Bead(src=[], tgt=[t]) for t in tgt]
     if not tgt:
-        return [Bead(src=src, tgt=[])]
+        return [Bead(src=[s], tgt=[]) for s in src]
 
     import numpy as np
 
@@ -77,5 +81,5 @@ def embed_align(src: list[str], tgt: list[str], *, model_name: str = DEFAULT_MOD
         penalty = _MERGE_PENALTY * (ds + dt - 2)
         return (1.0 - sim) + penalty
 
-    path = run_dp(len(src), len(tgt), cost_fn, steps=_STEPS)
+    path = run_dp(len(src), len(tgt), cost_fn, steps=steps or _STEPS)
     return beads_from_path(src, tgt, path)

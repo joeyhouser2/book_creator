@@ -54,7 +54,10 @@ class DecorSpec:
 
     # Per-page margin art: none | rule | corners | frame
     margin: str = "none"
-    # Under each chapter title: none | fleuron | rule
+    # Under each chapter title: none | fleuron | rule | medieval | victorian |
+    # classical | baroque | nouveau | rococo | artdeco | random (a different
+    # style per chapter, deterministic by chapter index — see
+    # decorations.pick_random_style)
     chapter: str = "fleuron"
     # Between aligned beads (section breaks within a chapter): none | fleuron
     bead_separator: str = "none"
@@ -65,6 +68,9 @@ class DecorSpec:
     corner_image: str | None = None
     # Optional PNG/JPG centered under chapter titles (overrides vector chapter art).
     chapter_image: str | None = None
+    # Decorative display font for each chapter's opening bead (both languages),
+    # e.g. "UncialAntiqua". None disables the treatment and opens normally.
+    opener_font: str | None = None
 
 
 @dataclass
@@ -126,6 +132,12 @@ class BookSpec:
     # segments before alignment.
     clean: bool = True
 
+    # Run a registered restyler (book_creator/restylers.py) over the printed
+    # translation text after alignment, e.g. a "victorianizer" model. No-op
+    # unless one is registered for tgt_lang. Runs after alignment so it never
+    # affects sentence matching, only the final prose.
+    restyle: bool = True
+
     # Optional (first, last) division indices to include, 1-based inclusive, per
     # side — so you can scope both editions to the same content (e.g. just Book
     # I). None = whole text. See segment.outline() for the division list.
@@ -155,3 +167,19 @@ class BookSpec:
     decor: DecorSpec = field(default_factory=DecorSpec)
     copyright: CopyrightSpec = field(default_factory=CopyrightSpec)
     cover: CoverSpec = field(default_factory=CoverSpec)
+
+    # Also emit a reflowable EPUB alongside the PDF (needs requirements-epub.txt).
+    epub: bool = False
+
+    # Optional post-alignment QA pass: ask a local LLM (via Ollama) to flag
+    # beads that look misaligned, have leftover markup, or are otherwise
+    # malformed (book_creator/reviewer.py). Advisory only — never edits
+    # content or blocks the build, just writes <slug>-review.md alongside the
+    # PDF listing what to proofread. Needs `ollama serve` running locally
+    # with review_model pulled.
+    review: bool = False
+    review_model: str = "llama3.1"
+    review_host: str = "http://localhost:11434"
+    # Cap how many beads get sent to the model (from the start), for a quick
+    # spot-check on a long book. None = review every bead.
+    review_sample: int | None = None
