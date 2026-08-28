@@ -2,13 +2,28 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-cache/*.txt
-cache/music/
-output/*.pdf
-output/*-music/
-fonts/*.ttf
-fonts/*.otf
+.venv-tts/
 .DS_Store
 
-# Large extracted test fixtures (reproducible from Gutenberg)
+# Everything under output/ is a build artifact — PDFs, EPUBs, covers, review
+# reports, rendered music, audiobooks. All of it is reproducible from a config
+# entry, and every writer mkdir()s its own parent, so the directory does not
+# need to exist in a fresh clone.
+output/
+
+# Fetched and generated caches: Gutenberg plain text, OpenScore MusicXML, and
+# synthesized TTS utterances (cache/tts/ can reach gigabytes on a full book).
+cache/
+
+# Fonts are downloaded by download_fonts.py, not vendored.
+fonts/*.ttf
+fonts/*.otf
+
+# Source texts are inputs, not code: some are hundreds of MB (whole EPUBs),
+# which GitHub rejects outright above 100 MB. Keep the small hand-made test
+# fixtures (test_*.txt, split_*.txt, grc*.txt) tracked.
+input/*.epub
+input/*.pdf
 input/caesar_*.txt
+input/pere_goriot_*.txt
+input/eugenie_grandet_*.txt
