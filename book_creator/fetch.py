@@ -86,14 +86,41 @@ def search_gutenberg(query: str, language: str | None = None, page: int = 1) -> 
             "id": b["id"],
             "title": b.get("title", "(untitled)"),
             "authors": ", ".join(a["name"] for a in b.get("authors", [])) or "Unknown",
+            "translators": ", ".join(a["name"] for a in b.get("translators", [])),
             "languages": b.get("languages", []),
             "downloads": b.get("download_count", 0),
             "has_text": has_text,
         })
-    return {
+    out = {
         "count": data.get("count", 0),
         "has_next": bool(data.get("next")),
         "results": results,
+    }
+    if not results:
+        out["hint"] = (
+            "No matches. Gutendex search is close to a literal substring match on "
+            "title/author, not semantic — try a broader query, e.g. just the "
+            "author's surname. The English edition of a foreign work is often "
+            "catalogued under its original-language title."
+        )
+    return out
+
+
+def gutenberg_metadata(gid: int) -> dict:
+    """Look up a single Gutenberg edition's catalog metadata (title, real
+    author/translator names, language) via Gutendex — the ground truth for
+    who actually translated it, so callers don't have to guess from the text.
+    """
+    resp = requests.get(f"{GUTENDEX_API}/{gid}", headers={"User-Agent": USER_AGENT},
+                        timeout=20)
+    resp.raise_for_status()
+    b = resp.json()
+    return {
+        "id": b.get("id", gid),
+        "title": b.get("title", "(untitled)"),
+        "authors": ", ".join(a["name"] for a in b.get("authors", [])) or "Unknown",
+        "translators": ", ".join(a["name"] for a in b.get("translators", [])),
+        "languages": b.get("languages", []),
     }
 
 

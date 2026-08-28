@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import aligners, clean, cover, fetch, render_epub, render_pdf, restylers, reviewer, segment
+from . import (aligners, audio, clean, corpus, cover, fetch, music, render_epub,
+               render_pdf, restylers, reviewer, segment)
 from .model import Bead, BookSpec, Chapter
 
 
@@ -83,21 +84,53 @@ def _fuzzy_match_divisions(
     return paired
 
 
-def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
-               on_log=None) -> str:
-    def log(msg: str) -> None:
-        if verbose:
-            print(msg)
-        if on_log is not None:
-            on_log(msg)
+def _chapters_from_corpus(spec: BookSpec, log) -> list[Chapter]:
+    """Load a pre-aligned work from the latin repo's corpus.
 
-    if not spec.translation_pd_confirmed:
-        log(
-            "  ⚠  translation_pd_confirmed is False. A translator holds copyright on "
-            "their translation separately from the public-domain original. Verify the "
-            "translation is public domain (US: published before 1929) before publishing."
-        )
+    Nothing here fetches, segments, cleans, or aligns: that corpus already
+    stores one source sentence per row with its English beside it, so each row
+    becomes a Bead directly and there is no alignment drift to proofread for.
+    Missing metadata (title, author, source language) is filled in from the
+    document record, so a config entry can be as short as `corpus: 376`.
+    """
+    c = spec.corpus
+    log(f"• Loading corpus document #{c.doc_id}…")
+    load = corpus.load_chapters(
+        c.doc_id, section_range=c.section_range, prefer_styled=c.prefer_styled,
+        skip_untranslated=c.skip_untranslated, strip_markup=c.strip_markup,
+        db_path=c.db_path)
+    doc = load.doc
 
+    if not spec.title:
+        spec.title = doc.title
+    if spec.author in ("", "Unknown"):
+        spec.author = doc.author
+    if not spec.src_lang:
+        spec.src_lang = doc.language
+    if not spec.translation_source_note:
+        spec.translation_source_note = corpus.source_note(doc)
+
+    log(f"• {doc.title} — {doc.author} ({doc.language}, {doc.language_stage})")
+    log(f"• {load.beads} bead(s) across {len(load.chapters)} section(s)"
+        + (f"; {load.styled_used} used the stylized English" if load.styled_used else "")
+        + (f"; {load.demarked} had editorial sigla stripped" if load.demarked else "")
+        + (f"; {load.untranslated} untranslated segment(s) "
+           f"{'dropped' if c.skip_untranslated else 'kept source-only'}"
+           if load.untranslated else "") + ".")
+
+    # The English side is this project's own machine translation, so no third
+    # party holds copyright on it — but the *source* text's licence still
+    # governs, and the corpus records plenty of non-free ones.
+    risk = corpus.licence_risk(doc.license)
+    if risk == "check":
+        log(f"  ⚠  Source licence needs checking before you publish: {doc.license}")
+    elif risk == "unknown":
+        log(f"  ⚠  Source licence not classified: {doc.license or '(none recorded)'}")
+    return load.chapters
+
+
+def _chapters_from_editions(spec: BookSpec, log) -> list[Chapter]:
+    """Fetch, segment, and align two separate editions (the Gutenberg path)."""
     log(f"• Fetching source ({spec.src_lang})…")
     src_text = fetch.load_text(path=spec.src_path, gid=spec.src_gutenberg_id)
     log(f"• Fetching translation ({spec.tgt_lang})…")
@@ -105,8 +138,10 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
 
     # Structural anchoring: split both sides into divisions, optionally scoping
     # each to a selected range so the two editions cover the same content.
-    src_chaps = _apply_range(segment.detect_chapters(src_text), spec.src_range)
-    tgt_chaps = _apply_range(segment.detect_chapters(tgt_text), spec.tgt_range)
+    src_chaps = _apply_range(
+        segment.detect_chapters(src_text, mode=spec.mode, poem_titles=spec.poem_titles), spec.src_range)
+    tgt_chaps = _apply_range(
+        segment.detect_chapters(tgt_text, mode=spec.mode, poem_titles=spec.poem_titles), spec.tgt_range)
     rng = ""
     if spec.src_range or spec.tgt_range:
         rng = f" (range src={spec.src_range or 'all'}, tgt={spec.tgt_range or 'all'})"
@@ -139,6 +174,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
             log("• Division counts differ; aligning selected text as a single block.")
 
     aligners.reset_announcement()
+    verse_note_logged = False
     chapters: list[Chapter] = []
     for (s_title, s_body), (t_title, t_body) in paired:
         src_segs = segment.segment(s_body, spec.mode, spec.src_lang)
@@ -146,15 +182,78 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         if spec.clean:
             src_segs = clean.clean_segments(src_segs)
             tgt_segs = clean.clean_segments(tgt_segs)
-        beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
-                               src_lang=spec.src_lang, log=log)
+        if spec.mode == "verse":
+            # Poetic translations routinely reorder clauses across lines for
+            # rhyme/meter, so line-by-line embedding/length alignment is
+            # unreliable (a German line's "translation" can land several
+            # lines away in English) — matches published dual-language poetry
+            # practice instead: the whole original poem block, then the whole
+            # translation block, each with its own line breaks intact, rather
+            # than forcing a false line-by-line correspondence.
+            if not verse_note_logged:
+                log("• Verse mode: pairing whole poem blocks, not aligning "
+                    "individual lines (see pipeline._fuzzy_match_divisions docstring).")
+                verse_note_logged = True
+            src_block = [Bead(src=[s], tgt=[]) for s in src_segs]
+            tgt_block = [Bead(src=[], tgt=[t]) for t in tgt_segs]
+            beads = (tgt_block + src_block) if spec.first == "tgt" else (src_block + tgt_block)
+        else:
+            beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
+                                   src_lang=spec.src_lang, log=log)
         chapters.append(Chapter(title=t_title or s_title, src_segments=src_segs,
                                 tgt_segments=tgt_segs, beads=beads))
 
     total_beads = sum(len(c.beads) for c in chapters)
     log(f"• Aligned into {total_beads} bead(s) across {len(chapters)} chapter(s).")
+    return chapters
+
+
+def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
+               on_log=None, artifacts: dict | None = None,
+               on_progress=None, should_stop=None) -> str:
+    """Build one book. Returns the interior PDF path.
+
+    `artifacts`, if given, is filled in with every file produced (pdf, cover,
+    epub, review, audio) so a caller like the web UI can offer them all without
+    re-deriving the names.
+    """
+    def log(msg: str) -> None:
+        if verbose:
+            print(msg)
+        if on_log is not None:
+            on_log(msg)
+
+    out = artifacts if artifacts is not None else {}
+
+    if spec.corpus.doc_id:
+        chapters = _chapters_from_corpus(spec, log)
+    else:
+        if not spec.translation_pd_confirmed:
+            log(
+                "  ⚠  translation_pd_confirmed is False. A translator holds copyright "
+                "on their translation separately from the public-domain original. "
+                "Verify the translation is public domain (US: published before 1929) "
+                "before publishing."
+            )
+        chapters = _chapters_from_editions(spec, log)
 
     slug = spec.slug or _slugify(spec.title)
+
+    if spec.music.enabled:
+        log(f"• Matching poems against musical-literature catalog ({spec.music.catalog})…")
+        music_dir = Path(out_dir) / f"{slug}-music"
+        matched = 0
+        for ch in chapters:
+            first_line = ch.src_segments[0] if ch.src_segments else ""
+            second_line = ch.src_segments[1] if len(ch.src_segments) > 1 else ""
+            result = music.render_poem_music(
+                first_line, second_line, catalog=spec.music.catalog,
+                cache_dir=Path("cache/music"), work_dir=music_dir, log=log,
+            )
+            if result:
+                ch.music_images, ch.music_caption = result
+                matched += 1
+        log(f"• Music: {matched} poem(s) matched to a setting in '{spec.music.catalog}'.")
 
     if spec.restyle and restylers.available(spec.tgt_lang):
         log(f"• Restyling translation ({spec.tgt_lang}) with registered restyler…")
@@ -192,6 +291,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
             Path(review_path).write_text(reviewer.format_report(findings), encoding="utf-8")
             high = sum(1 for f in findings if f.severity == "high")
             log(f"• Review flagged {len(findings)} bead(s) ({high} high-severity) → {review_path}")
+            out["review"] = review_path
         except reviewer.ReviewerError as exc:
             log(f"  ⚠  Review skipped: {exc}")
 
@@ -216,6 +316,8 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         include_toc=spec.toc,
     )
     log(f"✓ Done: {out_path} ({actual_pages} pages)")
+    out["pdf"] = out_path
+    out["pages"] = actual_pages
 
     if spec.cover.enabled:
         cover_path = str(Path(out_dir) / f"{slug}-cover.pdf")
@@ -230,6 +332,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         )
         w, h, spine = dims
         log(f"✓ Cover: {cover_path} ({w:.3f} × {h:.3f} in, spine {spine:.3f} in)")
+        out["cover"] = cover_path
 
     if spec.epub:
         epub_path = str(Path(out_dir) / f"{slug}.epub")
@@ -260,5 +363,22 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
             cover_image_path=ebook_cover_path,
         )
         log(f"✓ EPUB: {epub_path}")
+        out["epub"] = epub_path
+
+    if spec.audio.enabled:
+        # Narration reads whichever side the print edition puts first, so the
+        # audiobook and the page stay in the same order.
+        spec.audio.first = spec.first
+        try:
+            out["audio"] = audio.build_audiobook(
+                chapters, spec=spec.audio, out_dir=out_dir, slug=slug,
+                title=spec.title, author=spec.author, src_lang=spec.src_lang,
+                tgt_lang=spec.tgt_lang, log=log, on_progress=on_progress,
+                should_stop=should_stop,
+            )
+        except audio.AudioError as exc:
+            # Never lose a finished book to a TTS problem — the PDF is already
+            # written, so report and carry on.
+            log(f"  ⚠  Audiobook skipped: {exc}")
 
     return out_path

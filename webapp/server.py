@@ -11,8 +11,9 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import yaml
 
-from book_creator import fetch, fonts, segment
-from book_creator.model import BookSpec, CopyrightSpec, CoverSpec, DecorSpec, FontSpec
+from book_creator import audio, corpus, fetch, fonts, segment
+from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
+                                CoverSpec, DecorSpec, FontSpec)
 from book_creator.pipeline import build_book
 
 from . import gutendex, preview
@@ -56,6 +57,106 @@ def api_outline():
         return jsonify({"error": str(exc)}), 502
 
 
+# --------------------------------------------------------------------------- #
+# Latin corpus (the sibling `latin` repo's pre-aligned corpus.db)
+# --------------------------------------------------------------------------- #
+@app.route("/api/corpus/status")
+def api_corpus_status():
+    """Whether the corpus is reachable, and how big it is."""
+    try:
+        db = corpus.find_db()
+    except corpus.CorpusError as exc:
+        return jsonify({"available": False, "error": str(exc)})
+    with corpus.connect(str(db)) as conn:
+        docs = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+    return jsonify({"available": True, "path": str(db), "documents": docs})
+
+
+@app.route("/api/corpus/search")
+def api_corpus_search():
+    try:
+        return jsonify(corpus.search_documents(
+            request.args.get("q", ""),
+            language=request.args.get("lang") or None,
+            stage=request.args.get("stage") or None,
+            translated_only=request.args.get("translated", "1") != "0",
+            limit=40,
+            offset=(max(1, int(request.args.get("page", 1))) - 1) * 40,
+        ))
+    except corpus.CorpusError as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/corpus/doc/<int:doc_id>")
+def api_corpus_doc(doc_id: int):
+    """Metadata, section outline, and a preview of the aligned pairs."""
+    styled = request.args.get("styled", "1") != "0"
+    strip = request.args.get("strip", "1") != "0"
+    try:
+        with corpus.connect() as conn:
+            doc = corpus.document(doc_id, conn=conn)
+            return jsonify({
+                "doc": doc.as_dict(),
+                "sections": corpus.outline(doc_id, conn=conn),
+                "sample": corpus.sample(doc_id, limit=10, prefer_styled=styled,
+                                        strip_markup=strip, conn=conn),
+                "note": corpus.source_note(doc),
+            })
+    except corpus.CorpusError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+
+# --------------------------------------------------------------------------- #
+# Audiobook
+# --------------------------------------------------------------------------- #
+@app.route("/api/audio/engines")
+def api_audio_engines():
+    """Registered TTS engines plus the CUDA devices they could run on."""
+    info = audio.devices()
+    return jsonify({"engines": audio.catalog(), **info})
+
+
+@app.route("/api/audio/estimate", methods=["POST"])
+def api_audio_estimate():
+    """How long a narration would run, before committing the GPU to it.
+
+    Only a corpus source can be priced up front: it is already aligned, so the
+    beads exist without any work. A Gutenberg pair has to be fetched and
+    aligned first, which is the build itself.
+    """
+    p = request.get_json(force=True)
+    if not p.get("corpus_id"):
+        return jsonify({"estimate": None,
+                        "note": "Available for corpus sources; a Gutenberg pair "
+                                "has to be aligned first."})
+    try:
+        load = corpus.load_chapters(
+            int(p["corpus_id"]),
+            section_range=_range(p.get("corpus_range")),
+            prefer_styled=bool(p.get("prefer_styled", True)),
+            strip_markup=bool(p.get("strip_markup", True)))
+    except corpus.CorpusError as exc:
+        return jsonify({"error": str(exc)}), 404
+    spec = _audio_from(p.get("audio"))
+    spec.first = p.get("first", "src")
+    return jsonify({"estimate": audio.estimate(
+        load.chapters, spec=spec, src_lang=load.doc.language,
+        tgt_lang=p.get("tgt_lang", "en"))})
+
+
+@app.route("/api/audio/<job_id>.<ext>")
+def api_audio_file(job_id: str, ext: str):
+    """Stream (or download) the assembled audiobook for a finished job."""
+    job = _jobs.get(job_id)
+    result = (job or {}).get("artifacts", {}).get("audio") or {}
+    path = result.get("book")
+    if not path or not Path(path).exists():
+        return Response("no audio", status=404)
+    p = Path(path).resolve()
+    return send_from_directory(p.parent, p.name,
+                               as_attachment=request.args.get("dl") == "1")
+
+
 @app.route("/api/search")
 def api_search():
     query = request.args.get("q", "").strip()
@@ -78,14 +179,50 @@ def _range(v) -> tuple[int, int] | None:
     return None
 
 
+def _audio_from(a) -> AudioSpec:
+    a = a or {}
+    voice = a.get("voice") or None
+    return AudioSpec(
+        enabled=bool(a.get("enabled", False)),
+        engine=a.get("engine", "chatterbox"),
+        device=a.get("device") or audio.best_device(),
+        src_voice=a.get("src_voice") or voice,
+        tgt_voice=a.get("tgt_voice") or voice,
+        pause_within=float(a.get("pause_within", 0.45)),
+        pause_bead=float(a.get("pause_bead", 0.9)),
+        pause_chapter=float(a.get("pause_chapter", 1.5)),
+        announce_chapters=bool(a.get("announce_chapters", True)),
+        format=a.get("format", "m4b"),
+        max_beads=int(a["max_beads"]) if a.get("max_beads") else None,
+    )
+
+
+def _corpus_from(p: dict) -> CorpusSpec:
+    """A corpus source overrides the Gutenberg ids when a doc id is present."""
+    if not p.get("corpus_id"):
+        return CorpusSpec()
+    return CorpusSpec(
+        doc_id=int(p["corpus_id"]),
+        section_range=_range(p.get("corpus_range")),
+        prefer_styled=bool(p.get("prefer_styled", True)),
+        skip_untranslated=bool(p.get("skip_untranslated", True)),
+        strip_markup=bool(p.get("strip_markup", True)),
+    )
+
+
 def _spec_from_payload(p: dict) -> BookSpec:
     trim = p.get("trim", [6.0, 9.0])
     decor = p.get("decorations", {}) or {}
+    from_corpus = bool(p.get("corpus_id"))
     return BookSpec(
-        title=p.get("title", "Untitled"),
-        author=p.get("author", "Unknown"),
-        src_lang=p.get("src_lang", "la"),
+        # A corpus document carries its own title/author/language; leave them
+        # blank so the pipeline fills them in unless the user typed something.
+        title=p.get("title") or ("" if from_corpus else "Untitled"),
+        author=p.get("author") or "Unknown",
+        src_lang=p.get("src_lang") or ("" if from_corpus else "la"),
         tgt_lang=p.get("tgt_lang", "en"),
+        corpus=_corpus_from(p),
+        audio=_audio_from(p.get("audio")),
         src_gutenberg_id=p.get("src_id"),
         tgt_gutenberg_id=p.get("tgt_id"),
         src_path=p.get("src_path"),
@@ -107,6 +244,7 @@ def _spec_from_payload(p: dict) -> BookSpec:
         ),
         copyright=_copyright_from(p.get("copyright")),
         cover=_cover_from(p.get("cover")),
+        epub=bool(p.get("epub", False)),
     )
 
 
@@ -138,8 +276,20 @@ def _run_build(job_id: str, spec: BookSpec) -> None:
         with _lock:
             job["log"].append(msg)
 
+    def on_progress(done: int, total: int) -> None:
+        with _lock:
+            job["progress"] = {"done": done, "total": total,
+                               "percent": round(100 * done / max(1, total))}
+
+    def should_stop() -> bool:
+        return job.get("cancel", False)
+
+    artifacts: dict = {}
+    job["artifacts"] = artifacts
     try:
-        pdf_path = build_book(spec, out_dir=OUTPUT_DIR, verbose=False, on_log=on_log)
+        pdf_path = build_book(spec, out_dir=OUTPUT_DIR, verbose=False,
+                              on_log=on_log, artifacts=artifacts,
+                              on_progress=on_progress, should_stop=should_stop)
         pages = preview.page_count(pdf_path)
         cover_cand = Path(pdf_path).with_name(Path(pdf_path).stem + "-cover.pdf")
         with _lock:
@@ -158,17 +308,35 @@ def _run_build(job_id: str, spec: BookSpec) -> None:
 @app.route("/api/build", methods=["POST"])
 def api_build():
     payload = request.get_json(force=True)
-    if not (payload.get("src_id") or payload.get("src_path")):
-        return jsonify({"error": "Choose an original text."}), 400
-    if not (payload.get("tgt_id") or payload.get("tgt_path")):
-        return jsonify({"error": "Choose a translation."}), 400
+    # A corpus document is a complete parallel text on its own; the Gutenberg
+    # path needs an edition on each side.
+    if not payload.get("corpus_id"):
+        if not (payload.get("src_id") or payload.get("src_path")):
+            return jsonify({"error": "Choose an original text."}), 400
+        if not (payload.get("tgt_id") or payload.get("tgt_path")):
+            return jsonify({"error": "Choose a translation."}), 400
 
     job_id = uuid.uuid4().hex[:12]
     _jobs[job_id] = {"status": "running", "log": [], "pages": 0,
-                     "pdf_path": None, "cover_path": None, "error": None}
+                     "pdf_path": None, "cover_path": None, "error": None,
+                     "progress": None, "artifacts": {}, "cancel": False}
     spec = _spec_from_payload(payload)
     threading.Thread(target=_run_build, args=(job_id, spec), daemon=True).start()
     return jsonify({"job_id": job_id})
+
+
+@app.route("/api/cancel/<job_id>", methods=["POST"])
+def api_cancel(job_id: str):
+    """Ask a running narration to stop after the current utterance.
+
+    Only the audio stage checks this — everything before it is fast enough that
+    stopping mid-way would just lose work.
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "unknown job"}), 404
+    job["cancel"] = True
+    return jsonify({"cancelling": True})
 
 
 @app.route("/api/status/<job_id>")
@@ -177,11 +345,15 @@ def api_status(job_id: str):
     if not job:
         return jsonify({"error": "unknown job"}), 404
     with _lock:
+        art = job.get("artifacts") or {}
         return jsonify({
             "status": job["status"],
             "log": job["log"],
             "pages": job["pages"],
             "has_cover": bool(job.get("cover_path")),
+            "progress": job.get("progress"),
+            "audio": art.get("audio"),
+            "epub": bool(art.get("epub")),
             "error": job["error"],
         })
 
@@ -228,6 +400,12 @@ def _payload_to_yaml(p: dict) -> dict:
                   "author": p.get("author", "Unknown"),
                   "src_lang": p.get("src_lang", "la"),
                   "tgt_lang": p.get("tgt_lang", "en")}
+    if p.get("corpus_id"):
+        book["corpus"] = {"doc_id": int(p["corpus_id"]),
+                          "prefer_styled": bool(p.get("prefer_styled", True)),
+                          "strip_markup": bool(p.get("strip_markup", True))}
+        if p.get("corpus_range"):
+            book["corpus"]["section_range"] = list(p["corpus_range"])
     if p.get("src_id"):
         book["src_gutenberg_id"] = p["src_id"]
     if p.get("tgt_id"):
@@ -251,6 +429,13 @@ def _payload_to_yaml(p: dict) -> dict:
     if cov.get("enabled"):
         book["cover"] = {k: v for k, v in cov.items() if k != "enabled" and v != ""}
         book["cover"].setdefault("paper", "white")
+    aud = p.get("audio") or {}
+    if aud.get("enabled"):
+        book["audio"] = {k: v for k, v in aud.items()
+                         if k != "enabled" and v not in ("", None)}
+        book["audio"]["enabled"] = True
+    if p.get("epub"):
+        book["epub"] = True
     return book
 
 

@@ -1,0 +1,36 @@
+# Audiobook narration (book_creator/audio.py).
+#
+# ---------------------------------------------------------------------------
+# INSTALL THIS IN A SEPARATE VIRTUALENV, not your main one.
+#
+# chatterbox-tts pins torch/transformers/numpy and will happily replace a
+# working CUDA build of torch with a generic wheel, which breaks the LaBSE
+# aligner here and the NLLB models in the `latin` repo. Keep it isolated:
+#
+#     python -m venv .venv-tts
+#     .venv-tts\Scripts\activate          # Windows
+#     pip install torch --index-url https://download.pytorch.org/whl/cu124
+#     pip install -r requirements-audio.txt
+#
+# If you would rather install into the main environment anyway, pin torch so
+# pip cannot swap the CUDA build out from under you:
+#
+#     pip install chatterbox-tts "torch==2.5.1+cu124" \
+#         --extra-index-url https://download.pytorch.org/whl/cu124
+#
+# ---------------------------------------------------------------------------
+# Default engine: MIT licence (safe to sell the output), 23 languages, clones a
+# narrator from a few seconds of reference audio, ~7 GB VRAM in fp16.
+chatterbox-tts>=0.1.7
+
+# Optional alternatives — see book_creator/audio.py for what each is good for.
+# Kokoro-82M: Apache-2.0, ~1 GB, many times realtime, fixed voices, no Greek.
+#   pip install kokoro
+# Coqui XTTS-v2: best cloning quality and it covers German, but the CPML
+#   licence is NON-COMMERCIAL — personal listening only.
+#   pip install coqui-tts
+
+# Assembles the chapter WAVs into an M4B with chapter markers. A system ffmpeg
+# on PATH is used first; this is the fallback so nothing has to be installed
+# by hand.
+imageio-ffmpeg>=0.5

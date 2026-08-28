@@ -32,6 +32,11 @@ class Chapter:
     src_segments: list[str] = field(default_factory=list)
     tgt_segments: list[str] = field(default_factory=list)
     beads: list[Bead] = field(default_factory=list)
+    # Paths to rendered grand-staff (treble + bass) page images for this
+    # chapter, when it matched a known musical setting — see music.py.
+    # Populated by pipeline.build_book, empty otherwise.
+    music_images: list[str] = field(default_factory=list)
+    music_caption: str = ""
 
 
 @dataclass
@@ -105,6 +110,94 @@ class CoverSpec:
 
 
 @dataclass
+class MusicSpec:
+    """Musical-literature companion: for poems that were set to music by a
+    composer, typeset the piano grand staff (treble + bass clef) alongside
+    the original text and its translation.
+
+    Source: the OpenScore Lieder Corpus (github.com/OpenScore/Lieder),
+    CC0-licensed MusicXML encodings of public-domain lieder — the same
+    public-domain bar this tool already holds text sources to. Matching is
+    by the poem's normalized first line (its "incipit"), since verse
+    divisions here are numbered, not individually titled.
+
+    Rendering needs LilyPond (both `lilypond` and `musicxml2ly`) on PATH —
+    it is NOT bundled or auto-installed. If it's missing, matched poems are
+    logged and skipped; the build still succeeds without music.
+    """
+
+    enabled: bool = False
+    # Which registered catalog to match poems against. Currently only
+    # "dichterliebe" (Schumann, Op. 48, 16 songs) is built in — see
+    # music.py's _REGISTRIES.
+    catalog: str = "dichterliebe"
+
+
+@dataclass
+class CorpusSpec:
+    """Pull the parallel text out of the `latin` repo's corpus instead of
+    fetching and aligning two Gutenberg editions.
+
+    That corpus stores one Latin (or Greek) sentence per row with its English
+    alongside, so segment *i* already corresponds to segment *i* -- the book
+    skips fetch/clean/segment/align entirely and there is no alignment drift
+    to proofread for. See book_creator/corpus.py.
+    """
+
+    doc_id: int | None = None
+    # Path to the latin repo checkout or directly to corpus.db. None searches
+    # $LATIN_REPO, then ../latin, then ~/Documents/GitHub/latin.
+    db_path: str | None = None
+    # Optional (first, last) section indices, 1-based inclusive, like src_range.
+    section_range: tuple[int, int] | None = None
+    # Use `english_styled` (the latin repo's Victorian stylizer output) where a
+    # segment has it, falling back to the plain machine translation.
+    prefer_styled: bool = True
+    # Drop segments that have no English at all. Off prints them source-only.
+    skip_untranslated: bool = True
+    # Print the letters without the editorial apparatus that critical and
+    # epigraphic editions carry ("<A>ltus", "Imp(erator)", "[Aug]ustus"). On by
+    # default: a POD parallel text is for reading, and a narrator cannot say a
+    # bracket. Turn off for a scholarly edition that should show its sigla.
+    strip_markup: bool = True
+
+
+@dataclass
+class AudioSpec:
+    """Interleaved bilingual audiobook narrated by a local GPU TTS model.
+
+    Each bead is read original-then-translation (or the reverse, following
+    `BookSpec.first`), mirroring the printed parallel text in time rather than
+    in space. See book_creator/audio.py.
+    """
+
+    enabled: bool = False
+    # Registered engine id: chatterbox (default, MIT) | kokoro | xtts.
+    engine: str = "chatterbox"
+    # Torch device to synthesize on: "cuda:0", "cuda:1", "cpu".
+    device: str = "cuda:0"
+    # Reference voice per side. For cloning engines this is a path to a short
+    # WAV of the narrator; for fixed-voice engines it is a voice name. Using
+    # the same value for both sides gives one narrator reading both languages.
+    src_voice: str | None = None
+    tgt_voice: str | None = None
+    # Gaps, in seconds: between the two sides of one bead, between beads, and
+    # after a spoken chapter heading.
+    pause_within: float = 0.45
+    pause_bead: float = 0.9
+    pause_chapter: float = 1.5
+    # Read each chapter's title aloud before its text.
+    announce_chapters: bool = True
+    # Container for the assembled book: m4b (chapter markers) | mp3.
+    format: str = "m4b"
+    # Cap beads for a quick listen-test of the voice before committing hours
+    # of GPU time. None narrates the whole book.
+    max_beads: int | None = None
+    # Which side is read first; set from BookSpec.first at build time.
+    first: str = "src"
+
+
+@dataclass
 class BookSpec:
     """Definition of one book to build, loaded from YAML."""
 
@@ -121,9 +214,21 @@ class BookSpec:
     # Or local file paths (override Gutenberg IDs if given).
     src_path: str | None = None
     tgt_path: str | None = None
+    # Or pull a pre-aligned work from the latin repo's corpus, which overrides
+    # both of the above and skips fetch/segment/align (see CorpusSpec).
+    corpus: "CorpusSpec" = field(default_factory=lambda: CorpusSpec())
 
     # "prose" -> sentence segmentation; "verse" -> line segmentation.
     mode: str = "prose"
+
+    # Verse mode only: also split on an isolated, untitled poem's title line
+    # (blank-flanked by a real paragraph-sized gap, not just numbered "I"/"II"
+    # cycle markers) — see segment._is_isolated_title. Needed for collections
+    # that name standalone poems instead of numbering every one continuously
+    # (e.g. Les Fleurs du Mal); leave off for collections that already number
+    # every poem in one run (e.g. Buch der Lieder's I..CCXXVII), since it can
+    # pick up extra unintended divisions there instead of helping.
+    poem_titles: bool = False
 
     # Alignment backend: "auto" | "embed" | "gale-church".
     aligner: str = "auto"
@@ -167,6 +272,8 @@ class BookSpec:
     decor: DecorSpec = field(default_factory=DecorSpec)
     copyright: CopyrightSpec = field(default_factory=CopyrightSpec)
     cover: CoverSpec = field(default_factory=CoverSpec)
+    music: MusicSpec = field(default_factory=MusicSpec)
+    audio: AudioSpec = field(default_factory=AudioSpec)
 
     # Also emit a reflowable EPUB alongside the PDF (needs requirements-epub.txt).
     epub: bool = False

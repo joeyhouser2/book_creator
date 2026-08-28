@@ -63,3 +63,55 @@ books:
       margin: frame
       chapter: fleuron
       # corner_image: art/corner.png    # optional: your own PNG, mirrored into corners
+
+  # ------------------------------------------------------------------------
+  # A work pulled from the `latin` repo's corpus instead of two Gutenberg
+  # editions. That corpus stores one Latin (or Greek) sentence per row with its
+  # English beside it, so there is nothing to fetch, segment, or align — and no
+  # alignment drift to proofread for. Browse ids with:
+  #     python make_book.py --corpus --corpus-search alcuinus
+  #     python make_book.py --corpus --corpus-id 79      # sections + licence
+  #
+  # title/author/src_lang are optional here: they are filled in from the
+  # document record. `corpus: 79` on its own is the whole minimum entry.
+  #
+  # NOTE the copyright situation is the reverse of the Gutenberg case. The
+  # English is machine translation this project produced, so no translator
+  # holds copyright on it (a disclosure to that effect goes on the copyright
+  # page automatically). What you must check instead is the *source* licence,
+  # which the corpus records honestly and which is often not free — the CLI and
+  # the web UI both flag it.
+  - corpus:
+      doc_id: 79
+      section_range: 2-3      # optional; omit for the whole work
+      prefer_styled: true     # use the Victorian-stylized English where it exists
+      strip_markup: true      # print "Altus", not "<A>ltus" (default)
+      # db_path: "../latin"   # defaults to $LATIN_REPO, then ../latin
+    mode: verse
+    font: Cardo
+    epub: true
+    # Narrate an interleaved bilingual audiobook on the GPU. Each bead is read
+    # original-then-translation, mirroring the printed parallel text. Needs
+    # requirements-audio.txt — see the warning at the top of that file about
+    # installing it in its own virtualenv.
+    audio:
+      enabled: true
+      engine: chatterbox    # chatterbox (MIT) | kokoro (Apache-2.0) | xtts (non-commercial)
+      device: cuda:1        # omit to pick the CUDA device with the MOST memory
+      voice: "input/narrator.wav"   # 6-30s reference clip; one narrator, both languages
+      format: m4b           # m4b (chapter markers) | mp3
+      # max_beads: 20       # test run: narrate only the first N beads
+      # pause_within: 0.45  # gap between the two languages of one bead
+      # pause_bead: 0.9     # gap between beads
+
+  # "Musical literature" (verse-mode books only): for poems that were set to
+  # music, typeset the piano grand staff (treble + bass) under the poem,
+  # matched by first line against a registered catalog. Currently only
+  # catalog: dichterliebe (Schumann's Dichterliebe, Op. 48 — 16 Heine poems)
+  # is built in; see book_creator/music.py to add more. Source: the OpenScore
+  # Lieder Corpus (CC0). Needs LilyPond (lilypond.org/download, both
+  # `lilypond` and `musicxml2ly` on PATH) — the build still succeeds without
+  # music, with a warning, if it's not installed.
+  # music:
+  #   enabled: true
+  #   catalog: dichterliebe

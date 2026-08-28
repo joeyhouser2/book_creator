@@ -11,54 +11,86 @@
     <h1>book_creator <span class="sub">dual-language POD builder</span></h1>
   </header>
 
-  <div class="pd-banner">
+  <div class="pd-banner" id="pdBanner">
     ⚠ A translator owns copyright on their translation, separately from the
     public-domain original. Only build with a translation you've verified is
     public domain (US: first published before 1929), then tick the box below.
   </div>
 
   <main>
-    <!-- ============ LEFT: search + build ============ -->
+    <!-- ============ LEFT: source + options + build ============ -->
     <section class="col">
-      <h2>1 · Search Project Gutenberg</h2>
-      <div class="search-row">
-        <input id="q" type="text" placeholder="title or author, e.g. Gallic War">
-        <select id="lang">
-          <option value="">any language</option>
-          <option value="la">Latin (la)</option>
-          <option value="fr">French (fr)</option>
-          <option value="de">German (de)</option>
-          <option value="el">Greek (el)</option>
-          <option value="en">English (en)</option>
-        </select>
-        <button id="searchBtn">Search</button>
+      <h2>1 · Source</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="gutenberg" role="tab">Gutenberg pair</button>
+        <button class="tab" data-tab="corpus" role="tab">Latin corpus</button>
       </div>
-      <div id="results" class="results"></div>
 
-      <h2>2 · Selected editions</h2>
-      <div class="slots">
-        <div class="slot" id="slot-src">
-          <div class="slot-label">Original</div>
-          <div class="slot-body muted">none selected</div>
-          <div class="slot-range" id="range-src"></div>
+      <!-- ---------- Gutenberg: two separate editions, aligned ---------- -->
+      <div class="tabpane active" id="pane-gutenberg">
+        <div class="search-row">
+          <input id="q" type="text" placeholder="title or author, e.g. Gallic War">
+          <select id="lang">
+            <option value="">any language</option>
+            <option value="la">Latin (la)</option>
+            <option value="fr">French (fr)</option>
+            <option value="de">German (de)</option>
+            <option value="el">Greek (el)</option>
+            <option value="en">English (en)</option>
+          </select>
+          <button id="searchBtn">Search</button>
         </div>
-        <div class="slot" id="slot-tgt">
-          <div class="slot-label">Translation</div>
-          <div class="slot-body muted">none selected</div>
-          <div class="slot-range" id="range-tgt"></div>
+        <div id="results" class="results"></div>
+
+        <h3>Selected editions</h3>
+        <div class="slots">
+          <div class="slot" id="slot-src">
+            <div class="slot-label">Original</div>
+            <div class="slot-body muted">none selected</div>
+            <div class="slot-range" id="range-src"></div>
+          </div>
+          <div class="slot" id="slot-tgt">
+            <div class="slot-label">Translation</div>
+            <div class="slot-body muted">none selected</div>
+            <div class="slot-range" id="range-tgt"></div>
+          </div>
         </div>
+        <p class="range-hint muted">Pick a matching range on each side (e.g. just
+          Book I &harr; Book I) so the two editions cover the same content. Leave as
+          "all" if the whole texts already match.</p>
       </div>
-      <p class="range-hint muted">Pick a matching range on each side (e.g. just
-        Book I &harr; Book I) so the two editions cover the same content. Leave as
-        "all" if the whole texts already match.</p>
 
-      <h2>3 · Options</h2>
+      <!-- ---------- Latin corpus: already sentence-aligned ---------- -->
+      <div class="tabpane" id="pane-corpus">
+        <p class="corpus-status muted" id="corpusStatus">checking for the corpus…</p>
+        <div class="search-row">
+          <input id="cq" type="text" placeholder="title or author, e.g. Alcuinus">
+          <select id="cLang">
+            <option value="">any</option>
+            <option value="la">Latin</option>
+            <option value="grc">Greek</option>
+          </select>
+          <button id="cSearchBtn">Search</button>
+        </div>
+        <label class="inline-check"><input id="cTranslated" type="checkbox" checked>
+          only works that already have English</label>
+        <div id="cResults" class="results"></div>
+
+        <div class="slot corpus-pick" id="corpusPick">
+          <div class="slot-label">Selected work</div>
+          <div class="slot-body muted">none selected</div>
+        </div>
+        <div id="corpusDetail"></div>
+      </div>
+
+      <h2>2 · Options</h2>
       <div class="opts">
         <label>Title <input id="title" type="text"></label>
         <label>Author <input id="author" type="text"></label>
         <label>Original language
           <select id="srcLang">
             <option value="la">Latin</option>
+            <option value="grc">Ancient Greek</option>
             <option value="fr">French</option>
             <option value="de">German</option>
             <option value="el">Greek</option>
@@ -70,7 +102,7 @@
             <option value="verse">verse (lines)</option>
           </select>
         </label>
-        <label>Aligner
+        <label class="gutenberg-only">Aligner
           <select id="aligner">
             <option value="auto">auto</option>
             <option value="embed">embed (LaBSE)</option>
@@ -99,6 +131,10 @@
           <select id="chapter">
             <option value="fleuron">fleuron</option>
             <option value="rule">rule</option>
+            <option value="classical">classical</option>
+            <option value="medieval">medieval</option>
+            <option value="victorian">victorian</option>
+            <option value="random">random</option>
             <option value="none">none</option>
           </select>
         </label>
@@ -107,8 +143,9 @@
           <input id="trimH" type="number" step="0.1" value="9"></span>
         </label>
       </div>
+
       <details class="publishing">
-        <summary>4 · Publishing — copyright &amp; cover</summary>
+        <summary>3 · Publishing — copyright &amp; cover</summary>
         <h3>Copyright page</h3>
         <div class="opts">
           <label>Publisher / imprint <input id="cpPublisher" type="text"></label>
@@ -122,9 +159,11 @@
         <label class="confirm"><input id="cpEnabled" type="checkbox" checked>
           Include the copyright page</label>
 
-        <h3>Cover</h3>
+        <h3>Cover &amp; editions</h3>
         <label class="confirm"><input id="cvEnabled" type="checkbox">
           Generate a wraparound cover (per-language motif)</label>
+        <label class="confirm"><input id="epubEnabled" type="checkbox">
+          Also build a reflowable EPUB</label>
         <div class="opts">
           <label>Paper
             <select id="cvPaper">
@@ -144,12 +183,60 @@
         </div>
       </details>
 
-      <label class="confirm"><input id="pd" type="checkbox">
+      <details class="publishing" id="audioSection">
+        <summary>4 · Audiobook — bilingual narration on the GPU</summary>
+        <p class="muted small">Each bead is read original-then-translation, so the
+          audio follows the printed parallel text. Synthesis is the slow part of a
+          build — expect roughly real-time-or-faster per hour of finished audio.</p>
+        <label class="confirm"><input id="auEnabled" type="checkbox">
+          Narrate an audiobook after rendering</label>
+        <div class="opts">
+          <label>Engine
+            <select id="auEngine"></select>
+            <small id="auEngineNote" class="muted"></small>
+          </label>
+          <label>GPU
+            <select id="auDevice"></select>
+          </label>
+          <label class="wide">Narrator voice
+            <input id="auVoice" type="text"
+                   placeholder="path to a 6–30s WAV (cloning), or a voice name">
+            <small class="muted">One value reads both languages, so the same
+              narrator carries the original and the English.</small>
+          </label>
+          <label>Pause within a bead
+            <input id="auPauseWithin" type="number" step="0.05" value="0.45"></label>
+          <label>Pause between beads
+            <input id="auPauseBead" type="number" step="0.05" value="0.9"></label>
+          <label>Format
+            <select id="auFormat">
+              <option value="m4b">M4B (chapter markers)</option>
+              <option value="mp3">MP3</option>
+            </select>
+          </label>
+          <label>Test run — first N beads
+            <input id="auMaxBeads" type="number" placeholder="all" min="1"></label>
+        </div>
+        <label class="confirm"><input id="auAnnounce" type="checkbox" checked>
+          Read each chapter title aloud</label>
+        <div class="actions-inline">
+          <button id="auEstimateBtn">Estimate length</button>
+          <span id="auEstimate" class="muted"></span>
+        </div>
+        <p class="muted small" id="auDeviceNote"></p>
+      </details>
+
+      <label class="confirm" id="pdConfirmRow"><input id="pd" type="checkbox">
         I have verified this translation is public domain.</label>
 
       <div class="actions">
         <button id="buildBtn" class="primary">Build book</button>
         <button id="saveBtn">Save to config.yaml</button>
+        <button id="cancelBtn" style="display:none">Stop narration</button>
+      </div>
+      <div id="progressWrap" class="progress" style="display:none">
+        <div id="progressBar" class="progress-bar"></div>
+        <span id="progressLabel" class="muted small"></span>
       </div>
       <pre id="log" class="log"></pre>
     </section>
@@ -167,6 +254,14 @@
       </div>
       <div id="previewWrap" class="preview-wrap">
         <p class="muted">Build a book to see rendered pages here.</p>
+      </div>
+      <div id="audioWrap" class="audio-wrap" style="display:none">
+        <h3>Audiobook</h3>
+        <audio id="audioPlayer" controls preload="none"></audio>
+        <div class="preview-nav">
+          <span id="audioLabel" class="muted"></span>
+          <a id="audioDownload" class="dl" href="#">Download</a>
+        </div>
       </div>
     </section>
   </main>

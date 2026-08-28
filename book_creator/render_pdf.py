@@ -7,10 +7,12 @@ from pathlib import Path
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate,
     Flowable,
     Frame,
+    Image,
     NextPageTemplate,
     PageBreak,
     PageTemplate,
@@ -174,9 +176,15 @@ def _styles(fonts: tuple[str, str, str], first: str, opener_font: str | None = N
     toc0 = ParagraphStyle(
         "toc0", fontName=font, fontSize=11.5, leading=20,
     )
+    music_caption = ParagraphStyle(
+        "music_caption", fontName=italic, fontSize=8.5, leading=11,
+        textColor=HexColor("#555555"), alignment=TA_CENTER,
+        spaceBefore=4, spaceAfter=14,
+    )
     return {"src": src, "tgt": tgt, "src_open": src_open, "tgt_open": tgt_open,
             "head": head, "title": title, "sub": sub,
-            "cr": cr, "tochead": toc_head, "toc0": toc0}
+            "cr": cr, "tochead": toc_head, "toc0": toc0,
+            "music_caption": music_caption}
 
 
 def copyright_text(cr: CopyrightSpec, *, title: str, author: str,
@@ -247,6 +255,28 @@ def _esc(text: str) -> str:
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def _music_flowables(image_paths: list[str], caption: str, st, max_width: float) -> list:
+    """Grand-staff page images (see music.py), scaled to fit the text column,
+    each followed by a small attribution caption."""
+    flows: list = []
+    for idx, path in enumerate(image_paths):
+        try:
+            px_w, px_h = ImageReader(path).getSize()
+        except Exception:
+            continue
+        # LilyPond rendered these at 300 dpi.
+        pt_w, pt_h = px_w / 300.0 * 72.0, px_h / 300.0 * 72.0
+        scale = min(1.0, max_width / pt_w) if pt_w else 1.0
+        img = Image(path, width=pt_w * scale, height=pt_h * scale)
+        img.hAlign = "CENTER"
+        flows.append(img)
+        if idx == len(image_paths) - 1 and caption:
+            flows.append(Paragraph(_esc(caption), st["music_caption"]))
+        else:
+            flows.append(Spacer(1, 4))
+    return flows
+
+
 def render(
     chapters: list[Chapter],
     *,
@@ -272,6 +302,7 @@ def render(
     gutter = _gutter_for_page_count(estimated_pages)
     opener_font = fonts.register(decor.opener_font)[0] if decor.opener_font else None
     st = _styles(font, first, opener_font)
+    text_width = trim[0] * inch - gutter - 0.5 * inch  # matches _BookDoc's text_w
 
     # A TOC is only meaningful when there are at least two titled divisions.
     titled = [ch for ch in chapters if ch.title]
@@ -333,6 +364,9 @@ def render(
                 if sep is not None:
                     story.append(sep)
             _render_bead(story, bead, st, first, opener=(i == 0 and opener_font))
+        if ch.music_images:
+            story.append(Spacer(1, 6))
+            story.extend(_music_flowables(ch.music_images, ch.music_caption, st, text_width))
 
     if want_toc:
         doc.multiBuild(story)   # extra passes resolve TOC page numbers

@@ -101,6 +101,9 @@ p.orn-img { text-align: center; margin: 0.4em 0 1em; }
 p.orn-img img { height: 1.3em; width: auto; }
 p.orn-img.sep { margin: 1.2em 0; }
 p.orn-img.sep img { height: 0.9em; }
+p.music-page { text-align: center; margin: 0.6em 0; }
+p.music-page img { width: 100%; height: auto; }
+p.music-caption { text-align: center; font-style: italic; font-size: 0.8em; color: #555555; margin: 0 0 1.4em; }
 """)
     item = epub.EpubItem(uid="style-main", file_name="style.css",
                          media_type="text/css", content="\n".join(css).encode("utf-8"))
@@ -135,6 +138,17 @@ def _chapter_ornament_html(chapter_image_fname: str | None,
 
 def _bead_separator_html(sep_orn_fname: str | None) -> str:
     return f'<p class="orn-img sep"><img src="{sep_orn_fname}" alt=""/></p>' if sep_orn_fname else ""
+
+
+def _music_html(book: epub.EpubBook, image_paths: list[str], caption: str, uid_prefix: str) -> str:
+    """Embed a chapter's rendered grand-staff page images (see music.py)."""
+    parts = []
+    for i, path in enumerate(image_paths):
+        fname = _add_image_item(book, path, f"{uid_prefix}-{i}")
+        parts.append(f'<p class="music-page"><img src="{fname}" alt="Sheet music"/></p>')
+    if caption:
+        parts.append(f'<p class="music-caption">{_esc(caption)}</p>')
+    return "\n".join(parts)
 
 
 def _bead_html(bead, first: str, opener: bool) -> str:
@@ -258,6 +272,8 @@ def render(
                 if i > 0 and sep:
                     parts.append(sep)
                 parts.append(_bead_html(bead, first, opener=(i == 0 and bool(decor.opener_font))))
+            if ch.music_images:
+                parts.append(_music_html(book, ch.music_images, ch.music_caption, f"music-{idx}"))
 
             fname = f"chap_{idx:04d}.xhtml"
             doc = epub.EpubHtml(title=ch.title or f"Chapter {idx}", file_name=fname, lang=tgt_lang)

@@ -88,8 +88,17 @@ books:
     # ebook #55860), which is exactly and only Le Père Goriot (checked against
     # its "LE PÈRE GORIOT." opening heading and "FIN DU NEUVIÈME VOLUME."
     # closing marker).
+    # Both this file and the English side below are trimmed to start right at
+    # the real narrative ("Madame Vauquer..." / "Mme. Vauquer...") — both
+    # editions carry their own title/dedication/translator-credit front
+    # matter, and since neither has internal chapter headings to scope a
+    # range against, leaving that front matter in gave the single-block
+    # aligner unmatched fragments right at the start that it doesn't handle
+    # as clean insertions; it glued them onto neighboring real sentences
+    # instead (rendered as "DE BALZAC. FATHER GORIOT", the dedication's
+    # signature line fused onto a title-page fragment).
     src_path: "input/pere_goriot_fr.txt"
-    tgt_gutenberg_id: 1237     # Ellen Marriage translation, 1896 (public domain)
+    tgt_path: "input/pere_goriot_en.txt"   # trimmed copy of Ellen Marriage's translation, Gutenberg #1237 (public domain)
     mode: prose
     aligner: auto
     # Neither edition has internal chapter headings (Balzac wrote it as one
@@ -113,6 +122,55 @@ books:
     cover:
       paper: white
       blurb: "Balzac's tragedy of paternal devotion and Parisian ambition, with the original French and Ellen Marriage's classic English translation on facing lines."
+    epub: true
+
+  - title: "Eugénie Grandet"
+    author: "Honoré de Balzac"
+    src_lang: fr
+    tgt_lang: en
+    # No standalone Gutenberg id: src is a locally trimmed copy of #11049 with
+    # the title page, byline, and Balzac's "À Maria" dedication cut (see
+    # input/eugenie_grandet_fr.txt) — Wormeley's English translation omits
+    # that front matter entirely, and leaving it in the French source gave
+    # the aligner a run of French-only sentences with nothing to pair
+    # against right at the start, which it doesn't handle as clean
+    # insertions; it just glued them onto neighboring real sentences instead
+    # (visible as "DE BALZAC Il se trouve..." — the dedication's signature
+    # line fused onto the real opening sentence). Trimming both sides down
+    # to the same real content (starting "Il se trouve dans certaines
+    # provinces...") fixes it. Le Père Goriot has this identical defect in
+    # its shipped PDF/EPUB (same single-block path, same front-matter
+    # mismatch) — not fixed here since it's out of this change's scope, but
+    # worth the same trim.
+    src_path: "input/eugenie_grandet_fr.txt"
+    tgt_gutenberg_id: 1715    # Katharine Prescott Wormeley translation (public domain)
+    mode: prose
+    aligner: auto
+    # Wormeley's English translation splits into a short front-matter
+    # division plus 14 numbered chapters (I-XIV); tgt_range excludes the
+    # front matter. src (now pre-trimmed to just the novel) aligns as a
+    # single block against the 14 chapters, same handling as Goriot (run
+    # --outline to re-check after a Gutenberg text update).
+    tgt_range: 2-15
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Katharine Prescott Wormeley — public domain."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: victorian
+      color: "#7a5c1e"          # antique gold, fits the miser's hoarded louis d'or
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Katharine Prescott Wormeley"
+    cover:
+      paper: white
+      blurb: "Balzac's tale of miserliness and thwarted love in provincial Saumur, with the original French and Katharine Prescott Wormeley's classic English translation on facing lines."
     epub: true
 
   - title: "Buch der Lieder"
@@ -160,4 +218,66 @@ books:
     cover:
       paper: white
       blurb: "Heinrich Heine's Book of Songs — the complete German text, with Emma Lazarus's classic English translations facing the poems she rendered."
+    epub: true
+    # "Musical literature": for the 16 poems Schumann set as Dichterliebe,
+    # Op. 48 (matched by first line — see book_creator/music.py), typeset the
+    # piano grand staff (treble + bass) under the poem, sourced from the
+    # OpenScore Lieder Corpus (CC0). Needs LilyPond (lilypond.org/download,
+    # both `lilypond` and `musicxml2ly` on PATH); the build still succeeds
+    # without music, with a warning, if it's not installed.
+    music:
+      enabled: true
+      catalog: dichterliebe
+
+  - title: "Les Fleurs du Mal"
+    author: "Charles Baudelaire"
+    src_lang: fr
+    tgt_lang: en
+    src_gutenberg_id: 6099     # Les Fleurs du Mal, French
+    tgt_gutenberg_id: 36098    # Cyril Scott, "The Flowers of Evil", 1909 (public domain)
+    mode: verse
+    aligner: auto
+    # Unlike Buch der Lieder's single continuous I..CCXXVII numbering, this
+    # edition only numbers multi-part poem cycles (restarting at I each
+    # time) and otherwise gives standalone poems just a title line with no
+    # numeral — so poem_titles is needed to catch those as division
+    # boundaries too (see segment._is_isolated_title; added specifically for
+    # this book). Division 1 is front matter on both sides; division 2 is a
+    # prefatory essay (French) / table of contents (English) with no
+    # counterpart, excluded. 3-125 is 123 French poems; 3-57 is 55 English
+    # poems — Scott translated a selection, not the complete collection, so
+    # this pairs by meaning at the division (poem) level rather than 1:1
+    # position, same as Buch der Lieder (run --outline --mode verse
+    # --poem-titles to re-check after a Gutenberg text update).
+    poem_titles: true
+    src_range: 3-125
+    tgt_range: 3-57
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Cyril Scott, 1909 — public domain. A selection, not the complete collection: 55 of this edition's 123 poems have a surviving Scott translation."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: baroque          # ornate and dark, fits the collection's decadence
+      color: "#4a1942"          # decadent violet-black
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Cyril Scott"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The original French poems by Charles
+        Baudelaire (1821&ndash;1867) are in the public domain. The English
+        translations by Cyril Scott (1909) are in the public domain. Scott
+        translated a selection, not Baudelaire's complete <i>Les Fleurs du
+        Mal</i>: of this edition's 123 poems, 55 have a surviving Scott
+        translation and appear here with facing English text; the rest
+        appear in French only.
+    cover:
+      paper: white
+      blurb: "Charles Baudelaire's landmark collection of French Symbolist poetry — the complete French text, with Cyril Scott's 1909 English verse translations facing the poems he rendered."
     epub: true

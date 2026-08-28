@@ -9,9 +9,16 @@ verse — so the reader can follow both at once.
 
 ```
 Gutenberg original ─┐
-                    ├─ fetch ─ clean ─ segment ─ align (Gale-Church) ─ render → output/<book>.pdf
-Gutenberg translation ┘
+                    ├─ fetch ─ clean ─ segment ─ align (Gale-Church) ─┐
+Gutenberg translation ┘                                              ├─ render → output/<book>.pdf
+                                                                     │                    .epub
+latin repo corpus ──── load (already aligned) ───────────────────────┘                    .m4b
 ```
+
+Two ways in: a **pair of Gutenberg editions**, which have to be fetched and
+statistically aligned, or a **work from the [`latin`](https://github.com/joeyhouser2/latin)
+repo's corpus**, which is already sentence-aligned and skips all of that. Either
+can then be narrated as a bilingual audiobook on your GPU.
 
 ## ⚠️ Read this first: translation copyright
 
@@ -33,28 +40,177 @@ pip install -r requirements.txt
 Then add a Unicode serif font (needed for Greek glyph embedding) — see
 [`fonts/README.md`](fonts/README.md). Cardo is recommended.
 
-## Web UI (search · build · preview)
+## Web UI (search · build · preview · narrate)
 
-A local browser app to search Project Gutenberg, queue a build, and flip through
-the rendered pages.
+A local browser app: pick a source, queue a build, flip through the rendered
+pages, and play the audiobook.
 
 ```bash
 pip install -r requirements-web.txt
 python run_web.py            # then open http://127.0.0.1:5000
 ```
 
-Flow:
-1. **Search** Gutenberg (by title/author, optional language filter) — powered by
+The **Source** panel has two tabs.
+
+**Gutenberg pair** — two separate editions, aligned:
+1. **Search** Gutenberg (title/author, optional language filter) — powered by
    the [Gutendex](https://gutendex.com) catalog API.
 2. Drop one result into **Original** and one into **Translation**.
-3. Set options (mode, aligner, font, decorations, trim), tick the
-   public-domain confirmation, and **Build**.
-4. Watch the live build log, then **page through the rendered PDF** and download it.
+3. Pick a matching division range on each side.
+4. Tick the public-domain confirmation and **Build**.
 
 Tip: the original and translation are usually *separate* Gutenberg entries —
 search once in the source language (e.g. `bello gallico`, lang `la`) and again in
 English. The catalog uses the work's real title, so search `de bello gallico`,
 not `gallic war`, for the Latin edition.
+
+**Latin corpus** — one already-aligned work (see the next section): search,
+pick, scope to sections, and preview the actual Latin/English pairs before
+building. The aligner picker and the translator-copyright confirmation both
+disappear on this tab, because neither applies.
+
+Then set options, optionally enable the **audiobook**, and **Build**. The right
+column shows rendered pages, the cover, and an audio player.
+
+## Latin corpus source (the `latin` repo)
+
+The sibling project [`latin`](https://github.com/joeyhouser2/latin) maintains a
+SQLite corpus of Latin and Greek works — Perseus, the Latin Library, Corpus
+Corporum, DigilibLT, Musa Medievalis, Wikisource, EDCS inscriptions and more —
+where each row is **one source sentence with its English already beside it**:
+
+```
+documents ─→ sections ─→ segments(latin_text, english_text, english_styled)
+```
+
+Because that pipeline translates per segment, segment *i* already corresponds to
+segment *i*. So a book built from it **skips fetch, clean, segment, and align
+entirely** — there is no statistical alignment and therefore no drift to
+proofread around chapter starts, which is the main thing that goes wrong on the
+Gutenberg path.
+
+Browse it from the CLI:
+
+```bash
+python make_book.py --corpus --corpus-search alcuinus --corpus-lang la
+python make_book.py --corpus --corpus-id 79      # sections, counts, licence
+```
+
+Then build. `title`, `author`, and `src_lang` come from the document record, so
+an id is enough:
+
+```bash
+python make_book.py --corpus-id 79 --corpus-range 2-3 --mode verse --font cardo --epub
+```
+
+The database is found via `$LATIN_REPO`, then `../latin`, then
+`~/Documents/GitHub/latin` — or pass `--corpus-db`. It is opened **read-only**;
+this project never writes to your corpus.
+
+| flag / config | meaning |
+|---|---|
+| `--corpus-id` / `corpus.doc_id` | which work to build |
+| `--corpus-range` / `corpus.section_range` | section range, 1-based inclusive |
+| `--no-styled` / `corpus.prefer_styled: false` | use the plain machine translation instead of the Victorian-stylized English |
+| `--keep-sigla` / `corpus.strip_markup: false` | keep the editorial apparatus (see below) |
+| `--corpus-db` / `corpus.db_path` | explicit path to the repo or the `.db` |
+
+### Editorial sigla
+
+Critical and epigraphic editions wrap letters in editorial marks —
+`<A>ltus`, `Imp(erator)`, `[Aug]ustus`. The corpus keeps those for scholarly
+display and stores a stripped copy alongside. A POD parallel text is for
+*reading*, and a narrator cannot say a bracket, so **the stripped form is
+printed by default** (`Altus`, `Imperator`, `Augustus`); the build logs how many
+segments it touched. Pass `--keep-sigla` for a scholarly edition that should
+show its apparatus.
+
+### Copyright, the other way round
+
+The Gutenberg path's hazard is that a *translator* owns their translation. Here
+the English is machine translation this project produced, so no third party
+holds copyright on it — but that has to be **disclosed** rather than passed off
+as a human translation, and the copyright page says so automatically.
+
+What needs checking instead is the **source licence**, which the corpus records
+honestly and which is frequently *not* free — `CC BY-NC-ND (DigilibLT)`,
+`no explicit license published`, `ALIM (SISMEL) via Corpus Corporum`. Every
+licence string is shown in the UI with an `ok` / `check licence` /
+`licence unknown` badge, and the build logs a warning for anything that is not
+clearly permissive. That check is yours to make; the tool will not make it
+for you.
+
+## Audiobooks (bilingual narration on your GPU)
+
+The printed book puts each bead's original next to its translation. The
+audiobook does the same thing in time instead of space:
+
+```
+<original sentence>  (pause)  <English sentence>  (longer pause)  ...
+```
+
+Chapters become real chapter markers in the M4B, so a player shows a chapter
+list and resumes where you left off.
+
+```bash
+pip install -r requirements-audio.txt      # read the warning at the top first
+python make_book.py --audio-engines        # what's installed, and on which GPU
+python make_book.py --corpus-id 79 --mode verse --audio \
+    --audio-voice input/narrator.wav --audio-max-beads 20
+```
+
+> **Install this in its own virtualenv.** `chatterbox-tts` pins
+> torch/transformers/numpy and will replace a working CUDA build of torch with a
+> generic wheel — which breaks the LaBSE aligner here *and* the NLLB models in
+> the `latin` repo. `requirements-audio.txt` has the isolated-venv recipe.
+
+### Engines
+
+Pluggable, registered exactly the way `translators.py` registers translation
+backends, and all loaded lazily — importing the module never pulls in torch.
+
+| engine | licence | languages | VRAM | notes |
+|---|---|---|---|---|
+| **`chatterbox`** (default) | MIT | 23, incl. `it`, `el`, `de`, `fr` | ~7 GB | clones a narrator from a 6–30s clip; **safe to sell** |
+| `kokoro` | Apache-2.0 | 8, no Greek or German | ~1 GB | tiny and many times realtime; fixed voices |
+| `xtts` | **CPML — non-commercial** | 17, incl. German | ~4 GB | best cloning quality; personal listening only, and the build says so |
+
+Add your own with `audio.register("name", MyEngine())`.
+
+### Latin and Greek have no TTS voice
+
+No model anywhere has one. They are read with the nearest living-language voice:
+
+| source | voice | why |
+|---|---|---|
+| Latin (`la`) | Italian (`it`) | ecclesiastical Latin is pronounced Italianate — the standard choral convention |
+| Ancient Greek (`grc`) | Modern Greek (`el`) | the usual modern reading of ancient text |
+
+That is a real convention, not a fudge — but it *is* a convention: classical
+restored pronunciation will not come out of any of these models. The build logs
+the substitution every time.
+
+### Options
+
+| flag | config | meaning |
+|---|---|---|
+| `--audio` | `audio.enabled` | narrate after rendering |
+| `--audio-engine` | `audio.engine` | which backend |
+| `--audio-device` | `audio.device` | CUDA device. **Defaults to the card with the most memory**, not `cuda:0` — CUDA orders devices fastest-first, so `cuda:0` is often the *smaller* card |
+| `--audio-voice` | `audio.voice` | reference WAV (cloning) or voice name; one value reads both languages |
+| `--audio-format` | `audio.format` | `m4b` (chapter markers) or `mp3` |
+| `--audio-max-beads` | `audio.max_beads` | narrate only the first N beads — a voice test before committing hours of GPU time |
+| `--no-announce-chapters` | `audio.announce_chapters` | don't read chapter titles aloud |
+
+Every utterance is cached under `cache/tts/` keyed by engine + language + voice
++ text, so a re-run — or a run resumed after a crash — re-synthesizes only what
+actually changed. Output lands at `output/<slug>.m4b`, with the per-chapter WAVs
+in `output/<slug>-audio/`. If ffmpeg is missing the WAVs are kept and the build
+says so; a TTS failure never loses the finished PDF.
+
+If `CUDA_VISIBLE_DEVICES` is masking cards, the CLI and the UI both say so
+outright — otherwise the biggest model you can run is decided by a stale
+environment variable rather than by your hardware.
 
 ## Librarian agent (natural-language search)
 
@@ -112,6 +268,18 @@ When both ranges resolve to the same number of divisions, they're **anchored
 book-by-book** (each aligned independently — no cross-book drift). In the web UI,
 the range is a pair of dropdowns under each selected edition.
 
+Division detection normally needs a numbered or keyword+number heading
+("CHAPTER IV", a bare "I"/"II"...). That's enough for a poetry collection
+numbered straight through in one run (Heine's *Buch der Lieder*, I..CCXXVII),
+but some collections instead title each standalone poem by name and only
+number *multi-part* poem cycles, restarting at I each time (Baudelaire's *Les
+Fleurs du Mal*). Pass `--poem-titles` (or `poem_titles: true` in the config)
+to also treat an isolated, blank-flanked title line as a division boundary —
+check `--outline --mode verse --poem-titles` first, since it's off by default
+and only worth turning on when the plain numbered-heading outline looks too
+coarse (a few divisions running tens of thousands of characters instead of
+one per poem).
+
 ## Command-line usage
 
 **Single book** straight from two Gutenberg ids:
@@ -138,7 +306,10 @@ Output PDFs land in `output/`.
 | `src_lang` | original language: `la`, `fr`, `grc` (Greek), `de` |
 | `src_gutenberg_id` / `tgt_gutenberg_id` | Gutenberg ebook ids |
 | `src_path` / `tgt_path` | local text files (override the ids) |
+| `corpus` | pull a pre-aligned work from the `latin` repo instead (overrides both; `corpus: 79` is valid shorthand) |
+| `audio` | narrate a bilingual audiobook — see [Audiobooks](#audiobooks-bilingual-narration-on-your-gpu) |
 | `mode` | `prose` (sentence alignment) or `verse` (line alignment) |
+| `poem_titles` | verse only: also split on an isolated poem title with no numeral (see below) |
 | `aligner` | `auto` / `embed` / `gale-church` (see below) |
 | `first` | `src` = original first, `tgt` = translation first |
 | `trim` | KDP trim size in inches, e.g. `[6.0, 9.0]` |
@@ -359,6 +530,8 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 | module | role |
 |--------|------|
 | `fetch.py` | download Gutenberg text, strip the license banner, cache locally |
+| `corpus.py` | read a pre-aligned work out of the `latin` repo's corpus.db (read-only) |
+| `audio.py` | pluggable GPU TTS engines + interleaved bilingual audiobook assembly |
 | `segment.py` | detect chapters; split into sentences (prose) or lines (verse) |
 | `fonts.py` | auto-discover font families in fonts/, register, expose catalog |
 | `align.py` | shared alignment DP + Gale-Church backend |
@@ -372,10 +545,11 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 | `render_epub.py` | reflowable EPUB3: embedded fonts, cover, nav TOC |
 | `cover.py` | KDP wraparound cover with per-language ornamental motifs |
 | `pipeline.py` | orchestrates fetch → segment → align → render → cover → epub |
-| `webapp/` | Flask UI: Gutendex search, background build jobs, PyMuPDF page preview |
+| `webapp/` | Flask UI: Gutendex + corpus search, background build jobs, PyMuPDF page preview, audio player |
 | `ollama_client.py` | thin client for a local Ollama server's tool-calling chat API |
 | `librarian.py` | natural-language book search agent (finds + pairs Gutenberg editions) |
 | `reviewer.py` | post-alignment QA pass (LLM flags likely misalignment/formatting errors) |
+| `music.py` | musical literature: match poems to art-song settings, typeset the grand staff |
 
 ## EPUB
 
@@ -402,6 +576,42 @@ What doesn't carry over: `margin` and `corner_image` are inherently per-page
 (corner/frame art tied to a physical sheet), and EPUB has no fixed page to
 draw them on.
 
+## Musical literature (`music:`)
+
+For verse-mode books, poems that were set to music by a composer can print
+their piano grand staff (treble + bass clef) right under the poem — Heine's
+*Buch der Lieder* is the motivating case: Schumann's *Dichterliebe*, Op. 48
+sets 16 of its poems ("Lyrisches Intermezzo").
+
+```yaml
+music:
+  enabled: true
+  catalog: dichterliebe   # only registry built in so far
+```
+
+or `--music --music-catalog dichterliebe` on the CLI.
+
+How it works:
+- **Matching** is by the poem's first line (its "incipit"), since verse
+  divisions are numbered, not individually titled. A few of Heine's opening
+  lines repeat verbatim across different poems, so ambiguous entries also
+  check the second line (see `music.SongSetting.second_line`).
+- **Source**: the [OpenScore Lieder Corpus](https://github.com/OpenScore/Lieder),
+  CC0-licensed MusicXML — same public-domain bar the text sides are already
+  held to. Scores are fetched once and cached under `cache/music/`.
+- **Rendering** needs [LilyPond](https://lilypond.org/download.html) — both
+  `lilypond` and `musicxml2ly` on PATH. It is **not bundled**; if it's
+  missing, matched poems are logged and skipped, and the build still
+  succeeds without music.
+- Only the piano part (2 staves: treble + bass) is typeset, not the vocal
+  line — the poem text is already printed alongside it.
+
+Currently only `dichterliebe` is registered. Adding another composer/work
+means adding entries to `music._REGISTRIES` the same way (see the module's
+docstring) — the OpenScore corpus also has Schumann's *Liederkreis*, Op. 24
+and Schubert's *Schwanengesang* (6 of its songs set Heine), both Heine
+sources, as natural next additions.
+
 ## KDP notes
 
 - Default output is **6×9″** with mirrored inside (gutter) margins that scale
@@ -414,7 +624,10 @@ draw them on.
 
 ## Roadmap ideas
 
-- Cover generator
-- EPUB output for Kindle
+- Per-speaker voices for dialogue in the audiobook
+- Forced alignment between the narration and the EPUB, for read-along (Media Overlays)
+- Corpus browsing by author/century/genre facets, not just a title substring
 - Drop caps at chapter openings
 - Footnote/glossary support
+- More musical-literature catalogs (Schumann's Liederkreis Op. 24, Schubert's
+  Schwanengesang) and a web-UI toggle for `music:` (currently config/CLI only)

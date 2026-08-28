@@ -7,7 +7,8 @@ from pathlib import Path
 import yaml
 
 from . import restylers, translators
-from .model import BookSpec, CopyrightSpec, CoverSpec, DecorSpec, FontSpec
+from .model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec, CoverSpec,
+                    DecorSpec, FontSpec, MusicSpec)
 
 
 def _parse_cover(raw) -> CoverSpec:
@@ -78,6 +79,53 @@ def _parse_decor(raw) -> DecorSpec:
     )
 
 
+def _parse_music(raw) -> MusicSpec:
+    if raw is None or raw is False:
+        return MusicSpec(enabled=False)
+    if raw is True:
+        return MusicSpec(enabled=True)
+    return MusicSpec(
+        enabled=bool(raw.get("enabled", True)),
+        catalog=raw.get("catalog", "dichterliebe"),
+    )
+
+
+def _parse_corpus(raw) -> CorpusSpec:
+    """`corpus:` block, or the shorthand `corpus: 376` (just a document id)."""
+    if raw is None or raw is False:
+        return CorpusSpec()
+    if isinstance(raw, int):
+        return CorpusSpec(doc_id=raw)
+    return CorpusSpec(
+        doc_id=raw.get("doc_id") or raw.get("id"),
+        db_path=raw.get("db_path") or raw.get("db"),
+        section_range=_parse_range(raw.get("section_range") or raw.get("range")),
+        prefer_styled=bool(raw.get("prefer_styled", True)),
+        skip_untranslated=bool(raw.get("skip_untranslated", True)),
+        strip_markup=bool(raw.get("strip_markup", True)),
+    )
+
+
+def _parse_audio(raw) -> AudioSpec:
+    if raw is None or raw is False:
+        return AudioSpec(enabled=False)
+    if raw is True:
+        return AudioSpec(enabled=True)
+    return AudioSpec(
+        enabled=bool(raw.get("enabled", True)),
+        engine=raw.get("engine", "chatterbox"),
+        device=raw.get("device", "cuda:0"),
+        src_voice=raw.get("src_voice") or raw.get("voice"),
+        tgt_voice=raw.get("tgt_voice") or raw.get("voice"),
+        pause_within=float(raw.get("pause_within", 0.45)),
+        pause_bead=float(raw.get("pause_bead", 0.9)),
+        pause_chapter=float(raw.get("pause_chapter", 1.5)),
+        announce_chapters=bool(raw.get("announce_chapters", True)),
+        format=raw.get("format", "m4b"),
+        max_beads=raw.get("max_beads"),
+    )
+
+
 def load_specs(path: str) -> list[BookSpec]:
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if isinstance(data, dict):
@@ -96,16 +144,21 @@ def load_specs(path: str) -> list[BookSpec]:
     specs = []
     for raw in data:
         trim = raw.get("trim", [6.0, 9.0])
+        corpus = _parse_corpus(raw.get("corpus"))
+        # A corpus entry carries its own title and language, so those fields
+        # are optional there and get filled in from the document at build time.
         specs.append(BookSpec(
-            title=raw["title"],
+            title=raw["title"] if not corpus.doc_id else raw.get("title", ""),
             author=raw.get("author", "Unknown"),
-            src_lang=raw["src_lang"],
+            src_lang=raw["src_lang"] if not corpus.doc_id else raw.get("src_lang", ""),
             tgt_lang=raw.get("tgt_lang", "en"),
+            corpus=corpus,
             src_gutenberg_id=raw.get("src_gutenberg_id"),
             tgt_gutenberg_id=raw.get("tgt_gutenberg_id"),
             src_path=raw.get("src_path"),
             tgt_path=raw.get("tgt_path"),
             mode=raw.get("mode", "prose"),
+            poem_titles=bool(raw.get("poem_titles", False)),
             aligner=raw.get("aligner", "auto"),
             clean=bool(raw.get("clean", True)),
             restyle=bool(raw.get("restyle", True)),
@@ -126,5 +179,7 @@ def load_specs(path: str) -> list[BookSpec]:
             review_model=raw.get("review_model", "llama3.1"),
             review_host=raw.get("review_host", "http://localhost:11434"),
             review_sample=raw.get("review_sample"),
+            music=_parse_music(raw.get("music")),
+            audio=_parse_audio(raw.get("audio")),
         ))
     return specs

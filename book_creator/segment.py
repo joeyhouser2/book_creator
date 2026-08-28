@@ -54,6 +54,33 @@ def _is_heading(line: str) -> bool:
     # rules out most incidental prose mentions.
     return bool(_HEADING_KW_RE.search(s)) and len(s.split()) <= 20
 
+
+def _is_isolated_title(line: str, prev_gap: int, next_gap: int) -> bool:
+    """Verse-mode extra heuristic: a standalone poem's title, printed on its
+    own line with no numeral. Buch der Lieder's poems are already caught by
+    the bare-numeral heading above, because that collection numbers every
+    poem in one continuous I..CCXXVII run. Other collections (e.g. Les Fleurs
+    du Mal) only number *multi-part* poem cycles that way, restarting at I
+    each time, and otherwise give each standalone poem just a short title
+    line — no numeral at all — so the numeral-only check above misses most of
+    them and lets a handful of poems collapse into one undivided blob.
+
+    A single flanking blank line is NOT a safe signal by itself — some
+    Gutenberg editions (Heine's included) double-space every verse line, so
+    "blank on both sides" would match nearly every line in the poem. The
+    actual signal is a *bigger* gap: within a poem, lines within a stanza sit
+    one blank line apart at most, while a real break (between stanzas, or
+    around a title) runs two or more blank lines. Requiring 2+ on both sides
+    catches titles without firing on ordinary verse. A trailing comma or
+    semicolon is excluded too — a title doesn't trail off mid-clause.
+    """
+    s = line.strip()
+    if not s or len(s) > 60 or len(s.split()) > 6:
+        return False
+    if s[-1] in ",;":
+        return False
+    return prev_gap >= 2 and next_gap >= 2
+
 # Sentence terminators by language. Greek uses ';' as its question mark and
 # '·' (ano teleia) as a colon (NOT a sentence end).
 _TERMINATORS = {
@@ -69,25 +96,46 @@ _ABBREV = {
 }
 
 
-def detect_chapters(text: str) -> list[tuple[str, str]]:
+def detect_chapters(text: str, mode: str = "prose", poem_titles: bool = False) -> list[tuple[str, str]]:
     """Split text on chapter headings. Returns [(title, body), ...].
 
     If no headings are found, returns a single ("", whole_text) chapter.
+    `poem_titles` (verse mode only) also splits on an isolated untitled-poem
+    title line (see _is_isolated_title) — opt-in, since it helps collections
+    that title standalone poems by name (Les Fleurs du Mal) but adds nothing
+    for ones already numbered continuously (Buch der Lieder) besides risk.
     """
     lines = text.splitlines()
+
+    def blank_run(start: int, step: int) -> int:
+        """Count consecutive blank lines starting at `start`, walking by `step`."""
+        n = 0
+        i = start
+        while 0 <= i < len(lines) and not lines[i].strip():
+            n += 1
+            i += step
+        return n
+
     chapters: list[tuple[str, list[str]]] = []
     current_title = ""
     current_body: list[str] = []
 
-    for line in lines:
-        if _is_heading(line):
-            if current_body:
+    for i, line in enumerate(lines):
+        is_head = _is_heading(line)
+        if not is_head and mode == "verse" and poem_titles:
+            is_head = _is_isolated_title(line, blank_run(i - 1, -1), blank_run(i + 1, 1))
+        if is_head:
+            # Only flush/start a new division if there's real content since the
+            # last one — otherwise a numeral heading immediately followed by
+            # its own title line (e.g. "I" then "LES TÉNÈBRES") would spawn a
+            # spurious empty division between them.
+            if any(b.strip() for b in current_body):
                 chapters.append((current_title, current_body))
             current_title = line.strip()
             current_body = []
         else:
             current_body.append(line)
-    if current_body:
+    if any(b.strip() for b in current_body):
         chapters.append((current_title, current_body))
 
     if not chapters:
@@ -95,13 +143,13 @@ def detect_chapters(text: str) -> list[tuple[str, str]]:
     return [(title, "\n".join(body).strip()) for title, body in chapters]
 
 
-def outline(text: str) -> list[dict]:
+def outline(text: str, mode: str = "prose", poem_titles: bool = False) -> list[dict]:
     """Structural divisions of a text, for UI display and range selection.
 
     Returns [{index, title, chars}], index 1-based. Index 1 is usually the
     front matter (text before the first heading).
     """
-    divs = detect_chapters(text)
+    divs = detect_chapters(text, mode=mode, poem_titles=poem_titles)
     return [
         {"index": i + 1, "title": title or "(front matter / untitled)", "chars": len(body)}
         for i, (title, body) in enumerate(divs)
