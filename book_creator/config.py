@@ -167,6 +167,7 @@ def load_specs(path: str) -> list[BookSpec]:
             tgt_range=_parse_range(raw.get("tgt_range")),
             trim=(float(trim[0]), float(trim[1])),
             first=raw.get("first", "src"),
+            sides=raw.get("sides", "both"),
             translation_pd_confirmed=bool(raw.get("translation_pd_confirmed", False)),
             translation_source_note=raw.get("translation_source_note", ""),
             slug=raw.get("slug"),

@@ -143,8 +143,10 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   color: var(--muted); margin: 14px 0 6px; }
 
 .inline-check { display: flex; align-items: center; gap: 7px; font-size: 12px;
-  color: var(--muted); margin-top: 8px; }
+  color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
 .inline-check input { width: auto; }
+.hint { color: var(--accent-dk); }
+.hint:empty { display: none; }
 
 /* ---- corpus panel ---- */
 .corpus-status { font-size: 12px; margin: 0 0 10px; }

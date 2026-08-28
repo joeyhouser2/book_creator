@@ -73,7 +73,8 @@
           <button id="cSearchBtn">Search</button>
         </div>
         <label class="inline-check"><input id="cTranslated" type="checkbox" checked>
-          only works that already have English</label>
+          only works that already have English
+          <span id="cTranslatedHint" class="hint"></span></label>
         <div id="cResults" class="results"></div>
 
         <div class="slot corpus-pick" id="corpusPick">
@@ -85,6 +86,14 @@
 
       <h2>2 · Options</h2>
       <div class="opts">
+        <label class="wide">Edition
+          <select id="sides">
+            <option value="both">dual-language — original and translation together</option>
+            <option value="src">original only — monolingual, no translation</option>
+            <option value="tgt">translation only — monolingual English</option>
+          </select>
+          <small id="sidesNote" class="muted"></small>
+        </label>
         <label>Title <input id="title" type="text"></label>
         <label>Author <input id="author" type="text"></label>
         <label>Original language
@@ -109,7 +118,7 @@
             <option value="gale-church">gale-church</option>
           </select>
         </label>
-        <label>First line
+        <label class="dual-only">First line
           <select id="first">
             <option value="src">original first</option>
             <option value="tgt">translation first</option>

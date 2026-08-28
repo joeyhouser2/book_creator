@@ -14,7 +14,7 @@ import yaml
 from book_creator import audio, corpus, fetch, fonts, segment
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec)
-from book_creator.pipeline import build_book
+from book_creator.pipeline import apply_sides, build_book
 
 from . import gutendex, preview
 
@@ -129,18 +129,23 @@ def api_audio_estimate():
         return jsonify({"estimate": None,
                         "note": "Available for corpus sources; a Gutenberg pair "
                                 "has to be aligned first."})
+    sides = p.get("sides", "both")
     try:
         load = corpus.load_chapters(
             int(p["corpus_id"]),
             section_range=_range(p.get("corpus_range")),
             prefer_styled=bool(p.get("prefer_styled", True)),
+            skip_untranslated=sides != "src",
             strip_markup=bool(p.get("strip_markup", True)))
     except corpus.CorpusError as exc:
         return jsonify({"error": str(exc)}), 404
+    # A monolingual book is a monolingual audiobook — roughly half the runtime,
+    # which is the main thing the estimate is for.
+    chapters = apply_sides(load.chapters, sides, lambda _m: None)
     spec = _audio_from(p.get("audio"))
     spec.first = p.get("first", "src")
     return jsonify({"estimate": audio.estimate(
-        load.chapters, spec=spec, src_lang=load.doc.language,
+        chapters, spec=spec, src_lang=load.doc.language,
         tgt_lang=p.get("tgt_lang", "en"))})
 
 
@@ -232,6 +237,7 @@ def _spec_from_payload(p: dict) -> BookSpec:
         src_range=_range(p.get("src_range")),
         tgt_range=_range(p.get("tgt_range")),
         first=p.get("first", "src"),
+        sides=p.get("sides", "both"),
         trim=(float(trim[0]), float(trim[1])),
         translation_pd_confirmed=bool(p.get("translation_pd_confirmed", False)),
         toc=bool(p.get("toc", True)),
@@ -417,6 +423,8 @@ def _payload_to_yaml(p: dict) -> dict:
     if p.get("tgt_range"):
         book["tgt_range"] = list(p["tgt_range"])
     book["first"] = p.get("first", "src")
+    if p.get("sides", "both") != "both":
+        book["sides"] = p["sides"]
     book["trim"] = [float(x) for x in p.get("trim", [6.0, 9.0])]
     book["translation_pd_confirmed"] = bool(p.get("translation_pd_confirmed", False))
     book["font"] = p.get("font", "Cardo")

@@ -43,14 +43,49 @@ function selectTab(name) {
     t.classList.toggle("active", t.dataset.tab === name);
   for (const p of document.querySelectorAll(".tabpane"))
     p.classList.toggle("active", p.id === `pane-${name}`);
-  // The corpus is already sentence-aligned and its English is our own machine
-  // translation, so neither the aligner picker nor the translator-copyright
-  // confirmation applies to it.
-  const isCorpus = name === "corpus";
+  // The corpus is already sentence-aligned, so the aligner picker is moot there.
   for (const el of document.querySelectorAll(".gutenberg-only"))
-    el.style.display = isCorpus ? "none" : "";
-  $("pdConfirmRow").style.display = isCorpus ? "none" : "";
-  $("pdBanner").style.display = isCorpus ? "none" : "";
+    el.style.display = name === "corpus" ? "none" : "";
+  updateSides();
+}
+
+// --------------------------------------------------------------------------- //
+// Edition — dual-language, or one language on its own
+// --------------------------------------------------------------------------- //
+const SIDES_NOTE = {
+  both: "",
+  src: "Prints and narrates the original alone. Nothing of the translation " +
+       "is published, so a translation's copyright stops mattering.",
+  tgt: "Prints and narrates the English alone — a standalone readable edition.",
+};
+
+function updateSides() {
+  const sides = $("sides").value;
+  // "which language comes first" means nothing once a bead has one side.
+  for (const el of document.querySelectorAll(".dual-only"))
+    el.style.display = sides === "both" ? "" : "none";
+
+  // The public-domain confirmation guards *publishing someone's translation*.
+  // It is irrelevant on the corpus tab (that English is our own machine
+  // translation) and irrelevant for an original-only edition, which publishes
+  // no translation at all.
+  const needsPd = state.source === "gutenberg" && sides !== "src";
+  $("pdConfirmRow").style.display = needsPd ? "" : "none";
+  $("pdBanner").style.display = needsPd ? "" : "none";
+
+  $("sidesNote").textContent = SIDES_NOTE[sides];
+  if (state.corpus) renderCorpusHint();
+  updateEngineNote();
+}
+
+// On the corpus tab, an original-only edition unlocks the works that have no
+// English at all — so say so where the filter lives.
+function renderCorpusHint() {
+  const hint = $("cTranslatedHint");
+  if (!hint) return;
+  hint.textContent = $("sides").value === "src"
+    ? "— untick this to reach untranslated works; an original-only edition can print them"
+    : "";
 }
 
 // --------------------------------------------------------------------------- //
@@ -391,10 +426,13 @@ function updateEngineNote() {
   const bits = [`${e.licence}${e.clones_voice ? " · clones a voice" : " · fixed voices"}`];
   if (!e.installed) bits.push(`not installed — ${e.reason}`);
   // Latin and Ancient Greek are read with the nearest living voice; warn when
-  // the chosen engine does not even have that.
-  const need = { la: "it", grc: "el" }[$("srcLang").value] || $("srcLang").value;
-  if (e.languages.length && !e.languages.includes(need))
-    bits.push(`⚠ no '${need}' voice — the original would have nothing to read it`);
+  // the chosen engine does not even have that. Only relevant if the original
+  // is actually narrated — a translation-only edition never reads it.
+  if ($("sides").value !== "tgt") {
+    const need = { la: "it", grc: "el" }[$("srcLang").value] || $("srcLang").value;
+    if (e.languages.length && !e.languages.includes(need))
+      bits.push(`⚠ no '${need}' voice — the original would have nothing to read it`);
+  }
   note.textContent = bits.join(" · ");
 }
 
@@ -437,6 +475,7 @@ function buildPayload() {
     mode: $("mode").value,
     aligner: $("aligner").value,
     first: $("first").value,
+    sides: $("sides").value,
     font: $("font").value,
     trim: [parseFloat($("trimW").value), parseFloat($("trimH").value)],
     toc: $("tocSel").value === "yes",
@@ -468,6 +507,13 @@ function buildPayload() {
     // translator holds copyright on it — the source licence is the thing to
     // watch, and that is surfaced on the document itself.
     p.translation_pd_confirmed = true;
+  } else if ($("sides").value === "src") {
+    p.src_id = state.src && state.src.id;
+    p.tgt_id = state.tgt && state.tgt.id;
+    p.src_range = getRange("src");
+    p.tgt_range = getRange("tgt");
+    // No translation is published in an original-only edition.
+    p.translation_pd_confirmed = true;
   } else {
     p.src_id = state.src && state.src.id;
     p.tgt_id = state.tgt && state.tgt.id;
@@ -485,7 +531,9 @@ function validate() {
   }
   if (!state.src) return "Pick an Original edition.";
   if (!state.tgt) return "Pick a Translation edition.";
-  if (!$("pd").checked)
+  // An original-only edition publishes no translation, so there is nothing to
+  // confirm the public-domain status of.
+  if ($("sides").value !== "src" && !$("pd").checked)
     return "Confirm the translation is public domain before building.";
   return null;
 }
@@ -630,6 +678,7 @@ $("cancelBtn").onclick = cancelBuild;
 $("coverToggle").onclick = toggleCover;
 $("auEstimateBtn").onclick = estimateAudio;
 $("auEngine").addEventListener("change", updateEngineNote);
+$("sides").addEventListener("change", updateSides);
 $("font").addEventListener("change", updateFontNote);
 $("srcLang").addEventListener("change", () => { updateFontNote(); updateEngineNote(); });
 $("prev").onclick = () => showPage(state.page - 1);

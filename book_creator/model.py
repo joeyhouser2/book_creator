@@ -255,6 +255,16 @@ class BookSpec:
     # Which side prints first in each bead: "src" (original first) or "tgt".
     first: str = "src"
 
+    # Which sides to include at all:
+    #   "both" — the parallel text (default)
+    #   "src"  — a monolingual edition of the ORIGINAL, translation dropped
+    #   "tgt"  — a monolingual edition of the TRANSLATION, original dropped
+    # Alignment still runs for "src"/"tgt" on the Gutenberg path, because the
+    # bead structure is what carries chapter anchoring — only the printing (and
+    # narration) of the unwanted side is dropped. `first` stops mattering once
+    # a bead has one side. See pipeline._apply_sides.
+    sides: str = "both"
+
     # Include a table of contents (only rendered when there are 2+ titled
     # divisions to list).
     toc: bool = True

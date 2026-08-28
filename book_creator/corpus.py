@@ -407,28 +407,32 @@ def load_chapters(doc_id: int, *, section_range: tuple[int, int] | None = None,
             load.beads += len(beads)
 
         if not load.chapters:
-            raise CorpusError(
-                f"Document {doc_id} ({doc.title}) has no translated segments in "
-                "the selected range.")
+            why = ("has no translated segments in the selected range — build it "
+                   "as an original-only edition (sides: src) to print it without "
+                   "English" if skip_untranslated else
+                   "has no segments in the selected range")
+            raise CorpusError(f"Document {doc_id} ({doc.title}) {why}.")
         return load
     finally:
         if own:
             conn.close()
 
 
-def source_note(doc: CorpusDoc) -> str:
+def source_note(doc: CorpusDoc, *, translated: bool = True) -> str:
     """Provenance line for the copyright page.
 
     Corpus English is machine translation produced by the latin repo's own
     NLLB fine-tunes, so no third-party translator holds copyright on it -- but
     that has to be *disclosed*, not quietly passed off as a human translation,
-    so say so plainly.
+    so say so plainly. Pass translated=False for an original-only edition,
+    where there is no English in the book to disclose anything about.
     """
     bits = []
     if doc.source:
         bits.append(f"Original text: {doc.source}.")
     if doc.license:
         bits.append(f"Source licence: {doc.license}.")
-    bits.append("The English rendering is machine translation, not a previously "
-                "published human translation.")
+    if translated:
+        bits.append("The English rendering is machine translation, not a "
+                    "previously published human translation.")
     return " ".join(bits)

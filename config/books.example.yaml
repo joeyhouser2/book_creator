@@ -90,6 +90,11 @@ books:
     mode: verse
     font: Cardo
     epub: true
+    # sides: both | src | tgt. Default `both` is the parallel text; `src` prints
+    # a monolingual edition of the original (and needs no public-domain
+    # confirmation, since no translation is published — it also unlocks the
+    # corpus's untranslated works); `tgt` prints the English alone.
+    # sides: src
     # Narrate an interleaved bilingual audiobook on the GPU. Each bead is read
     # original-then-translation, mirroring the printed parallel text. Needs
     # requirements-audio.txt — see the warning at the top of that file about

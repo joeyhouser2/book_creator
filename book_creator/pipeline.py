@@ -84,6 +84,52 @@ def _fuzzy_match_divisions(
     return paired
 
 
+def apply_sides(chapters: list[Chapter], sides: str, log) -> list[Chapter]:
+    """Drop one side of every bead for a monolingual edition.
+
+    Runs *after* alignment rather than instead of it: on the Gutenberg path the
+    bead structure is what carries chapter anchoring and sentence order, so the
+    cheapest correct way to print one language is to align as usual and then
+    stop printing the other side. Both renderers already skip an empty side
+    (an unmatched division produces exactly this shape), so nothing downstream
+    needs to know.
+
+    Beads left with nothing at all are dropped, which is the case that matters
+    for `sides="tgt"`: a source sentence the translator omitted has no English
+    to show, and printing a blank for it would be worse than leaving it out.
+    """
+    if sides not in ("src", "tgt"):
+        return chapters
+
+    keep_src = sides == "src"
+    dropped = 0
+    emptied = 0
+    for ch in chapters:
+        beads = []
+        for bead in ch.beads:
+            if keep_src:
+                bead.tgt = []
+            else:
+                bead.src = []
+            if bead.src or bead.tgt:
+                beads.append(bead)
+            else:
+                emptied += 1
+        dropped += len(ch.beads) - len(beads)
+        ch.beads = beads
+        if keep_src:
+            ch.tgt_segments = []
+        else:
+            ch.src_segments = []
+
+    chapters = [ch for ch in chapters if ch.beads]
+    side_name = "original" if keep_src else "translation"
+    log(f"• Monolingual edition: printing the {side_name} only"
+        + (f"; {emptied} bead(s) had nothing on that side and were dropped"
+           if emptied else "") + ".")
+    return chapters
+
+
 def _chapters_from_corpus(spec: BookSpec, log) -> list[Chapter]:
     """Load a pre-aligned work from the latin repo's corpus.
 
@@ -95,9 +141,13 @@ def _chapters_from_corpus(spec: BookSpec, log) -> list[Chapter]:
     """
     c = spec.corpus
     log(f"• Loading corpus document #{c.doc_id}…")
+    # An original-only edition has no use for the English, so segments that
+    # were never translated are perfectly printable — which is what makes the
+    # corpus's ~13k untranslated works reachable at all.
+    skip_untranslated = c.skip_untranslated and spec.sides != "src"
     load = corpus.load_chapters(
         c.doc_id, section_range=c.section_range, prefer_styled=c.prefer_styled,
-        skip_untranslated=c.skip_untranslated, strip_markup=c.strip_markup,
+        skip_untranslated=skip_untranslated, strip_markup=c.strip_markup,
         db_path=c.db_path)
     doc = load.doc
 
@@ -108,14 +158,17 @@ def _chapters_from_corpus(spec: BookSpec, log) -> list[Chapter]:
     if not spec.src_lang:
         spec.src_lang = doc.language
     if not spec.translation_source_note:
-        spec.translation_source_note = corpus.source_note(doc)
+        # An original-only edition prints no English, so the machine-translation
+        # disclosure would be describing something that isn't in the book.
+        spec.translation_source_note = corpus.source_note(
+            doc, translated=spec.sides != "src")
 
     log(f"• {doc.title} — {doc.author} ({doc.language}, {doc.language_stage})")
     log(f"• {load.beads} bead(s) across {len(load.chapters)} section(s)"
         + (f"; {load.styled_used} used the stylized English" if load.styled_used else "")
         + (f"; {load.demarked} had editorial sigla stripped" if load.demarked else "")
         + (f"; {load.untranslated} untranslated segment(s) "
-           f"{'dropped' if c.skip_untranslated else 'kept source-only'}"
+           f"{'dropped' if skip_untranslated else 'kept source-only'}"
            if load.untranslated else "") + ".")
 
     # The English side is this project's own machine translation, so no third
@@ -236,6 +289,11 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
                 "before publishing."
             )
         chapters = _chapters_from_editions(spec, log)
+
+    chapters = apply_sides(chapters, spec.sides, log)
+    if not chapters:
+        raise ValueError(
+            f"Nothing left to print: sides='{spec.sides}' removed every bead.")
 
     slug = spec.slug or _slugify(spec.title)
 

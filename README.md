@@ -69,8 +69,52 @@ pick, scope to sections, and preview the actual Latin/English pairs before
 building. The aligner picker and the translator-copyright confirmation both
 disappear on this tab, because neither applies.
 
-Then set options, optionally enable the **audiobook**, and **Build**. The right
-column shows rendered pages, the cover, and an audio player.
+Then set options and **Build**. The right column shows rendered pages, the
+cover, and an audio player.
+
+Two things are opt-in and off by default, so a plain dual-language PDF needs
+neither: the **Edition** picker at the top of Options (dual-language, or one
+language alone — see [Monolingual editions](#monolingual-editions)), and the
+collapsed **Audiobook** panel, which loads no model and synthesizes nothing
+unless you tick it.
+
+## Monolingual editions
+
+The parallel text is the point of this tool, but not every book wants both
+languages. `sides` drops one:
+
+| `sides` | result |
+|---|---|
+| `both` (default) | the dual-language parallel text |
+| `src` | a monolingual edition of the **original** — no translation printed |
+| `tgt` | a monolingual edition of the **translation** — a standalone readable English book |
+
+```bash
+python make_book.py --corpus-id 79 --sides src --mode verse --font cardo
+```
+
+In the web UI it's the **Edition** picker at the top of Options. Choosing a
+monolingual edition hides the controls that stop meaning anything — "which line
+comes first" is moot once a bead has one side.
+
+It applies to the audiobook too: an original-only book narrates only the
+original, which is also roughly half the GPU time.
+
+Three things worth knowing:
+
+- **Alignment still runs** on the Gutenberg path for `src`/`tgt`. That is
+  deliberate — the bead structure is what carries chapter anchoring and sentence
+  order, so the correct way to print one language is to align as usual and then
+  stop printing the other side. Both renderers already skip an empty side, so
+  nothing downstream needed changing.
+- **`sides: src` needs no public-domain confirmation.** Nothing of the
+  translation is published, so the translator's copyright stops applying, and
+  the UI drops the checkbox. `sides: tgt` still asks, because that edition *is*
+  the translation.
+- **`sides: src` unlocks untranslated corpus works.** Roughly 13k of the corpus
+  has no English at all; those are unbuildable as a parallel text but perfectly
+  printable on their own, so an original-only build keeps segments that the
+  dual-language path would drop.
 
 ## Latin corpus source (the `latin` repo)
 
@@ -309,6 +353,7 @@ Output PDFs land in `output/`.
 | `corpus` | pull a pre-aligned work from the `latin` repo instead (overrides both; `corpus: 79` is valid shorthand) |
 | `audio` | narrate a bilingual audiobook — see [Audiobooks](#audiobooks-bilingual-narration-on-your-gpu) |
 | `mode` | `prose` (sentence alignment) or `verse` (line alignment) |
+| `sides` | `both` (parallel text, default), `src` (original only), `tgt` (translation only) — see [Monolingual editions](#monolingual-editions) |
 | `poem_titles` | verse only: also split on an isolated poem title with no numeral (see below) |
 | `aligner` | `auto` / `embed` / `gale-church` (see below) |
 | `first` | `src` = original first, `tgt` = translation first |

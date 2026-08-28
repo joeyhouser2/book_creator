@@ -111,6 +111,11 @@ def main(argv: list[str] | None = None) -> int:
                         "translator); 'auto' picks the best available.")
     p.add_argument("--first", choices=["src", "tgt"], default="src",
                    help="Which language prints first in each pair.")
+    p.add_argument("--sides", choices=["both", "src", "tgt"], default="both",
+                   help="Which languages to include. 'both' (default) is the "
+                        "parallel text; 'src' prints a monolingual edition of "
+                        "the original; 'tgt' prints the translation alone. A "
+                        "monolingual audiobook follows the same setting.")
     p.add_argument("--src-range", help="Division range to include from the original, "
                    "e.g. 2-5 (1-based, inclusive). See --outline.")
     p.add_argument("--tgt-range", help="Division range to include from the translation.")
@@ -282,7 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             ),
             src_gutenberg_id=args.src_id, tgt_gutenberg_id=args.tgt_id,
             src_path=args.src_path, tgt_path=args.tgt_path,
-            mode=args.mode, poem_titles=args.poem_titles, aligner=args.aligner, first=args.first,
+            mode=args.mode, poem_titles=args.poem_titles, aligner=args.aligner,
+            first=args.first, sides=args.sides,
             toc=not args.no_toc, clean=not args.no_clean, restyle=not args.no_restyle,
             src_range=_parse_range(args.src_range),
             tgt_range=_parse_range(args.tgt_range),
