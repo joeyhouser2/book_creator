@@ -171,33 +171,92 @@
           <select id="font"><option value="Cardo">Cardo</option></select>
           <small id="fontNote" class="muted"></small>
         </label>
-        <label>Margin art
-          <select id="margin">
-            <option value="none">none</option>
-            <option value="rule">rule</option>
-            <option value="corners">corners</option>
-            <option value="frame">frame</option>
-          </select>
-        </label>
-        <label>Chapter ornament
-          <select id="chapter">
-            <option value="fleuron">fleuron</option>
-            <option value="rule">rule</option>
-            <option value="classical">classical</option>
-            <option value="medieval">medieval</option>
-            <option value="victorian">victorian</option>
-            <option value="random">random</option>
-            <option value="none">none</option>
-          </select>
-        </label>
         <label class="trim">Trim (in)
           <span><input id="trimW" type="number" step="0.1" value="6"> ×
           <input id="trimH" type="number" step="0.1" value="9"></span>
         </label>
       </div>
 
+      <details class="publishing" id="decorSection">
+        <summary>3 · Decorations — margins, ornaments, colour</summary>
+        <p class="muted small">All vector, no assets needed. Everything except
+          per-page margin art also carries into the EPUB.</p>
+
+        <div class="opts">
+          <label>Margin art
+            <select id="margin">
+              <option value="none">none</option>
+              <option value="rule">rule</option>
+              <option value="corners">corners</option>
+              <option value="frame">frame</option>
+            </select>
+            <small class="muted">Per page, gutter-aware — the outer edge
+              differs on left and right pages.</small>
+          </label>
+          <label>Chapter ornament
+            <select id="chapter">
+              <option value="none">none</option>
+              <option value="rule">rule</option>
+              <option value="fleuron">fleuron — diamond and end-curls</option>
+              <option value="medieval">medieval — ivy vine and berries</option>
+              <option value="victorian">victorian — rosette and acanthus</option>
+              <option value="classical">classical — laurel and sunburst</option>
+              <option value="baroque">baroque — shell and rocaille</option>
+              <option value="nouveau">nouveau — whiplash tendrils</option>
+              <option value="rococo">rococo — asymmetric spray</option>
+              <option value="artdeco">artdeco — stepped fan, chevrons</option>
+              <option value="random">random — a different one per chapter</option>
+            </select>
+          </label>
+          <label>Between beads
+            <select id="beadSep">
+              <option value="none">none</option>
+              <option value="fleuron">fleuron</option>
+            </select>
+          </label>
+          <label>Ornament ink
+            <span class="rngpair">
+              <input id="decorColorPick" type="color" value="#8a7a5c">
+              <input id="decorColor" type="text" value="#8a7a5c">
+            </span>
+          </label>
+          <label>Opening-line font
+            <select id="openerFont"></select>
+            <small class="muted">Display face for each chapter's first bead.</small>
+          </label>
+          <label>Custom corner art
+            <input id="cornerImage" type="text" placeholder="art/corner.png">
+            <small class="muted">Mirrored into all four corners; overrides
+              the vector margin style.</small>
+          </label>
+          <label class="wide">Custom chapter art
+            <input id="chapterImage" type="text" placeholder="art/divider.png">
+            <small class="muted">Centred under chapter titles; overrides the
+              vector ornament.</small>
+          </label>
+        </div>
+
+        <h3>Preview</h3>
+        <div class="decor-preview">
+          <div class="decor-page">
+            <div class="decor-label">Margin — recto</div>
+            <img id="marginRecto" alt="recto margin preview">
+            <p class="decor-empty" id="marginEmpty">no margin art</p>
+          </div>
+          <div class="decor-page">
+            <div class="decor-label">Margin — verso</div>
+            <img id="marginVerso" alt="verso margin preview">
+          </div>
+          <div class="decor-orn">
+            <div class="decor-label">Chapter ornament</div>
+            <img id="ornPreview" alt="chapter ornament preview">
+            <p class="decor-empty" id="ornEmpty">no ornament art</p>
+          </div>
+        </div>
+      </details>
+
       <details class="publishing">
-        <summary>3 · Publishing — copyright &amp; cover</summary>
+        <summary>4 · Publishing — copyright &amp; cover</summary>
         <h3>Copyright page</h3>
         <div class="opts">
           <label>Publisher / imprint <input id="cpPublisher" type="text"></label>
@@ -236,7 +295,7 @@
       </details>
 
       <details class="publishing" id="audioSection">
-        <summary>4 · Audiobook — bilingual narration on the GPU</summary>
+        <summary>5 · Audiobook — bilingual narration on the GPU</summary>
         <p class="muted small">Each bead is read original-then-translation, so the
           audio follows the printed parallel text. Synthesis is the slow part of a
           build — measured at about 0.9&times; realtime, so roughly an hour of GPU

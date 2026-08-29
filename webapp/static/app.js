@@ -125,6 +125,17 @@ async function loadFonts() {
   }
   if (FONTS.some((f) => f.id === "cardo")) sel.value = "cardo";
   updateFontNote();
+
+  // The opening-line face is a display font, so "none" has to be an option --
+  // it is off by default.
+  const opener = $("openerFont");
+  opener.innerHTML = `<option value="">none — open normally</option>`;
+  for (const f of FONTS) {
+    const o = document.createElement("option");
+    o.value = f.id;
+    o.textContent = f.label;
+    opener.appendChild(o);
+  }
 }
 
 function updateFontNote() {
@@ -418,6 +429,89 @@ function renderCorpusPick() {
     () => selectCorpusDoc(d.id, { preferStyled: $("cStyled").checked });
   $("cStrip").onchange =
     () => selectCorpusDoc(d.id, { stripMarkup: $("cStrip").checked });
+}
+
+// --------------------------------------------------------------------------- //
+// Decorations — live previews, because eleven ornament names mean nothing
+// --------------------------------------------------------------------------- //
+function decorPayload() {
+  return {
+    margin: $("margin").value,
+    chapter: $("chapter").value,
+    bead_separator: $("beadSep").value,
+    color: $("decorColor").value.trim() || "#8a7a5c",
+    corner_image: $("cornerImage").value.trim() || null,
+    chapter_image: $("chapterImage").value.trim() || null,
+    opener_font: $("openerFont").value || null,
+  };
+}
+
+// A 204 means "this style draws nothing" — a real answer, not a failure, so
+// swap in a caption rather than leaving a broken image icon.
+async function showPreview(imgId, emptyId, url) {
+  const img = $(imgId);
+  const empty = emptyId ? $(emptyId) : null;
+  try {
+    const res = await fetch(url);
+    if (res.status === 204 || !res.ok) {
+      img.style.display = "none";
+      if (empty) empty.style.display = "block";
+      return;
+    }
+    const blob = await res.blob();
+    if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+    const objectUrl = URL.createObjectURL(blob);
+    img.dataset.url = objectUrl;
+    img.src = objectUrl;
+    img.style.display = "block";
+    if (empty) empty.style.display = "none";
+  } catch {
+    img.style.display = "none";
+    if (empty) empty.style.display = "block";
+  }
+}
+
+let decorTimer = null;
+
+function refreshDecorPreview() {
+  // Debounced: the colour picker fires continuously while dragging, and each
+  // preview is a real ReportLab render.
+  clearTimeout(decorTimer);
+  decorTimer = setTimeout(() => {
+    const d = decorPayload();
+    const color = encodeURIComponent(d.color);
+    const corner = encodeURIComponent(d.corner_image || "");
+    // "random" picks per chapter at build time; show one representative.
+    const orn = d.chapter === "random" ? "victorian" : d.chapter;
+    showPreview("ornPreview", "ornEmpty",
+                `/api/preview/ornament.png?style=${orn}&color=${color}`);
+    for (const [id, recto] of [["marginRecto", 1], ["marginVerso", 0]]) {
+      showPreview(id, id === "marginRecto" ? "marginEmpty" : null,
+                  `/api/preview/margin.png?style=${d.margin}&color=${color}` +
+                  `&recto=${recto}&corner_image=${corner}`);
+    }
+  }, 180);
+}
+
+function wireDecorations() {
+  // The colour picker and the hex field are two views of one value.
+  $("decorColorPick").addEventListener("input", () => {
+    $("decorColor").value = $("decorColorPick").value;
+    refreshDecorPreview();
+  });
+  $("decorColor").addEventListener("input", () => {
+    const v = $("decorColor").value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(v)) $("decorColorPick").value = v;
+    refreshDecorPreview();
+  });
+  for (const id of ["margin", "chapter", "beadSep", "cornerImage",
+                    "chapterImage", "openerFont"]) {
+    $(id).addEventListener("change", refreshDecorPreview);
+  }
+  // Render on first open rather than at load — each preview is a real render.
+  $("decorSection").addEventListener("toggle", (e) => {
+    if (e.target.open) refreshDecorPreview();
+  });
 }
 
 // --------------------------------------------------------------------------- //
@@ -742,7 +836,7 @@ function buildPayload() {
     trim: [parseFloat($("trimW").value), parseFloat($("trimH").value)],
     toc: $("tocSel").value === "yes",
     epub: $("epubEnabled").checked,
-    decorations: { margin: $("margin").value, chapter: $("chapter").value },
+    decorations: decorPayload(),
     audio: audioPayload(),
     copyright: {
       enabled: $("cpEnabled").checked,
@@ -964,6 +1058,7 @@ $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); }
 $("cSearchBtn").onclick = doCorpusSearch;
 $("cq").addEventListener("keydown", (e) => { if (e.key === "Enter") doCorpusSearch(); });
 $("localRefresh").onclick = loadLocalFiles;
+wireDecorations();
 $("historySection").addEventListener("toggle", (e) => {
   if (e.target.open) loadHistory();
 });

@@ -11,7 +11,8 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import yaml
 
-from book_creator import audio, corpus, epub_reader, fetch, fonts, segment
+from book_creator import (audio, corpus, decorations, epub_reader, fetch, fonts,
+                          segment)
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec)
 from book_creator.pipeline import apply_sides, build_book
@@ -48,6 +49,54 @@ def index():
 def api_fonts():
     """Installed font families, grouped/sorted for the picker."""
     return jsonify({"fonts": fonts.catalog()})
+
+
+# --------------------------------------------------------------------------- #
+# Decoration previews
+# --------------------------------------------------------------------------- #
+def _png_response(render, **kwargs) -> Response:
+    """Rasterize a decoration to PNG and return it, or 204 if it draws nothing.
+
+    204 rather than 404: "this style has no art" (none, rule) is a valid
+    answer, not a missing resource, and the UI shows a placeholder for it.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = str(Path(tmp) / "preview.png")
+        try:
+            if render(out_path=out, **kwargs) is None:
+                return Response(status=204)
+            data = Path(out).read_bytes()
+        except Exception as exc:  # noqa: BLE001 - a bad colour, mostly
+            return Response(f"could not render: {exc}", status=400)
+    return Response(data, mimetype="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
+@app.route("/api/preview/ornament.png")
+def api_preview_ornament():
+    """The chapter ornament for a style — eleven of them, unguessable by name."""
+    return _png_response(
+        decorations.render_ornament_png,
+        style=request.args.get("style", "fleuron"),
+        color=request.args.get("color", "#8a7a5c"))
+
+
+@app.route("/api/preview/margin.png")
+def api_preview_margin():
+    """Page-margin art on a miniature page.
+
+    Margin styles are gutter-aware, so which side the art sits on depends on
+    recto vs verso; the preview offers both rather than implying a page has
+    only one appearance.
+    """
+    return _png_response(
+        decorations.render_margin_png,
+        style=request.args.get("style", "none"),
+        color=request.args.get("color", "#8a7a5c"),
+        corner_image=request.args.get("corner_image") or None,
+        recto=request.args.get("recto", "1") != "0")
 
 
 @app.route("/api/outline")
@@ -351,7 +400,11 @@ def _spec_from_payload(p: dict) -> BookSpec:
         decor=DecorSpec(
             margin=decor.get("margin", "none"),
             chapter=decor.get("chapter", "fleuron"),
+            bead_separator=decor.get("bead_separator", "none"),
             color=decor.get("color", "#8a7a5c"),
+            corner_image=decor.get("corner_image") or None,
+            chapter_image=decor.get("chapter_image") or None,
+            opener_font=decor.get("opener_font") or None,
         ),
         copyright=_copyright_from(p.get("copyright")),
         cover=_cover_from(p.get("cover")),
@@ -569,7 +622,12 @@ def _payload_to_yaml(p: dict) -> dict:
     book["translation_pd_confirmed"] = bool(p.get("translation_pd_confirmed", False))
     book["font"] = p.get("font", "Cardo")
     if p.get("decorations"):
-        book["decorations"] = p["decorations"]
+        # Drop unset/default fields so a saved entry stays readable.
+        dec = {k: v for k, v in p["decorations"].items() if v not in (None, "")}
+        if dec.get("bead_separator") == "none":
+            dec.pop("bead_separator")
+        if dec:
+            book["decorations"] = dec
     cr = {k: v for k, v in (p.get("copyright") or {}).items() if v not in ("", None)}
     if cr:
         book["copyright"] = cr

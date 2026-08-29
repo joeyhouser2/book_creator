@@ -670,6 +670,12 @@ Make the page look like a real published book:
 Vector ornaments need no assets. For custom art, drop a PNG in (e.g.) `art/` and
 point `corner_image` at it — it's auto-mirrored so each corner faces inward.
 
+All of it is in the web UI's **Decorations** panel, with **live previews**: the
+chapter ornament as you pick among the eleven styles, and the margin art drawn
+on a miniature page for both recto and verso — since the styles are
+gutter-aware, the two sides genuinely differ, and no amount of naming conveys
+what "corners" versus "frame" looks like.
+
 All styles are pure vector, no assets needed, and (except per-page `margin`)
 also render in the EPUB — rasterized to a transparent PNG from the same
 drawing code, so a font glyph is never required (some e-readers show a

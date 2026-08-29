@@ -99,6 +99,98 @@ def test_inspect_reports_a_missing_file_without_leaking_the_path(client):
 
 
 # --------------------------------------------------------------------------- #
+# Decoration previews
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("style", [
+    "fleuron", "medieval", "victorian", "classical", "baroque", "nouveau",
+    "rococo", "artdeco",
+])
+def test_ornament_preview_renders_every_drawn_style(client, style):
+    res = client.get(f"/api/preview/ornament.png?style={style}")
+    assert res.status_code == 200
+    assert res.mimetype == "image/png"
+    assert res.data.startswith(b"\x89PNG")
+    assert len(res.data) > 1000
+
+
+@pytest.mark.parametrize("style", ["none", "rule"])
+def test_ornament_preview_is_204_when_there_is_no_art(client, style):
+    # "no art" is a real answer, not a missing resource — the UI shows a
+    # caption for it rather than a broken image.
+    res = client.get(f"/api/preview/ornament.png?style={style}")
+    assert res.status_code == 204
+
+
+@pytest.mark.parametrize("style", ["rule", "corners", "frame"])
+def test_margin_preview_renders(client, style):
+    res = client.get(f"/api/preview/margin.png?style={style}")
+    assert res.status_code == 200
+    assert res.data.startswith(b"\x89PNG")
+
+
+def test_margin_preview_none_is_204(client):
+    assert client.get("/api/preview/margin.png?style=none").status_code == 204
+
+
+def test_margin_preview_differs_between_recto_and_verso(client):
+    # Margin art is gutter-aware, so a preview that ignored the side would be
+    # showing something the book never prints.
+    recto = client.get("/api/preview/margin.png?style=frame&recto=1").data
+    verso = client.get("/api/preview/margin.png?style=frame&recto=0").data
+    assert recto != verso
+
+
+def test_ornament_preview_honours_colour(client):
+    a = client.get("/api/preview/ornament.png?style=victorian&color=%238a7a5c").data
+    b = client.get("/api/preview/ornament.png?style=victorian&color=%237c2128").data
+    assert a != b
+
+
+def test_preview_rejects_a_bad_colour(client):
+    res = client.get("/api/preview/ornament.png?style=victorian&color=notacolour")
+    assert res.status_code == 400
+
+
+def test_unknown_ornament_style_is_204_not_an_error(client):
+    assert client.get(
+        "/api/preview/ornament.png?style=nonesuch").status_code == 204
+
+
+# --------------------------------------------------------------------------- #
+# Decoration settings reach the spec
+# --------------------------------------------------------------------------- #
+def test_every_decor_field_reaches_the_spec():
+    # Regression: the web payload only carried margin/chapter/color, so four
+    # DecorSpec fields were unreachable from the UI entirely.
+    spec = server._spec_from_payload({
+        "corpus_id": 1,
+        "decorations": {
+            "margin": "frame", "chapter": "rococo", "bead_separator": "fleuron",
+            "color": "#7c2128", "corner_image": "art/c.png",
+            "chapter_image": "art/d.png", "opener_font": "uncialantiqua",
+        },
+    })
+    d = spec.decor
+    assert (d.margin, d.chapter, d.bead_separator) == ("frame", "rococo", "fleuron")
+    assert d.color == "#7c2128"
+    assert d.corner_image == "art/c.png"
+    assert d.chapter_image == "art/d.png"
+    assert d.opener_font == "uncialantiqua"
+
+
+def test_blank_decor_paths_become_none_not_empty_strings():
+    # An empty string would be treated as a path and fail at render time.
+    spec = server._spec_from_payload({
+        "corpus_id": 1,
+        "decorations": {"corner_image": "", "chapter_image": "",
+                        "opener_font": ""},
+    })
+    assert spec.decor.corner_image is None
+    assert spec.decor.chapter_image is None
+    assert spec.decor.opener_font is None
+
+
+# --------------------------------------------------------------------------- #
 # Corpus facets
 # --------------------------------------------------------------------------- #
 def test_corpus_facets(client, corpus_db):

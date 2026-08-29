@@ -607,3 +607,60 @@ def render_ornament_png(style: str, color: str, out_path: str, *,
         pix.save(out_path)
         doc.close()
     return out_path
+
+
+def render_margin_png(style: str, color: str, out_path: str, *,
+                      corner_image: str | None = None,
+                      trim: tuple[float, float] = (6.0, 9.0),
+                      dpi: int = 60, recto: bool = True) -> str | None:
+    """Rasterize page-margin art onto a miniature page, for previewing.
+
+    Margin styles are the hardest part of the design to picture from a word:
+    "corners" and "frame" differ subtly, and both are gutter-aware, so the
+    only honest preview is an actual page. Ruled lines stand in for text so
+    the relationship between the art and the text block is visible.
+
+    Returns None when there is nothing to draw.
+    """
+    if style == "none" and not corner_image:
+        return None
+
+    import tempfile
+    from pathlib import Path
+
+    import fitz
+    from reportlab.pdfgen import canvas as _canvas
+
+    page_w, page_h = trim[0] * inch, trim[1] * inch
+    gutter, outside, vertical = 0.88 * inch, 0.5 * inch, 0.75 * inch
+    geom = ({"left": gutter, "right": page_w - outside}
+            if recto else {"left": outside, "right": page_w - gutter})
+    geom |= {"top": page_h - vertical, "bottom": vertical,
+             "page_w": page_w, "outside": outside}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_pdf = str(Path(tmp) / "margin.pdf")
+        c = _canvas.Canvas(tmp_pdf, pagesize=(page_w, page_h))
+
+        # A hint of text, so the art is seen in relation to the text block
+        # rather than floating on an empty sheet.
+        c.saveState()
+        c.setStrokeColor(HexColor("#cccccc"))
+        c.setLineWidth(2.2)
+        y = geom["top"] - 10
+        while y > geom["bottom"] + 6:
+            width = (geom["right"] - geom["left"]) * (0.72 if y < geom["bottom"] + 26 else 1.0)
+            c.line(geom["left"], y, geom["left"] + width, y)
+            y -= 13
+        c.restoreState()
+
+        draw_margin(c, geom, recto, style, color, corner_image)
+        c.showPage()
+        c.save()
+
+        doc = fitz.open(tmp_pdf)
+        pix = doc[0].get_pixmap(dpi=dpi, alpha=False)
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        pix.save(out_path)
+        doc.close()
+    return out_path

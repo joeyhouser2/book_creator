@@ -156,6 +156,19 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .facets .rngpair { display: flex; gap: 6px; }
 .facets .rngpair input { width: 100%; min-width: 0; }
 
+/* ---- decoration previews ---- */
+.decor-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  align-items: start; }
+.decor-label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); margin-bottom: 4px; }
+.decor-page img { width: 100%; border: 1px solid var(--line); border-radius: 4px;
+  background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.10); display: block; }
+.decor-orn { grid-column: 1 / -1; }
+.decor-orn img { width: 100%; max-width: 340px; display: block; }
+.decor-empty { font-size: 12px; color: var(--muted); font-style: italic;
+  margin: 6px 0 0; }
+.opts input[type="color"] { padding: 2px; width: 38px; height: 32px; flex: none; }
+
 /* ---- source-quality warnings ---- */
 .warn, .caution { font-size: 12px; margin: 8px 0 0; padding: 8px 10px;
   border-radius: 7px; }
