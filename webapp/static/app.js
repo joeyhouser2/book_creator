@@ -4,10 +4,12 @@ const $ = (id) => document.getElementById(id);
 
 // Selected editions, corpus pick, and current preview state.
 const state = {
-  source: "gutenberg",   // "gutenberg" | "corpus"
+  source: "gutenberg",   // "gutenberg" | "corpus" | "local"
   src: null,             // {id, title, authors, languages}
   tgt: null,
   corpus: null,          // {doc, sections, sample, note}
+  lsrc: null,            // local file {name, path, kind, size_mb, outline}
+  ltgt: null,
   job: null,
   page: 0,
   pages: 0,
@@ -69,7 +71,7 @@ function updateSides() {
   // It is irrelevant on the corpus tab (that English is our own machine
   // translation) and irrelevant for an original-only edition, which publishes
   // no translation at all.
-  const needsPd = state.source === "gutenberg" && sides !== "src";
+  const needsPd = state.source !== "corpus" && sides !== "src";
   $("pdConfirmRow").style.display = needsPd ? "" : "none";
   $("pdBanner").style.display = needsPd ? "" : "none";
 
@@ -262,13 +264,48 @@ async function loadCorpusStatus() {
   }
 }
 
+// Author / genre / period picklists — substring search over 13k works only
+// helps if you already know the Latin form of the name you want.
+async function loadFacets() {
+  let f;
+  try {
+    f = await getJSON("/api/corpus/facets");
+  } catch { return; }
+
+  const fill = (id, items, label) => {
+    const sel = $(id);
+    sel.innerHTML = `<option value="">any</option>`;
+    for (const it of items) {
+      const o = document.createElement("option");
+      o.value = it.value;
+      o.textContent = `${label ? label(it.value) : it.value} (${it.count})`;
+      sel.appendChild(o);
+    }
+  };
+  fill("cAuthor", f.authors || []);
+  fill("cGenre", f.genres || []);
+  fill("cStage", f.stages || [], (v) => v.replace(/_/g, " "));
+
+  const cents = (f.centuries || []).map((c) => c.value);
+  if (cents.length) {
+    $("cCentFrom").placeholder = `from ${Math.min(...cents)}`;
+    $("cCentTo").placeholder = `to ${Math.max(...cents)}`;
+  }
+}
+
 async function doCorpusSearch() {
   const box = $("cResults");
   box.innerHTML = `<div class="result muted">Searching…</div>`;
   const params = new URLSearchParams({
     q: $("cq").value.trim(),
     lang: $("cLang").value,
+    author: $("cAuthor").value,
+    genre: $("cGenre").value,
+    stage: $("cStage").value,
+    century_from: $("cCentFrom").value,
+    century_to: $("cCentTo").value,
     translated: $("cTranslated").checked ? "1" : "0",
+    styled: $("cStyledOnly").checked ? "1" : "0",
   });
   try {
     const data = await getJSON(`/api/corpus/search?${params}`);
@@ -381,6 +418,181 @@ function renderCorpusPick() {
     () => selectCorpusDoc(d.id, { preferStyled: $("cStyled").checked });
   $("cStrip").onchange =
     () => selectCorpusDoc(d.id, { stripMarkup: $("cStrip").checked });
+}
+
+// --------------------------------------------------------------------------- //
+// Local files — your own .txt and .epub
+// --------------------------------------------------------------------------- //
+async function loadLocalFiles() {
+  const box = $("localResults");
+  box.innerHTML = `<div class="result muted">Reading input/…</div>`;
+  let data;
+  try {
+    data = await getJSON("/api/local/files");
+  } catch (e) {
+    box.innerHTML = `<div class="result">⚠ ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  $("localDir").textContent = data.dir;
+  $("localStatus").textContent = data.files.length
+    ? `${data.files.length} file(s) available.`
+    : "No .txt or .epub files in input/ yet.";
+  box.innerHTML = "";
+  for (const f of data.files) box.appendChild(localRow(f));
+}
+
+function localRow(f) {
+  const row = document.createElement("div");
+  row.className = "result";
+  row.innerHTML = `
+    <div class="meta">
+      <b>${escapeHtml(f.name)}</b>
+      <small>${f.kind} · ${f.size_mb} MB</small>
+    </div>
+    <div class="pick">
+      <button data-role="lsrc">→ Original</button>
+      <button data-role="ltgt">→ Translation</button>
+    </div>`;
+  row.querySelector('[data-role="lsrc"]').onclick = () => selectLocal("lsrc", f);
+  row.querySelector('[data-role="ltgt"]').onclick = () => selectLocal("ltgt", f);
+  return row;
+}
+
+async function selectLocal(which, f) {
+  state[which] = { ...f };
+  renderLocalSlot(which);
+  if (which === "lsrc" && !$("title").value) {
+    $("title").value = f.name.replace(/\.(txt|epub)$/i, "").replace(/[_-]+/g, " ");
+  }
+  // Inspect before outlining: a scan with no usable text layer should be
+  // reported as such rather than silently producing an empty outline.
+  await inspectLocal(which);
+  await loadLocalOutline(which);
+}
+
+async function inspectLocal(which) {
+  const f = state[which];
+  const detail = $("localDetail");
+  if (!f) { detail.innerHTML = ""; return; }
+  let r;
+  try {
+    r = await getJSON(`/api/local/inspect?path=${encodeURIComponent(f.path)}`);
+  } catch (e) {
+    detail.innerHTML = `<p class="warn">⚠ ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  f.report = r;
+  const warns = (r.warnings || []).map((w) =>
+    `<p class="${w.startsWith("Unusable") ? "warn" : "caution"}">⚠ ${escapeHtml(w)}</p>`
+  ).join("");
+  detail.innerHTML = `
+    <div class="corpus-meta">
+      <div><span class="k">file</span> ${escapeHtml(f.name)}</div>
+      <div><span class="k">text</span> ${r.characters.toLocaleString()} characters
+        across ${r.documents} document(s)${r.images ? `, ${r.images} image(s)` : ""}</div>
+      ${r.ocr_accuracy !== null && r.ocr_accuracy !== undefined
+        ? `<div><span class="k">ocr</span> self-reported ${r.ocr_accuracy}% accurate</div>` : ""}
+    </div>${warns}`;
+}
+
+async function loadLocalOutline(which) {
+  const f = state[which];
+  const box = $(which === "lsrc" ? "range-lsrc" : "range-ltgt");
+  if (!f) { box.innerHTML = ""; return; }
+  box.innerHTML = `<small class="muted">reading outline…</small>`;
+  try {
+    const url = `/api/local/outline?path=${encodeURIComponent(f.path)}` +
+                `&mode=${encodeURIComponent($("mode").value)}`;
+    f.outline = (await getJSON(url)).divisions || [];
+  } catch (e) {
+    box.innerHTML = `<small class="muted">outline unavailable — ${escapeHtml(e.message)}</small>`;
+    return;
+  }
+  renderRange(box, f.outline);
+}
+
+function renderLocalSlot(which) {
+  const slot = $(which === "lsrc" ? "slot-lsrc" : "slot-ltgt");
+  const body = slot.querySelector(".slot-body");
+  const f = state[which];
+  if (!f) {
+    slot.classList.remove("filled");
+    body.className = "slot-body muted";
+    body.textContent = "none selected";
+    return;
+  }
+  slot.classList.add("filled");
+  body.className = "slot-body";
+  body.innerHTML = `<b>${escapeHtml(f.name)}</b>
+    <small class="muted">${f.kind} · ${f.size_mb} MB</small>
+    <span class="clear">clear</span>`;
+  body.querySelector(".clear").onclick = () => {
+    state[which] = null;
+    renderLocalSlot(which);
+    $(which === "lsrc" ? "range-lsrc" : "range-ltgt").innerHTML = "";
+    $("localDetail").innerHTML = "";
+  };
+}
+
+// --------------------------------------------------------------------------- //
+// Build history — survives a server restart
+// --------------------------------------------------------------------------- //
+const STATUS_LABEL = {
+  done: "done", error: "failed", running: "running",
+  cancelled: "stopped", interrupted: "interrupted by a restart",
+};
+
+async function loadHistory() {
+  const box = $("history");
+  let data;
+  try {
+    data = await getJSON("/api/jobs");
+  } catch { return; }
+  if (!data.jobs.length) {
+    box.innerHTML = `<div class="result muted">No builds yet.</div>`;
+    return;
+  }
+  box.innerHTML = "";
+  for (const j of data.jobs) {
+    const row = document.createElement("div");
+    row.className = "result";
+    const when = new Date(j.created_at * 1000).toLocaleString();
+    const bits = [STATUS_LABEL[j.status] || j.status, when];
+    if (j.pages) bits.push(`${j.pages} pages`);
+    if (j.audio) bits.push(j.audio);
+    row.innerHTML = `
+      <div class="meta">
+        <b>${escapeHtml(j.title || "(untitled)")}</b>
+        <small>${escapeHtml(bits.join(" · "))}</small>
+      </div>
+      <div class="pick">${j.has_pdf ? `<button>Open</button>` : ""}</div>`;
+    const btn = row.querySelector("button");
+    if (btn) btn.onclick = () => reopenJob(j.id);
+    box.appendChild(row);
+  }
+}
+
+async function reopenJob(jobId) {
+  state.job = jobId;
+  let data;
+  try {
+    data = await getJSON(`/api/status/${jobId}`);
+  } catch (e) {
+    $("log").textContent = `⚠ ${e.message}`;
+    return;
+  }
+  $("log").textContent = data.log.join("\n");
+  state.pages = data.pages;
+  state.page = 0;
+  $("download").href = `/api/download/${jobId}.pdf`;
+  $("download").style.display = "inline-block";
+  if (data.has_cover) {
+    $("coverToggle").style.display = "inline-block";
+    $("coverDownload").href = `/api/cover-download/${jobId}.pdf`;
+    $("coverDownload").style.display = "inline-block";
+  }
+  showAudio(data.audio);
+  showPage(0);
 }
 
 // --------------------------------------------------------------------------- //
@@ -507,6 +719,15 @@ function buildPayload() {
     // translator holds copyright on it — the source licence is the thing to
     // watch, and that is surfaced on the document itself.
     p.translation_pd_confirmed = true;
+  } else if (state.source === "local") {
+    p.src_path = state.lsrc && state.lsrc.path;
+    p.tgt_path = state.ltgt && state.ltgt.path;
+    p.src_range = readRange($("range-lsrc"));
+    p.tgt_range = readRange($("range-ltgt"));
+    // Only the Gutenberg tab can vouch for a translation's status; a local
+    // file's provenance is the user's own knowledge, and an original-only
+    // edition publishes no translation at all.
+    p.translation_pd_confirmed = $("sides").value === "src" || $("pd").checked;
   } else if ($("sides").value === "src") {
     p.src_id = state.src && state.src.id;
     p.tgt_id = state.tgt && state.tgt.id;
@@ -525,8 +746,27 @@ function buildPayload() {
 }
 
 function validate() {
+  const sides = $("sides").value;
   if (state.source === "corpus") {
     if (!state.corpus) return "Pick a work from the corpus.";
+    return null;
+  }
+  if (state.source === "local") {
+    if (!state.lsrc) return "Pick an Original file.";
+    if (sides !== "src" && !state.ltgt) {
+      return "Pick a Translation file, or set Edition to \"original only\".";
+    }
+    // The quality report is advisory, but silently building a 24%-accurate
+    // scan wastes a long run and produces an unreadable book.
+    const bad = [state.lsrc, state.ltgt].filter(
+      (f) => f && f.report && !f.report.usable);
+    if (bad.length && !confirm(
+        `${bad.map((f) => f.name).join(", ")} has no usable text ` +
+        `(see the warning above). Build anyway?`)) {
+      return "Cancelled.";
+    }
+    if (sides !== "src" && !$("pd").checked)
+      return "Confirm the translation is public domain before building.";
     return null;
   }
   if (!state.src) return "Pick an Original edition.";
@@ -566,10 +806,11 @@ function pollStatus() {
     $("log").scrollTop = $("log").scrollHeight;
     showProgress(data.progress);
 
-    if (data.status === "done" || data.status === "error") {
+    if (data.status !== "running") {
       clearInterval(state.poll);
       $("buildBtn").disabled = false;
       $("cancelBtn").style.display = "none";
+      if ($("historySection").open) loadHistory();
     }
     if (data.status !== "done") return;
 
@@ -672,6 +913,10 @@ $("searchBtn").onclick = doSearch;
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
 $("cSearchBtn").onclick = doCorpusSearch;
 $("cq").addEventListener("keydown", (e) => { if (e.key === "Enter") doCorpusSearch(); });
+$("localRefresh").onclick = loadLocalFiles;
+$("historySection").addEventListener("toggle", (e) => {
+  if (e.target.open) loadHistory();
+});
 $("buildBtn").onclick = doBuild;
 $("saveBtn").onclick = saveConfig;
 $("cancelBtn").onclick = cancelBuild;
@@ -693,4 +938,6 @@ document.addEventListener("keydown", (e) => {
 selectTab("gutenberg");
 loadFonts();
 loadCorpusStatus();
+loadFacets();
+loadLocalFiles();
 loadAudio();

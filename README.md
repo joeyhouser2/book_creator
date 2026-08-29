@@ -50,7 +50,7 @@ pip install -r requirements-web.txt
 python run_web.py            # then open http://127.0.0.1:5000
 ```
 
-The **Source** panel has two tabs.
+The **Source** panel has three tabs.
 
 **Gutenberg pair** — two separate editions, aligned:
 1. **Search** Gutenberg (title/author, optional language filter) — powered by
@@ -64,10 +64,16 @@ search once in the source language (e.g. `bello gallico`, lang `la`) and again i
 English. The catalog uses the work's real title, so search `de bello gallico`,
 not `gallic war`, for the Latin edition.
 
-**Latin corpus** — one already-aligned work (see the next section): search,
-pick, scope to sections, and preview the actual Latin/English pairs before
-building. The aligner picker and the translator-copyright confirmation both
-disappear on this tab, because neither applies.
+**Latin corpus** — one already-aligned work (see [Latin corpus
+source](#latin-corpus-source-the-latin-repo)): search or filter by author /
+genre / period, scope to sections, and preview the actual Latin/English pairs
+before building. The aligner picker and the translator-copyright confirmation
+both disappear on this tab, because neither applies.
+
+**Local files** — your own `.txt` or `.epub` from `input/` (see [Local
+files](#local-files-txt-and-epub)). Each file is inspected before it can be
+selected, so a scan with no usable text layer is caught before the build
+rather than after it.
 
 Then set options and **Build**. The right column shows rendered pages, the
 cover, and an audio player.
@@ -77,6 +83,39 @@ neither: the **Edition** picker at the top of Options (dual-language, or one
 language alone — see [Monolingual editions](#monolingual-editions)), and the
 collapsed **Audiobook** panel, which loads no model and synthesizes nothing
 unless you tick it.
+
+Builds are recorded in `cache/jobs.db`, so **Recent builds** (under the
+preview) survives restarting the server: reopen a finished book to page
+through it or download it again. A job still marked running when the process
+dies is listed as `interrupted` rather than spinning forever — the files it
+had already written are on disk, and the TTS cache makes restarting it cheap.
+
+## Local files (`.txt` and `.epub`)
+
+Drop files into `input/` and pick them on the **Local files** tab, or point
+`src_path` / `tgt_path` at them from the CLI or a config entry. A `.txt` is
+read as-is; an `.epub` is unpacked into plain text, following the **spine**
+(reading order) rather than the manifest, with headings kept on their own
+lines so chapter detection still works.
+
+### It tells you when a file is not worth building
+
+A large share of EPUBs in the wild are page scans wrapped around OCR, and bad
+OCR is worse than useless here: it survives alignment (which only compares
+lengths or embeddings), reaches the page looking like text, and gets read
+aloud literally. So every file is inspected first — document and image counts,
+extractable characters, and any accuracy figure the file reports about itself:
+
+```
+input/pale_fire.epub
+  221 documents, 219 images, 445,972 characters
+  ⚠ Unusable: the file reports its own OCR as 24% accurate across 175 pages.
+```
+
+That one extracts as `a voung gentleman`, `Hodge shan't be sh< t`,
+`JMES BOSWELL`. No amount of alignment or narration fixes a source like that —
+the answer is a real ebook rather than a scan. The warning is advisory, not a
+block: the UI asks for confirmation and builds it anyway if you insist.
 
 ## Monolingual editions
 
@@ -139,6 +178,12 @@ Browse it from the CLI:
 python make_book.py --corpus --corpus-search alcuinus --corpus-lang la
 python make_book.py --corpus --corpus-id 79      # sections, counts, licence
 ```
+
+In the web UI there are **author / genre / period / century** filters as well
+as free text, because substring search over 13k works only helps if you
+already know the Latin form of the name you want (`Augustinus`, not
+`Augustine`). Two coverage filters sit alongside them: works that already have
+English, and works the Victorian stylizer has been over.
 
 Then build. `title`, `author`, and `src_lang` come from the document record, so
 an id is enough:
@@ -576,6 +621,7 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 |--------|------|
 | `fetch.py` | download Gutenberg text, strip the license banner, cache locally |
 | `corpus.py` | read a pre-aligned work out of the `latin` repo's corpus.db (read-only) |
+| `epub_reader.py` | unpack a local EPUB into plain text, and report scan/OCR quality first |
 | `audio.py` | pluggable GPU TTS engines + interleaved bilingual audiobook assembly |
 | `segment.py` | detect chapters; split into sentences (prose) or lines (verse) |
 | `fonts.py` | auto-discover font families in fonts/, register, expose catalog |
@@ -590,7 +636,8 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 | `render_epub.py` | reflowable EPUB3: embedded fonts, cover, nav TOC |
 | `cover.py` | KDP wraparound cover with per-language ornamental motifs |
 | `pipeline.py` | orchestrates fetch → segment → align → render → cover → epub |
-| `webapp/` | Flask UI: Gutendex + corpus search, background build jobs, PyMuPDF page preview, audio player |
+| `webapp/` | Flask UI: Gutendex + corpus search, local files, background build jobs, PyMuPDF page preview, audio player |
+| `webapp/jobs.py` | SQLite job record, so builds survive a server restart |
 | `ollama_client.py` | thin client for a local Ollama server's tool-calling chat API |
 | `librarian.py` | natural-language book search agent (finds + pairs Gutenberg editions) |
 | `reviewer.py` | post-alignment QA pass (LLM flags likely misalignment/formatting errors) |
@@ -667,11 +714,29 @@ sources, as natural next additions.
 - Print one proof copy before going live — automated alignment needs a human
   proofread.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Around 120 tests, a few seconds to run. They cover the parts where a silent
+wrong answer is possible rather than a crash: alignment-free corpus loading,
+editorial-sigla stripping (no letter may be lost with the brackets),
+monolingual filtering, audiobook planning and chapter-marker ordering, EPUB
+extraction, job persistence, and the HTTP surface — including that
+`/api/local/*` refuses paths outside `input/`.
+
+Tests needing the `latin` corpus or downloaded fonts **skip** rather than
+fail, so the suite is still useful on a fresh clone. Audio tests run against a
+stub engine that synthesizes a tone, so no model weights or GPU are required.
+
 ## Roadmap ideas
 
-- Per-speaker voices for dialogue in the audiobook
 - Forced alignment between the narration and the EPUB, for read-along (Media Overlays)
-- Corpus browsing by author/century/genre facets, not just a title substring
+- Per-speaker voices for dialogue in the audiobook
+- Run a real TTS model end to end (the audio path is verified against a stub engine only)
 - Drop caps at chapter openings
 - Footnote/glossary support
 - More musical-literature catalogs (Schumann's Liederkreis Op. 24, Schubert's

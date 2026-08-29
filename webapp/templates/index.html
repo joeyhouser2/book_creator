@@ -24,6 +24,7 @@
       <div class="tabs" role="tablist">
         <button class="tab active" data-tab="gutenberg" role="tab">Gutenberg pair</button>
         <button class="tab" data-tab="corpus" role="tab">Latin corpus</button>
+        <button class="tab" data-tab="local" role="tab">Local files</button>
       </div>
 
       <!-- ---------- Gutenberg: two separate editions, aligned ---------- -->
@@ -72,9 +73,22 @@
           </select>
           <button id="cSearchBtn">Search</button>
         </div>
+        <div class="facets">
+          <label>Author <select id="cAuthor"></select></label>
+          <label>Genre <select id="cGenre"></select></label>
+          <label>Period <select id="cStage"></select></label>
+          <label>Century
+            <span class="rngpair">
+              <input id="cCentFrom" type="number" placeholder="from" step="1">
+              <input id="cCentTo" type="number" placeholder="to" step="1">
+            </span>
+          </label>
+        </div>
         <label class="inline-check"><input id="cTranslated" type="checkbox" checked>
           only works that already have English
           <span id="cTranslatedHint" class="hint"></span></label>
+        <label class="inline-check"><input id="cStyledOnly" type="checkbox">
+          only works the Victorian stylizer has been over</label>
         <div id="cResults" class="results"></div>
 
         <div class="slot corpus-pick" id="corpusPick">
@@ -82,6 +96,35 @@
           <div class="slot-body muted">none selected</div>
         </div>
         <div id="corpusDetail"></div>
+      </div>
+
+      <!-- ---------- Local files: your own texts and EPUBs ---------- -->
+      <div class="tabpane" id="pane-local">
+        <p class="corpus-status muted" id="localStatus">looking in input/…</p>
+        <div class="search-row">
+          <button id="localRefresh">Refresh list</button>
+          <span class="muted small">Drop .txt or .epub files into
+            <code id="localDir">input/</code> and refresh.</span>
+        </div>
+        <div id="localResults" class="results"></div>
+
+        <h3>Selected files</h3>
+        <div class="slots">
+          <div class="slot" id="slot-lsrc">
+            <div class="slot-label">Original</div>
+            <div class="slot-body muted">none selected</div>
+            <div class="slot-range" id="range-lsrc"></div>
+          </div>
+          <div class="slot" id="slot-ltgt">
+            <div class="slot-label">Translation</div>
+            <div class="slot-body muted">none selected</div>
+            <div class="slot-range" id="range-ltgt"></div>
+          </div>
+        </div>
+        <p class="range-hint muted">For a monolingual edition pick only an
+          Original and set <b>Edition</b> below to "original only" — no
+          translation is needed.</p>
+        <div id="localDetail"></div>
       </div>
 
       <h2>2 · Options</h2>
@@ -272,6 +315,13 @@
           <a id="audioDownload" class="dl" href="#">Download</a>
         </div>
       </div>
+
+      <details class="publishing" id="historySection">
+        <summary>Recent builds</summary>
+        <p class="muted small">Builds survive a server restart — reopen one to
+          page through it or download it again.</p>
+        <div id="history" class="results"></div>
+      </details>
     </section>
   </main>
 

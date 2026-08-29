@@ -53,10 +53,18 @@ def _download(gid: int) -> str:
     raise RuntimeError(f"Could not download Gutenberg #{gid}: {last_err}")
 
 
-def load_text(*, path: str | None = None, gid: int | None = None) -> str:
-    """Load from a local file (already-clean text) or a Gutenberg id."""
+def load_text(*, path: str | None = None, gid: int | None = None, log=None) -> str:
+    """Load from a local file or a Gutenberg id.
+
+    A local `.epub` is unpacked into plain text (see epub_reader); anything
+    else is read as already-clean text.
+    """
     if path:
-        return Path(path).read_text(encoding="utf-8", errors="replace")
+        p = Path(path)
+        if p.suffix.lower() == ".epub":
+            from . import epub_reader
+            return epub_reader.read_epub(p, log=log)
+        return p.read_text(encoding="utf-8", errors="replace")
     if gid is not None:
         return fetch_gutenberg(gid)
     raise ValueError("Either path or gid must be provided.")

@@ -173,17 +173,60 @@ def _count_for_docs(conn: sqlite3.Connection, doc_ids: list[int]) -> dict[int, d
     return {r["doc_id"]: dict(r) for r in rows}
 
 
+def facets(*, conn: sqlite3.Connection | None = None,
+           db_path: str | None = None, top_authors: int = 60) -> dict:
+    """The values worth filtering on, with counts, for the UI's dropdowns.
+
+    Substring search over 13k works is a poor way to find anything when you do
+    not already know the Latin form of a name, so author / genre / stage /
+    century are offered as picklists instead. Authors are capped at the most
+    prolific, because the long tail is thousands of single-work entries.
+    """
+    own = conn is None
+    conn = conn or connect(db_path)
+    try:
+        def group(column: str, limit: int | None = None) -> list[dict]:
+            sql = (f"SELECT {column} AS v, COUNT(*) AS n FROM documents "
+                   f"WHERE {column} IS NOT NULL AND TRIM({column}) <> '' "
+                   f"GROUP BY v ORDER BY n DESC")
+            if limit:
+                sql += f" LIMIT {int(limit)}"
+            return [{"value": r["v"], "count": r["n"]} for r in conn.execute(sql)]
+
+        centuries = [
+            {"value": r["v"], "count": r["n"]}
+            for r in conn.execute(
+                "SELECT century AS v, COUNT(*) AS n FROM documents "
+                "WHERE century IS NOT NULL GROUP BY v ORDER BY v")
+        ]
+        return {
+            "languages": group("language"),
+            "stages": group("language_stage"),
+            "genres": group("genre"),
+            "authors": group("author", top_authors),
+            "centuries": centuries,
+        }
+    finally:
+        if own:
+            conn.close()
+
+
 def search_documents(query: str = "", *, language: str | None = None,
-                     stage: str | None = None, translated_only: bool = True,
+                     stage: str | None = None, author: str | None = None,
+                     genre: str | None = None,
+                     century_from: int | None = None,
+                     century_to: int | None = None,
+                     translated_only: bool = True, styled_only: bool = False,
                      limit: int = 40, offset: int = 0,
                      conn: sqlite3.Connection | None = None,
                      db_path: str | None = None) -> dict:
-    """Search the corpus by title/author substring, with optional filters.
+    """Search the corpus by title/author substring, with optional facet filters.
 
     `translated_only` drops works with no English at all -- the usual case,
-    since a parallel-text book needs both sides. It is applied *after* counting
-    (translation coverage is not stored on the document row), so the returned
-    `count` is the number of documents matching the text/metadata filters.
+    since a parallel-text book needs both sides; `styled_only` narrows further
+    to works the stylizer has been over. Both are applied *after* counting
+    (coverage is not stored on the document row), so the returned `count` is
+    the number of documents matching the text/metadata filters.
     """
     own = conn is None
     conn = conn or connect(db_path)
@@ -198,6 +241,18 @@ def search_documents(query: str = "", *, language: str | None = None,
         if stage:
             where.append("d.language_stage = ?")
             params.append(stage)
+        if author:
+            where.append("d.author = ?")
+            params.append(author)
+        if genre:
+            where.append("d.genre = ?")
+            params.append(genre)
+        if century_from is not None:
+            where.append("d.century >= ?")
+            params.append(int(century_from))
+        if century_to is not None:
+            where.append("d.century <= ?")
+            params.append(int(century_to))
         clause = ("WHERE " + " AND ".join(where)) if where else ""
 
         total = conn.execute(
@@ -205,7 +260,8 @@ def search_documents(query: str = "", *, language: str | None = None,
 
         # Over-fetch when filtering on coverage, so a page is not left
         # near-empty by untranslated works being dropped after the fact.
-        fetch = limit * 4 if translated_only else limit
+        post_filtered = translated_only or styled_only
+        fetch = limit * 4 if post_filtered else limit
         rows = conn.execute(f"""
             SELECT d.* FROM documents d {clause}
              ORDER BY d.id LIMIT ? OFFSET ?
@@ -216,6 +272,8 @@ def search_documents(query: str = "", *, language: str | None = None,
         for r in rows:
             doc = _row_to_doc(r, counts.get(r["id"], {}))
             if translated_only and not doc.translated:
+                continue
+            if styled_only and not doc.styled:
                 continue
             docs.append(doc)
             if len(docs) >= limit:
@@ -228,9 +286,12 @@ def search_documents(query: str = "", *, language: str | None = None,
         }
         if not docs:
             out["hint"] = (
-                "No match. Search is a substring of title or author, so try the "
-                "Latin form of the name (e.g. 'Augustinus', not 'Augustine'), or "
-                "untick 'translated only' to see works still awaiting English.")
+                "No match. Free-text search is a substring of title or author, "
+                "so try the Latin form of a name ('Augustinus', not "
+                "'Augustine') — or drop the text and use the author / genre / "
+                "period filters instead. Unticking 'only works that already "
+                "have English' reveals works still awaiting translation, which "
+                "an original-only edition can still print.")
         return out
     finally:
         if own:

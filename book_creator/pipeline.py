@@ -185,9 +185,11 @@ def _chapters_from_corpus(spec: BookSpec, log) -> list[Chapter]:
 def _chapters_from_editions(spec: BookSpec, log) -> list[Chapter]:
     """Fetch, segment, and align two separate editions (the Gutenberg path)."""
     log(f"• Fetching source ({spec.src_lang})…")
-    src_text = fetch.load_text(path=spec.src_path, gid=spec.src_gutenberg_id)
+    src_text = fetch.load_text(path=spec.src_path, gid=spec.src_gutenberg_id,
+                               log=log)
     log(f"• Fetching translation ({spec.tgt_lang})…")
-    tgt_text = fetch.load_text(path=spec.tgt_path, gid=spec.tgt_gutenberg_id)
+    tgt_text = fetch.load_text(path=spec.tgt_path, gid=spec.tgt_gutenberg_id,
+                               log=log)
 
     # Structural anchoring: split both sides into divisions, optionally scoping
     # each to a selected range so the two editions cover the same content.

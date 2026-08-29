@@ -1,0 +1,2 @@
+# Test suite: pytest tests/
+pytest>=8.0

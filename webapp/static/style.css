@@ -148,6 +148,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .hint { color: var(--accent-dk); }
 .hint:empty { display: none; }
 
+/* ---- facet filters ---- */
+.facets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.facets label { display: flex; flex-direction: column; gap: 3px; font-size: 12px;
+  color: var(--muted); }
+.facets select, .facets input { font-size: 12px; padding: 5px 7px; color: var(--ink); }
+.facets .rngpair { display: flex; gap: 6px; }
+.facets .rngpair input { width: 100%; min-width: 0; }
+
+/* ---- source-quality warnings ---- */
+.warn, .caution { font-size: 12px; margin: 8px 0 0; padding: 8px 10px;
+  border-radius: 7px; }
+.warn { background: #fbeae6; border: 1px solid #e6bfb4; color: #8c3520; }
+.caution { background: #fdf3df; border: 1px solid #ecd9a8; color: #6b5a23; }
+
 /* ---- corpus panel ---- */
 .corpus-status { font-size: 12px; margin: 0 0 10px; }
 .corpus-status code { font-size: 11px; background: #efe9dc; padding: 1px 5px;

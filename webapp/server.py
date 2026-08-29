@@ -11,20 +11,26 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import yaml
 
-from book_creator import audio, corpus, fetch, fonts, segment
+from book_creator import audio, corpus, epub_reader, fetch, fonts, segment
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec)
 from book_creator.pipeline import apply_sides, build_book
 
-from . import gutendex, preview
+from . import gutendex, jobs as jobstore, preview
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
 OUTPUT_DIR = "output"
+# Local source texts live here. Everything served by the /api/local endpoints
+# is confined to this directory — see _safe_input_path.
+INPUT_DIR = Path("input")
+LOCAL_SUFFIXES = (".txt", ".epub")
 
-# In-memory job registry. Single-user local app, so a dict + lock is plenty.
+# In-memory job registry for the live view, mirrored to SQLite so a restart
+# does not lose finished builds (webapp/jobs.py).
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
+_store = jobstore.JobStore()
 
 
 # --------------------------------------------------------------------------- #
@@ -58,6 +64,85 @@ def api_outline():
 
 
 # --------------------------------------------------------------------------- #
+# Local source files (input/)
+# --------------------------------------------------------------------------- #
+def _safe_input_path(raw: str) -> Path:
+    """Resolve a client-supplied path, refusing anything outside input/.
+
+    The browser sends back a path string, so it is untrusted: without this a
+    crafted request could read any file the server user can.
+    """
+    base = INPUT_DIR.resolve()
+    p = (base / Path(raw).name).resolve() if "/" not in raw and "\\" not in raw \
+        else Path(raw).resolve()
+    if base != p.parent and base not in p.parents:
+        raise ValueError("Path is outside the input directory.")
+    if not p.is_file():
+        raise ValueError(f"No such file: {p.name}")
+    return p
+
+
+@app.route("/api/local/files")
+def api_local_files():
+    """Source texts sitting in input/, for the Local files tab."""
+    INPUT_DIR.mkdir(exist_ok=True)
+    files = []
+    for p in sorted(INPUT_DIR.iterdir()):
+        if not p.is_file() or p.suffix.lower() not in LOCAL_SUFFIXES:
+            continue
+        files.append({
+            "name": p.name,
+            "path": str(p),
+            "kind": p.suffix.lower().lstrip("."),
+            "size_mb": round(p.stat().st_size / 1024 ** 2, 1),
+        })
+    return jsonify({"dir": str(INPUT_DIR.resolve()), "files": files})
+
+
+@app.route("/api/local/inspect")
+def api_local_inspect():
+    """What a local file actually contains, before a build is spent on it.
+
+    For an EPUB this is the quality report — a scan with 24%-accurate OCR
+    looks like a book to every other part of the pipeline, and the only place
+    to catch it is before the build starts.
+    """
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if p.suffix.lower() == ".epub":
+        try:
+            report = epub_reader.inspect(p).as_dict()
+        except epub_reader.EpubError as exc:
+            return jsonify({"error": str(exc)}), 400
+    else:
+        text = p.read_text(encoding="utf-8", errors="replace")
+        report = {"path": str(p), "documents": 1, "images": 0,
+                  "characters": len(text),
+                  "size_mb": round(p.stat().st_size / 1024 ** 2, 1),
+                  "chars_per_document": len(text), "ocr_accuracy": None,
+                  "ocr_pages": 0, "warnings": [], "usable": len(text) > 100}
+    return jsonify(report)
+
+
+@app.route("/api/local/outline")
+def api_local_outline():
+    """Division outline for a local file, so the range picker works there too."""
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        text = fetch.load_text(path=str(p))
+        return jsonify({"divisions": segment.outline(
+            text, mode=request.args.get("mode", "prose"))})
+    except (epub_reader.EpubError, OSError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+# --------------------------------------------------------------------------- #
 # Latin corpus (the sibling `latin` repo's pre-aligned corpus.db)
 # --------------------------------------------------------------------------- #
 @app.route("/api/corpus/status")
@@ -72,14 +157,33 @@ def api_corpus_status():
     return jsonify({"available": True, "path": str(db), "documents": docs})
 
 
+@app.route("/api/corpus/facets")
+def api_corpus_facets():
+    """Author / genre / period / stage picklists — 13k works is too many to
+    find anything in by substring alone."""
+    try:
+        return jsonify(corpus.facets())
+    except corpus.CorpusError as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/corpus/search")
 def api_corpus_search():
+    def _int(name):
+        raw = request.args.get(name)
+        return int(raw) if raw not in (None, "") else None
+
     try:
         return jsonify(corpus.search_documents(
             request.args.get("q", ""),
             language=request.args.get("lang") or None,
             stage=request.args.get("stage") or None,
+            author=request.args.get("author") or None,
+            genre=request.args.get("genre") or None,
+            century_from=_int("century_from"),
+            century_to=_int("century_to"),
             translated_only=request.args.get("translated", "1") != "0",
+            styled_only=request.args.get("styled", "0") == "1",
             limit=40,
             offset=(max(1, int(request.args.get("page", 1))) - 1) * 40,
         ))
@@ -152,7 +256,7 @@ def api_audio_estimate():
 @app.route("/api/audio/<job_id>.<ext>")
 def api_audio_file(job_id: str, ext: str):
     """Stream (or download) the assembled audiobook for a finished job."""
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     result = (job or {}).get("artifacts", {}).get("audio") or {}
     path = result.get("book")
     if not path or not Path(path).exists():
@@ -281,11 +385,13 @@ def _run_build(job_id: str, spec: BookSpec) -> None:
     def on_log(msg: str) -> None:
         with _lock:
             job["log"].append(msg)
+        _store.save(job_id, job)
 
     def on_progress(done: int, total: int) -> None:
         with _lock:
             job["progress"] = {"done": done, "total": total,
                                "percent": round(100 * done / max(1, total))}
+        _store.save(job_id, job)
 
     def should_stop() -> bool:
         return job.get("cancel", False)
@@ -301,14 +407,21 @@ def _run_build(job_id: str, spec: BookSpec) -> None:
         with _lock:
             job["pdf_path"] = pdf_path
             job["pages"] = pages
+            job["title"] = spec.title or job["title"]
             job["cover_path"] = str(cover_cand) if cover_cand.exists() else None
-            job["status"] = "done"
+            if cover_cand.exists():
+                artifacts.setdefault("cover", str(cover_cand))
+            job["status"] = "cancelled" if job.get("cancel") else "done"
     except Exception as exc:  # noqa: BLE001
         with _lock:
             job["status"] = "error"
             job["error"] = str(exc)
             job["log"].append(f"✗ {exc}")
         traceback.print_exc()
+    finally:
+        # Always force this one: a finished build left showing as running
+        # because its write was throttled is the one genuinely misleading state.
+        _store.save(job_id, job, force=True)
 
 
 @app.route("/api/build", methods=["POST"])
@@ -323,12 +436,20 @@ def api_build():
             return jsonify({"error": "Choose a translation."}), 400
 
     job_id = uuid.uuid4().hex[:12]
-    _jobs[job_id] = {"status": "running", "log": [], "pages": 0,
+    spec = _spec_from_payload(payload)
+    title = spec.title or payload.get("title") or f"corpus #{spec.corpus.doc_id}"
+    _jobs[job_id] = {"status": "running", "log": [], "pages": 0, "title": title,
                      "pdf_path": None, "cover_path": None, "error": None,
                      "progress": None, "artifacts": {}, "cancel": False}
-    spec = _spec_from_payload(payload)
+    _store.create(job_id, title)
     threading.Thread(target=_run_build, args=(job_id, spec), daemon=True).start()
     return jsonify({"job_id": job_id})
+
+
+@app.route("/api/jobs")
+def api_jobs():
+    """Recent builds, so a finished book survives a server restart."""
+    return jsonify({"jobs": _store.recent(25)})
 
 
 @app.route("/api/cancel/<job_id>", methods=["POST"])
@@ -345,9 +466,27 @@ def api_cancel(job_id: str):
     return jsonify({"cancelling": True})
 
 
+def _get_job(job_id: str) -> dict | None:
+    """The live job if it is still in memory, else the persisted record.
+
+    After a restart the process has no jobs but the files are still on disk,
+    so a bookmarked preview or download link keeps working.
+    """
+    job = _jobs.get(job_id)
+    if job:
+        return job
+    stored = _store.get(job_id)
+    if not stored:
+        return None
+    art = stored.get("artifacts") or {}
+    stored.setdefault("pdf_path", art.get("pdf"))
+    stored.setdefault("cover_path", art.get("cover"))
+    return stored
+
+
 @app.route("/api/status/<job_id>")
 def api_status(job_id: str):
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "unknown job"}), 404
     with _lock:
@@ -356,7 +495,7 @@ def api_status(job_id: str):
             "status": job["status"],
             "log": job["log"],
             "pages": job["pages"],
-            "has_cover": bool(job.get("cover_path")),
+            "has_cover": bool(job.get("cover_path") or art.get("cover")),
             "progress": job.get("progress"),
             "audio": art.get("audio"),
             "epub": bool(art.get("epub")),
@@ -366,7 +505,7 @@ def api_status(job_id: str):
 
 @app.route("/api/preview/<job_id>/<int:page>.png")
 def api_preview(job_id: str, page: int):
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job or not job.get("pdf_path"):
         return Response("not ready", status=404)
     png = preview.render_page(job["pdf_path"], page)
@@ -375,7 +514,7 @@ def api_preview(job_id: str, page: int):
 
 @app.route("/api/download/<job_id>.pdf")
 def api_download(job_id: str):
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job or not job.get("pdf_path"):
         return Response("not ready", status=404)
     path = Path(job["pdf_path"]).resolve()
@@ -384,7 +523,7 @@ def api_download(job_id: str):
 
 @app.route("/api/cover/<job_id>.png")
 def api_cover_preview(job_id: str):
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job or not job.get("cover_path"):
         return Response("no cover", status=404)
     png = preview.render_page(job["cover_path"], 0, dpi=90)
@@ -393,7 +532,7 @@ def api_cover_preview(job_id: str):
 
 @app.route("/api/cover-download/<job_id>.pdf")
 def api_cover_download(job_id: str):
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job or not job.get("cover_path"):
         return Response("no cover", status=404)
     path = Path(job["cover_path"]).resolve()
