@@ -251,10 +251,10 @@
             <select id="auDevice"></select>
           </label>
           <label class="wide">Narrator voice
-            <input id="auVoice" type="text"
-                   placeholder="path to a 6–30s WAV (cloning), or a voice name">
-            <small class="muted">One value reads both languages, so the same
-              narrator carries the original and the English.</small>
+            <select id="auVoice"></select>
+            <input id="auVoiceCustom" type="text" style="display:none"
+                   placeholder="path to a 6–30s WAV, or a voice name">
+            <small id="auVoiceNote" class="muted"></small>
           </label>
           <label>Pause within a bead
             <input id="auPauseWithin" type="number" step="0.05" value="0.45"></label>

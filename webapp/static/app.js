@@ -629,7 +629,53 @@ async function loadAudio() {
   }
   if (data.recommended) dSel.value = data.recommended;
   $("auDeviceNote").textContent = data.note || "";
+
+  VOICES = data.voices || [];
+  const vSel = $("auVoice");
+  vSel.innerHTML = `<option value="">the engine's own built-in voice</option>`;
+  for (const v of VOICES) {
+    const o = document.createElement("option");
+    o.value = v.path;
+    o.textContent = `${v.label} (${v.size_kb} KB)`;
+    vSel.appendChild(o);
+  }
+  const custom = document.createElement("option");
+  custom.value = "__custom__";
+  custom.textContent = "a file of my own…";
+  vSel.appendChild(custom);
+  updateVoiceNote();
 }
+
+let VOICES = [];
+
+function updateVoiceNote() {
+  const v = $("auVoice").value;
+  $("auVoiceCustom").style.display = v === "__custom__" ? "" : "none";
+  const note = $("auVoiceNote");
+  if (!v) {
+    note.textContent = VOICES.length
+      ? "No cloning — the engine reads in its own voice."
+      : "No cloning. Run download_voices.py for public-domain narrators to clone.";
+    return;
+  }
+  if (v === "__custom__") {
+    note.textContent = "A 6–30 second WAV of one speaker, no background noise.";
+    return;
+  }
+  // Reading Latin in a voice cloned from someone actually reading Latin beats
+  // the Italian-voice approximation, so say when the two match.
+  const picked = VOICES.find((x) => x.path === v);
+  const src = $("srcLang").value;
+  note.textContent = picked && picked.lang === src
+    ? `Cloned from a real ${LANG_NAMES[src] || src} reader — closer than the ` +
+      `substitute voice ${LANG_NAMES[src] || src} would otherwise get.`
+    : "One narrator reads both languages.";
+}
+
+const LANG_NAMES = {
+  la: "Latin", grc: "Ancient Greek", el: "Greek", fr: "French",
+  de: "German", it: "Italian", es: "Spanish", en: "English",
+};
 
 function updateEngineNote() {
   const e = ENGINES.find((x) => x.id === $("auEngine").value);
@@ -663,11 +709,15 @@ async function estimateAudio() {
 }
 
 function audioPayload() {
+  const picked = $("auVoice").value;
+  const voice = picked === "__custom__"
+    ? ($("auVoiceCustom").value.trim() || null)
+    : (picked || null);
   return {
     enabled: $("auEnabled").checked,
     engine: $("auEngine").value,
     device: $("auDevice").value,
-    voice: $("auVoice").value.trim() || null,
+    voice,
     pause_within: parseFloat($("auPauseWithin").value) || 0.45,
     pause_bead: parseFloat($("auPauseBead").value) || 0.9,
     announce_chapters: $("auAnnounce").checked,
@@ -923,9 +973,14 @@ $("cancelBtn").onclick = cancelBuild;
 $("coverToggle").onclick = toggleCover;
 $("auEstimateBtn").onclick = estimateAudio;
 $("auEngine").addEventListener("change", updateEngineNote);
+$("auVoice").addEventListener("change", updateVoiceNote);
 $("sides").addEventListener("change", updateSides);
 $("font").addEventListener("change", updateFontNote);
-$("srcLang").addEventListener("change", () => { updateFontNote(); updateEngineNote(); });
+$("srcLang").addEventListener("change", () => {
+  updateFontNote();
+  updateEngineNote();
+  updateVoiceNote();
+});
 $("prev").onclick = () => showPage(state.page - 1);
 $("next").onclick = () => showPage(state.page + 1);
 document.addEventListener("keydown", (e) => {

@@ -15,9 +15,10 @@ output/
 # synthesized TTS utterances (cache/tts/ can reach gigabytes on a full book).
 cache/
 
-# Fonts are downloaded by download_fonts.py, not vendored.
+# Fonts and narrator samples are downloaded by their scripts, not vendored.
 fonts/*.ttf
 fonts/*.otf
+voices/*.wav
 
 # Source texts are inputs, not code: some are hundreds of MB (whole EPUBs),
 # which GitHub rejects outright above 100 MB. Keep the small hand-made test

@@ -215,9 +215,10 @@ def api_corpus_doc(doc_id: int):
 # --------------------------------------------------------------------------- #
 @app.route("/api/audio/engines")
 def api_audio_engines():
-    """Registered TTS engines plus the CUDA devices they could run on."""
+    """Registered TTS engines, CUDA devices, and any narrator clips on hand."""
     info = audio.devices()
-    return jsonify({"engines": audio.catalog(), **info})
+    return jsonify({"engines": audio.catalog(),
+                    "voices": audio.voice_catalog(), **info})
 
 
 @app.route("/api/audio/estimate", methods=["POST"])

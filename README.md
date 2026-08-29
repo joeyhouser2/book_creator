@@ -266,6 +266,42 @@ backends, and all loaded lazily — importing the module never pulls in torch.
 
 Add your own with `audio.register("name", MyEngine())`.
 
+### Narrator voices
+
+**You don't need one to start.** Chatterbox ships a built-in voice, so leaving
+the voice unset just works. A reference clip is only for cloning a *particular*
+narrator.
+
+When you do want one, fetch public-domain samples from
+[LibriVox](https://librivox.org), whose recordings are dedicated to the public
+domain — the same bar the text sources are held to. Cloning a voice you have no
+rights to is the obvious hazard with any cloning TTS; a LibriVox reader has
+explicitly released theirs, so the narration is as publishable as the text
+beside it.
+
+```bash
+python download_voices.py            # the curated set
+python download_voices.py la grc     # just these languages
+python download_voices.py --list     # what's available
+```
+
+Each becomes a ~20 second mono 24 kHz WAV in `voices/`. Only that slice
+crosses the network — ffmpeg range-requests into the MP3 rather than pulling a
+whole chapter. Pick one from the Audiobook panel's dropdown, or:
+
+```bash
+python make_book.py --corpus-id 79 --audio --audio-voice voices/la-caesar.wav
+```
+
+| voice | what it is |
+|---|---|
+| `la-caesar`, `la-aesop` | **Latin**, read by a human |
+| `grc-thucydides` | **Ancient Greek**, read by a human |
+| `it-pirandello`, `fr-hugo`, `es-dickens` | Italian, French, Spanish |
+| `en-austen` (female), `en-melville` (male) | English, for the translation side |
+
+The Latin and Greek ones matter most, for the reason in the next section.
+
 ### Latin and Greek have no TTS voice
 
 No model anywhere has one. They are read with the nearest living-language voice:
@@ -279,6 +315,12 @@ That is a real convention, not a fudge — but it *is* a convention: classical
 restored pronunciation will not come out of any of these models. The build logs
 the substitution every time.
 
+**Cloning sidesteps this.** A voice cloned from `la-caesar` (a human reading
+*De Bello Gallico*) or `grc-thucydides` carries that reader's actual Latin or
+Greek pronunciation, rather than an Italian voice approximating it. That is the
+best pronunciation available here, and it is the main reason to bother with a
+reference clip at all.
+
 ### Options
 
 | flag | config | meaning |
@@ -286,7 +328,7 @@ the substitution every time.
 | `--audio` | `audio.enabled` | narrate after rendering |
 | `--audio-engine` | `audio.engine` | which backend |
 | `--audio-device` | `audio.device` | CUDA device. **Defaults to the card with the most memory**, not `cuda:0` — CUDA orders devices fastest-first, so `cuda:0` is often the *smaller* card |
-| `--audio-voice` | `audio.voice` | reference WAV (cloning) or voice name; one value reads both languages |
+| `--audio-voice` | `audio.voice` | reference WAV to clone; omit for the engine's built-in voice. See [Narrator voices](#narrator-voices) |
 | `--audio-format` | `audio.format` | `m4b` (chapter markers) or `mp3` |
 | `--audio-max-beads` | `audio.max_beads` | narrate only the first N beads — a voice test before committing hours of GPU time |
 | `--no-announce-chapters` | `audio.announce_chapters` | don't read chapter titles aloud |
@@ -622,6 +664,7 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 | `fetch.py` | download Gutenberg text, strip the license banner, cache locally |
 | `corpus.py` | read a pre-aligned work out of the `latin` repo's corpus.db (read-only) |
 | `epub_reader.py` | unpack a local EPUB into plain text, and report scan/OCR quality first |
+| `download_voices.py` | fetch public-domain narrator samples from LibriVox into voices/ |
 | `audio.py` | pluggable GPU TTS engines + interleaved bilingual audiobook assembly |
 | `segment.py` | detect chapters; split into sentences (prose) or lines (verse) |
 | `fonts.py` | auto-discover font families in fonts/, register, expose catalog |

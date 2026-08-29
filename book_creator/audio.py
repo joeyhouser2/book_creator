@@ -731,6 +731,35 @@ def devices() -> dict:
     }
 
 
+# Narrator samples fetched by download_voices.py, named "<lang>-<who>.wav".
+VOICES_DIR = Path("voices")
+
+
+def voice_catalog(voices_dir: str | Path = VOICES_DIR) -> list[dict]:
+    """Reference clips available for cloning, newest naming convention first.
+
+    Empty is the normal starting state and not an error: the default engine
+    ships a built-in voice, so a reference clip is only needed to clone a
+    *particular* narrator.
+    """
+    d = Path(voices_dir)
+    if not d.is_dir():
+        return []
+    out = []
+    for p in sorted(d.glob("*.wav")):
+        lang, _, who = p.stem.partition("-")
+        if not who:                      # not <lang>-<who>; still offer it
+            lang, who = "", p.stem
+        out.append({
+            "id": p.stem,
+            "path": str(p),
+            "lang": lang,
+            "label": f"{lang or '?'} · {who.replace('-', ' ')}",
+            "size_kb": round(p.stat().st_size / 1024),
+        })
+    return out
+
+
 def _physical_gpu_count() -> int:
     """How many GPUs the driver reports, ignoring CUDA_VISIBLE_DEVICES."""
     exe = shutil.which("nvidia-smi")

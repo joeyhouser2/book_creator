@@ -242,6 +242,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {mark} {e['id']:<12} {e['label']:<38} {e['licence']}")
             if not e["installed"]:
                 print(f"      not installed — {e['reason']}")
+        voices = audio.voice_catalog()
+        print("\n=== narrator voices (voices/) ===")
+        if voices:
+            for v in voices:
+                print(f"  {v['id']:18} {v['label']:28} {v['path']}")
+        else:
+            print("  none — run `python download_voices.py` for public-domain")
+            print("  narrators, or leave --audio-voice unset to use the")
+            print("  engine's own built-in voice.")
+
         info = audio.devices()
         print("\n=== devices ===")
         for d in info["devices"]:
