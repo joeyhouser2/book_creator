@@ -191,6 +191,21 @@ def test_audio_failure_does_not_lose_the_book(corpus_db, small_doc, a_font,
     assert any("Audiobook skipped" in m for m in msgs)
 
 
+def test_epub_output_is_genuinely_optional(monkeypatch, tmp_path, chapters):
+    """Regression: a missing ebooklib took down the whole CLI.
+
+    pipeline imports render_epub unconditionally, so a module-level
+    `from ebooklib import epub` made an optional dependency mandatory —
+    `make_book.py --help` failed on an install that never asked for EPUB.
+    """
+    from book_creator import render_epub
+
+    monkeypatch.setattr(render_epub, "epub", None)
+    with pytest.raises(RuntimeError, match="requirements-epub"):
+        render_epub.render(chapters, out_path=str(tmp_path / "x.epub"),
+                           title="T", author="A", src_lang="la", tgt_lang="en")
+
+
 def test_build_with_narration(corpus_db, small_doc, a_font, tmp_path, tone_engine):
     spec = _spec(small_doc, font=FontSpec(family=a_font),
                  audio=AudioSpec(enabled=True, engine="tone", device="cpu",

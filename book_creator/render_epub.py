@@ -25,7 +25,14 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from ebooklib import epub
+try:
+    from ebooklib import epub
+except ImportError:  # pragma: no cover - exercised by test_epub_optional
+    # EPUB output is optional (requirements-epub.txt), but pipeline imports
+    # this module unconditionally — so a missing ebooklib must not take the
+    # whole CLI down, only `--epub`. Annotations below are strings thanks to
+    # `from __future__ import annotations`, so they never dereference this.
+    epub = None
 
 from . import decorations, fonts
 from .model import Chapter, CopyrightSpec, DecorSpec, FontSpec
@@ -186,6 +193,10 @@ def render(
     cover_image_path: str | None = None,
     edition_line: str | None = None,
 ) -> str:
+    if epub is None:
+        raise RuntimeError(
+            "EPUB output needs ebooklib: pip install -r requirements-epub.txt")
+
     decor = decor or DecorSpec()
     copyright = copyright or CopyrightSpec()
     font_spec = font_spec or FontSpec()

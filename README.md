@@ -241,17 +241,50 @@ audiobook does the same thing in time instead of space:
 Chapters become real chapter markers in the M4B, so a player shows a chapter
 list and resumes where you left off.
 
+Install it in **its own virtualenv**, and install the CUDA build of torch
+*first*. `chatterbox-tts` pins `torch==2.6.0`, and on Windows the default PyPI
+torch wheel is CPU-only — so letting pip resolve it unaided gives a working
+install that never touches the GPU, while installing into your main
+environment would replace the CUDA torch that the LaBSE aligner here and the
+NLLB models in the `latin` repo depend on.
+
 ```bash
-pip install -r requirements-audio.txt      # read the warning at the top first
-python make_book.py --audio-engines        # what's installed, and on which GPU
-python make_book.py --corpus-id 79 --mode verse --audio \
-    --audio-voice input/narrator.wav --audio-max-beads 20
+python -m venv .venv-tts
 ```
 
-> **Install this in its own virtualenv.** `chatterbox-tts` pins
-> torch/transformers/numpy and will replace a working CUDA build of torch with a
-> generic wheel — which breaks the LaBSE aligner here *and* the NLLB models in
-> the `latin` repo. `requirements-audio.txt` has the isolated-venv recipe.
+```bash
+.venv-tts/Scripts/pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+```
+
+```bash
+.venv-tts/Scripts/pip install -r requirements-audio.txt -r requirements.txt
+```
+
+`2.6.0+cu124` satisfies chatterbox's `==2.6.0` pin, so pip leaves it alone.
+Then:
+
+```bash
+.venv-tts/Scripts/python make_book.py --audio-engines
+```
+
+```bash
+.venv-tts/Scripts/python make_book.py --corpus-id 79 --mode verse --audio --audio-voice voices/en-gb-savage.wav --audio-max-beads 20
+```
+
+### What it actually costs
+
+Measured on an RTX 4060 Ti, Chatterbox, cloning two voices:
+
+| | |
+|---|---|
+| VRAM | **3.9 GB** — fits a 12 GB card too, so the bigger one can stay free |
+| Speed | **0.91× realtime** — roughly an hour of GPU per hour of audio |
+| Throughput | ~10 characters/second |
+| A 300,000-character book | **~8.5 hours** |
+
+Which is why `--audio-max-beads` exists: check the voice on 20 beads before
+committing a night to it. The utterance cache means a stopped or crashed run
+resumes without re-synthesizing anything.
 
 ### Engines
 
@@ -260,7 +293,7 @@ backends, and all loaded lazily — importing the module never pulls in torch.
 
 | engine | licence | languages | VRAM | notes |
 |---|---|---|---|---|
-| **`chatterbox`** (default) | MIT | 23, incl. `it`, `el`, `de`, `fr` | ~7 GB | clones a narrator from a 6–30s clip; **safe to sell** |
+| **`chatterbox`** (default) | MIT | 23, incl. `it`, `el`, `de`, `fr` | 3.9 GB (measured) | clones a narrator from a 6–30s clip; **safe to sell** |
 | `kokoro` | Apache-2.0 | 8, no Greek or German | ~1 GB | tiny and many times realtime; fixed voices |
 | `xtts` | **CPML — non-commercial** | 17, incl. German | ~4 GB | best cloning quality; personal listening only, and the build says so |
 
@@ -785,7 +818,6 @@ stub engine that synthesizes a tone, so no model weights or GPU are required.
 
 - Forced alignment between the narration and the EPUB, for read-along (Media Overlays)
 - Per-speaker voices for dialogue in the audiobook
-- Run a real TTS model end to end (the audio path is verified against a stub engine only)
 - Drop caps at chapter openings
 - Footnote/glossary support
 - More musical-literature catalogs (Schumann's Liederkreis Op. 24, Schubert's
