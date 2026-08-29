@@ -47,13 +47,20 @@ SAMPLE_RATE = 24000
 
 @dataclass(frozen=True)
 class Voice:
-    """One curated LibriVox recording to sample a narrator from."""
+    """One curated LibriVox recording to sample a narrator from.
+
+    `reader` is the credited LibriVox volunteer and `accent` is taken from who
+    that reader is, not from listening to the file -- so treat accent as a
+    strong hint rather than a guarantee, and spot-check by playing the WAV.
+    """
 
     id: str                 # output stem, e.g. "la-caesar"
     lang: str               # source language this voice suits
     identifier: str         # archive.org item
     file: str               # MP3 within that item
     note: str               # what it is, shown by --list
+    reader: str = ""        # credited LibriVox reader
+    accent: str = ""        # "British" | "American" | ""
     skip: int = SKIP_SECONDS
 
 
@@ -83,13 +90,28 @@ VOICES: list[Voice] = [
     Voice("es-dickens", "es", "tiemposdificiles_2411_librivox",
           "tiemposdificiles_01_dickens_64kb.mp3",
           "Spanish — Dickens, Tiempos difíciles (trans.)"),
-    # --- English, for the translation side
-    Voice("en-austen", "en", "prideandprejudice_1005_librivox",
+    # --- English, for the translation side. All solo recordings, so the clip
+    #     is unambiguously the credited reader.
+    Voice("en-gb-savage", "en", "pride_prejudice_krs_librivox",
+          "pride_and_prejudice_01_austen_64kb.mp3",
+          "English (British, female) — Austen, Pride and Prejudice",
+          reader="Karen Savage", accent="British"),
+    Voice("en-gb-golding", "en", "adventures_sherlock_holmes_rg_librivox",
+          "adventuresholmes_01_doyle_64kb.mp3",
+          "English (British, female) — Conan Doyle, Sherlock Holmes",
+          reader="Ruth Golding", accent="British"),
+    Voice("en-gb-barnes", "en", "canterville_ghost_librivox",
+          "cantervilleghost_1-3_wilde_64kb.mp3",
+          "English (British, male) — Wilde, The Canterville Ghost",
+          reader="David Barnes", accent="British"),
+    Voice("en-us-klett", "en", "prideandprejudice_1005_librivox",
           "prideandprejudice_01_austen_64kb.mp3",
-          "English — Austen, Pride and Prejudice (female)"),
-    Voice("en-melville", "en", "moby_dick_librivox",
+          "English (American, female) — Austen, Pride and Prejudice",
+          reader="Elizabeth Klett", accent="American"),
+    Voice("en-us-wills", "en", "moby_dick_librivox",
           "mobydick_001_melville_64kb.mp3",
-          "English — Melville, Moby Dick (male)"),
+          "English (American, male) — Melville, Moby Dick",
+          reader="Stewart Wills", accent="American"),
 ]
 
 
@@ -190,8 +212,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.list:
         print("\nCurated LibriVox narrators (all public domain):\n")
         for v in VOICES:
-            print(f"  {v.id:16} [{v.lang:3}] {v.note}")
+            who = f" — read by {v.reader}" if v.reader else ""
+            print(f"  {v.id:16} [{v.lang:3}] {v.note}{who}")
         print("\n  python download_voices.py la grc     # just these languages")
+        print("\n  Accent is taken from who the reader is, not from listening to")
+        print("  the file — play the WAV to confirm before committing a long run.")
         return 0
 
     wanted = [v for v in VOICES if not args.languages or v.lang in args.languages]

@@ -48,6 +48,29 @@ def test_catalog_parses_lang_from_the_filename(tmp_path):
     assert got["la-caesar"]["size_kb"] > 0
 
 
+def test_catalog_reads_the_accent_marker(tmp_path):
+    d = tmp_path / "voices"
+    _write_wav(d / "en-gb-savage.wav")
+    _write_wav(d / "en-us-klett.wav")
+
+    got = {v["id"]: v for v in audio.voice_catalog(d)}
+    assert got["en-gb-savage"]["lang"] == "en"
+    assert got["en-gb-savage"]["accent"] == "British"
+    assert got["en-us-klett"]["accent"] == "American"
+    # The label is what the picker shows, so accent has to be legible there.
+    assert "British" in got["en-gb-savage"]["label"]
+    assert "savage" in got["en-gb-savage"]["label"]
+    assert "gb" not in got["en-gb-savage"]["label"]
+
+
+def test_catalog_does_not_mistake_a_name_for_a_region(tmp_path):
+    d = tmp_path / "voices"
+    _write_wav(d / "la-caesar.wav")
+    (entry,) = audio.voice_catalog(d)
+    assert entry["accent"] == ""
+    assert entry["label"] == "Latin · caesar"
+
+
 def test_catalog_tolerates_an_unconventional_name(tmp_path):
     d = tmp_path / "voices"
     _write_wav(d / "mynarrator.wav")
@@ -84,6 +107,26 @@ def test_curated_voices_are_well_formed():
         assert v.id.startswith(f"{v.lang}-"), v.id
         assert v.identifier and v.file.endswith(".mp3")
         assert v.note
+
+
+def test_accented_voices_declare_a_reader():
+    # Accent is inferred from who the reader is, so an accent claim without a
+    # named reader would be unfalsifiable.
+    for v in download_voices.VOICES:
+        if v.accent:
+            assert v.reader, f"{v.id} claims an accent with no reader credited"
+            assert v.accent in ("British", "American")
+
+
+def test_both_english_accents_are_offered():
+    accents = {v.accent for v in download_voices.VOICES if v.lang == "en"}
+    assert {"British", "American"} <= accents
+
+
+def test_english_voice_ids_encode_their_accent():
+    for v in download_voices.VOICES:
+        if v.lang == "en":
+            assert v.id.startswith(("en-gb-", "en-us-")), v.id
 
 
 def test_curated_set_covers_the_languages_with_no_tts_voice():

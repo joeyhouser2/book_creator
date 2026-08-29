@@ -731,12 +731,19 @@ def devices() -> dict:
     }
 
 
-# Narrator samples fetched by download_voices.py, named "<lang>-<who>.wav".
+# Narrator samples fetched by download_voices.py, named "<lang>-<who>.wav" or
+# "<lang>-<region>-<who>.wav" where accent matters (en-gb-savage, en-us-klett).
 VOICES_DIR = Path("voices")
+
+_LANG_NAMES = {"la": "Latin", "grc": "Ancient Greek", "el": "Greek",
+               "fr": "French", "de": "German", "it": "Italian",
+               "es": "Spanish", "en": "English", "pt": "Portuguese"}
+_REGION_NAMES = {"gb": "British", "us": "American", "au": "Australian",
+                 "ie": "Irish", "ca": "Canadian"}
 
 
 def voice_catalog(voices_dir: str | Path = VOICES_DIR) -> list[dict]:
-    """Reference clips available for cloning, newest naming convention first.
+    """Reference clips available for cloning.
 
     Empty is the normal starting state and not an error: the default engine
     ships a built-in voice, so a reference clip is only needed to clone a
@@ -747,14 +754,25 @@ def voice_catalog(voices_dir: str | Path = VOICES_DIR) -> list[dict]:
         return []
     out = []
     for p in sorted(d.glob("*.wav")):
-        lang, _, who = p.stem.partition("-")
-        if not who:                      # not <lang>-<who>; still offer it
-            lang, who = "", p.stem
+        parts = p.stem.split("-")
+        lang = parts[0] if len(parts) > 1 else ""
+        region = ""
+        who_parts = parts[1:] if len(parts) > 1 else parts
+        # A two-letter second segment is an accent marker, not a name.
+        if len(who_parts) > 1 and who_parts[0] in _REGION_NAMES:
+            region = who_parts[0]
+            who_parts = who_parts[1:]
+        who = " ".join(who_parts)
+
+        name = _LANG_NAMES.get(lang, lang or "?")
+        accent = _REGION_NAMES.get(region, "")
+        label = f"{name}{f' ({accent})' if accent else ''} · {who}"
         out.append({
             "id": p.stem,
             "path": str(p),
             "lang": lang,
-            "label": f"{lang or '?'} · {who.replace('-', ' ')}",
+            "accent": accent,
+            "label": label,
             "size_kb": round(p.stat().st_size / 1024),
         })
     return out

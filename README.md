@@ -298,9 +298,15 @@ python make_book.py --corpus-id 79 --audio --audio-voice voices/la-caesar.wav
 | `la-caesar`, `la-aesop` | **Latin**, read by a human |
 | `grc-thucydides` | **Ancient Greek**, read by a human |
 | `it-pirandello`, `fr-hugo`, `es-dickens` | Italian, French, Spanish |
-| `en-austen` (female), `en-melville` (male) | English, for the translation side |
+| `en-gb-savage`, `en-gb-golding` (f), `en-gb-barnes` (m) | **British** English |
+| `en-us-klett` (f), `en-us-wills` (m) | American English |
 
 The Latin and Greek ones matter most, for the reason in the next section.
+
+Accent is taken from **who the credited LibriVox reader is**, not from
+listening to the file, so treat it as a strong hint and spot-check by playing
+the WAV before committing to a long run. All the English picks are solo
+recordings, so the clip is unambiguously that reader.
 
 ### Latin and Greek have no TTS voice
 
