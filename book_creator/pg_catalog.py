@@ -22,9 +22,20 @@ import gzip
 import io
 import sqlite3
 import time
+import unicodedata
 from pathlib import Path
 
 import requests
+
+# Greek letter -> Latin, so a Latin-script query finds a Greek-script title.
+# Xenophon's Anabasis is catalogued as "Κύρου Ανάβασις"; without this,
+# searching "anabasis" returns nothing at all and the book looks missing.
+_GREEK_TRANSLIT = {
+    "α": "a", "β": "b", "γ": "g", "δ": "d", "ε": "e", "ζ": "z", "η": "e",
+    "θ": "th", "ι": "i", "κ": "k", "λ": "l", "μ": "m", "ν": "n", "ξ": "x",
+    "ο": "o", "π": "p", "ρ": "r", "σ": "s", "ς": "s", "τ": "t", "υ": "y",
+    "φ": "ph", "χ": "ch", "ψ": "ps", "ω": "o",
+}
 
 CATALOG_URL = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv.gz"
 CACHE_DIR = Path("cache")
@@ -38,11 +49,27 @@ CREATE TABLE IF NOT EXISTS books (
     authors   TEXT NOT NULL DEFAULT '',
     language  TEXT NOT NULL DEFAULT '',
     kind      TEXT NOT NULL DEFAULT '',
-    subjects  TEXT NOT NULL DEFAULT ''
+    subjects  TEXT NOT NULL DEFAULT '',
+    -- Title + authors, accent-stripped and transliterated out of Greek, so a
+    -- query can match regardless of script or diacritics.
+    search    TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_books_lang ON books(language);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
+
+
+def searchable(text: str) -> str:
+    """Fold text to lowercase Latin letters for matching.
+
+    Strips diacritics (so "Ανάβασις" and "Αναβασις" agree, and Latin macrons
+    stop mattering) and transliterates Greek, so "anabasis" finds
+    "Κύρου Ανάβασις". Greek-script queries still work, because search also
+    matches the raw title.
+    """
+    folded = unicodedata.normalize("NFD", (text or "").lower())
+    folded = "".join(c for c in folded if unicodedata.category(c) != "Mn")
+    return "".join(_GREEK_TRANSLIT.get(c, c) for c in folded)
 
 
 class CatalogError(RuntimeError):
@@ -57,11 +84,19 @@ def _connect(db_path: str | Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    # An index built before the folded-search column exists cannot answer
+    # transliterated queries, and CREATE TABLE IF NOT EXISTS will not add it.
+    # Drop it so the next build repopulates -- the source is a 5 MB download,
+    # so rebuilding is cheap and there is nothing here worth migrating.
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(books)")}
+    if cols and "search" not in cols:
+        conn.executescript("DROP TABLE books;" + _SCHEMA)
+        conn.commit()
     return conn
 
 
 def available(db_path: str | Path = DB_PATH) -> bool:
-    """Whether a usable local index exists."""
+    """Whether a usable index exists (an outdated schema counts as absent)."""
     if not Path(db_path).is_file():
         return False
     try:
@@ -114,11 +149,13 @@ def build(*, refresh: bool = False, db_path: str | Path = DB_PATH,
             gid = int(r["Text#"])
         except (KeyError, TypeError, ValueError):
             continue
-        rows.append((gid, (r.get("Title") or "").strip(),
-                     (r.get("Authors") or "").strip(),
+        title = (r.get("Title") or "").strip()
+        authors = (r.get("Authors") or "").strip()
+        rows.append((gid, title, authors,
                      (r.get("Language") or "").strip(),
                      (r.get("Type") or "").strip(),
-                     (r.get("Subjects") or "").strip()))
+                     (r.get("Subjects") or "").strip(),
+                     searchable(f"{title} {authors}")))
 
     if not rows:
         raise CatalogError("The catalog downloaded but contained no rows.")
@@ -128,7 +165,7 @@ def build(*, refresh: bool = False, db_path: str | Path = DB_PATH,
         conn.execute("DELETE FROM books")
         conn.executemany(
             "INSERT OR REPLACE INTO books (id, title, authors, language, kind, "
-            "subjects) VALUES (?, ?, ?, ?, ?, ?)", rows)
+            "subjects, search) VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
         conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES "
                      "('built_at', ?)", (str(time.time()),))
         conn.commit()
@@ -157,8 +194,10 @@ def search(query: str, language: str | None = None, page: int = 1, *,
     q = (query or "").strip()
     where, params = ["kind = 'Text'"], []
     if q:
-        where.append("(title LIKE ? OR authors LIKE ?)")
-        params += [f"%{q}%"] * 2
+        # Folded match finds Greek titles from Latin input; the raw match keeps
+        # Greek-script and exact-punctuation queries working.
+        where.append("(search LIKE ? OR title LIKE ? OR authors LIKE ?)")
+        params += [f"%{searchable(q)}%", f"%{q}%", f"%{q}%"]
     if language:
         where.append("(language = ? OR language LIKE ?)")
         params += [language, f"%{language}%"]
@@ -171,12 +210,13 @@ def search(query: str, language: str | None = None, page: int = 1, *,
         rows = conn.execute(f"""
             SELECT * FROM books WHERE {clause}
              ORDER BY CASE
-                 WHEN LOWER(title) = LOWER(?) THEN 0
-                 WHEN LOWER(title) LIKE LOWER(?) THEN 1
+                 WHEN LOWER(title) = LOWER(?) OR search = ? THEN 0
+                 WHEN LOWER(title) LIKE LOWER(?) OR search LIKE ? THEN 1
                  ELSE 2 END,
                  LENGTH(title), id
              LIMIT ? OFFSET ?
-        """, [*params, q, f"{q}%", limit, offset]).fetchall()
+        """, [*params, q, searchable(q), f"{q}%", f"{searchable(q)}%",
+              limit, offset]).fetchall()
 
     results = [{
         "id": r["id"],

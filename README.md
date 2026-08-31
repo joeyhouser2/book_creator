@@ -71,7 +71,9 @@ python make_book.py --update-catalog
 ```
 
 Results then come from `cache/pg_catalog.db` in milliseconds, and the UI says
-so. What the CSV lacks versus Gutendex: download counts, and a separate
+so. Search folds accents and transliterates Greek, so `anabasis` finds
+*Κύρου Ανάβασις* — a Greek-script title is otherwise unreachable from a
+Latin-script query, and the book just looks absent. What the CSV lacks versus Gutendex: download counts, and a separate
 translator field (it folds translators in with authors). Ids, titles, authors
 and languages — everything a build needs — are exact.
 
@@ -599,6 +601,12 @@ python download_fonts.py            # all, or: serif | medieval | greek
 | Classic serif | Cardo, EB Garamond, Gentium Book Plus, Old Standard, Libre Baskerville, IM Fell English, IM Fell DW Pica | most ✔ |
 | Medieval / display | UnifrakturMaguntia, UnifrakturCook (blackletter), Grenze Gotisch, Pirata One, MedievalSharp, Uncial Antiqua | — |
 | Greek display | GFS Didot, GFS Neohellenic | ✔ |
+
+**Gutenberg has no Ancient Greek.** Its catalogue codes Greek as `el` and
+uses it for *modern* Greek: Xenophon's *Anabasis* there (#39764, #40061) is a
+20th-century Katharevousa translation, not Xenophon's Attic. For real ancient
+Greek, ingest from Perseus into the `latin` corpus and build from the Latin
+corpus tab instead.
 
 Greek (polytonic) needs a ✔ Greek font, or glyphs render blank. Cardo and Old
 Standard are good all-rounders that cover both Latin and polytonic Greek. The

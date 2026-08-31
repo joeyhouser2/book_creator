@@ -22,11 +22,16 @@ def catalog(tmp_path):
         (218, "De Bello Gallico", "Caesar, Julius", "la", "Text", ""),
         (10657, "Gallic War", "Caesar, Julius; McDevitte, W. A.", "en", "Text", ""),
         (999, "A Sound Recording", "Nobody", "en", "Sound", ""),
+        # Greek-script title: the reason folded search exists.
+        (39764, "Κύρου Ανάβασις Τόμος 1",
+         "Xenophon, 432 BCE-351? BCE; Anastasopoulos, Demetrios [Translator]",
+         "el", "Text", ""),
     ]
+    rows = [(*r, pg_catalog.searchable(f"{r[1]} {r[2]}")) for r in rows]
     with pg_catalog._connect(db) as conn:
         conn.executemany(
-            "INSERT INTO books (id, title, authors, language, kind, subjects) "
-            "VALUES (?, ?, ?, ?, ?, ?)", rows)
+            "INSERT INTO books (id, title, authors, language, kind, subjects, "
+            "search) VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
         conn.execute("INSERT INTO meta (key, value) VALUES ('built_at', ?)",
                      (str(time.time()),))
         conn.commit()
@@ -44,7 +49,7 @@ def test_absent_index_is_reported_not_raised(tmp_path):
 
 def test_status_counts_and_dates(catalog):
     st = pg_catalog.status(catalog)
-    assert st["available"] and st["books"] == 6
+    assert st["available"] and st["books"] == 7
     assert st["age_days"] == 0.0
 
 
@@ -58,9 +63,9 @@ def test_search_without_an_index_says_how_to_build_one(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_search_finds_by_title(catalog):
     res = pg_catalog.search("anabasis", db_path=catalog)
-    assert res["count"] == 3
     assert res["source"] == "local-catalog"
-    assert {r["id"] for r in res["results"]} == {1170, 22003, 46976}
+    # The Greek-script title matches too, via folding.
+    assert {r["id"] for r in res["results"]} == {1170, 22003, 46976, 39764}
 
 
 def test_exact_title_ranks_first(catalog):
@@ -115,6 +120,60 @@ def test_paging(catalog):
     assert first["has_next"] is True
     assert {r["id"] for r in first["results"]}.isdisjoint(
         {r["id"] for r in second["results"]})
+
+
+# --------------------------------------------------------------------------- #
+# Script and diacritic folding
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("raw,folded", [
+    ("Κύρου Ανάβασις Τόμος 1", "kyroy anabasis tomos 1"),
+    ("Ξενοφῶν", "xenophon"),
+    ("Ανάβασις", "anabasis"),
+    ("Anabasis", "anabasis"),
+    ("DE BELLO GALLICO", "de bello gallico"),
+    ("", ""),
+])
+def test_searchable_folds_script_and_accents(raw, folded):
+    assert pg_catalog.searchable(raw) == folded
+
+
+def test_latin_query_finds_a_greek_title(catalog):
+    # The reported bug: "anabasis" with the Greek filter returned nothing,
+    # because the catalogue title is "Κύρου Ανάβασις".
+    res = pg_catalog.search("anabasis", language="el", db_path=catalog)
+    assert [r["id"] for r in res["results"]] == [39764]
+
+
+def test_greek_script_query_still_works(catalog):
+    res = pg_catalog.search("Ανάβασις", db_path=catalog)
+    assert 39764 in {r["id"] for r in res["results"]}
+
+
+def test_accents_are_optional_in_the_query(catalog):
+    with_accent = pg_catalog.search("Ανάβασις", db_path=catalog)["results"]
+    without = pg_catalog.search("Αναβασις", db_path=catalog)["results"]
+    assert {r["id"] for r in with_accent} == {r["id"] for r in without}
+
+
+def test_folded_search_does_not_swamp_latin_results(catalog):
+    # Folding must not make every query match everything.
+    assert pg_catalog.search("gallico", db_path=catalog)["count"] == 1
+
+
+def test_outdated_schema_is_treated_as_no_index(tmp_path):
+    # A pre-folding index cannot answer transliterated queries; rebuilding is
+    # a 5 MB download, so it is dropped rather than migrated.
+    db = tmp_path / "old.db"
+    import sqlite3
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT NOT NULL,
+            authors TEXT, language TEXT, kind TEXT, subjects TEXT);
+        INSERT INTO books VALUES (1, 'Old', '', 'en', 'Text', '');
+    """)
+    conn.commit()
+    conn.close()
+    assert pg_catalog.available(db) is False
 
 
 # --------------------------------------------------------------------------- #
