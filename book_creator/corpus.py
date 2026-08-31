@@ -121,12 +121,28 @@ class CorpusDoc:
     def coverage(self) -> float:
         return (self.translated / self.segments) if self.segments else 0.0
 
+    @property
+    def pending_translation(self) -> int:
+        """Segments with no English yet -- the work a translate pass would do."""
+        return max(0, self.segments - self.translated)
+
+    @property
+    def pending_styling(self) -> int:
+        """Translated segments the stylizer has not been over yet.
+
+        Counted against `translated`, not `segments`: the stylizer rewrites an
+        existing English crib, so untranslated segments are not work it can do.
+        """
+        return max(0, self.translated - self.styled)
+
     def as_dict(self) -> dict:
         d = {k: getattr(self, k) for k in (
             "id", "title", "author", "language", "language_stage", "century",
             "genre", "source", "license", "translation_status", "segments",
             "translated", "styled", "sections")}
         d["coverage"] = round(self.coverage, 3)
+        d["pending_translation"] = self.pending_translation
+        d["pending_styling"] = self.pending_styling
         d["license_risk"] = licence_risk(self.license)
         return d
 
@@ -217,6 +233,7 @@ def search_documents(query: str = "", *, language: str | None = None,
                      century_from: int | None = None,
                      century_to: int | None = None,
                      translated_only: bool = True, styled_only: bool = False,
+                     needs: str | None = None,
                      limit: int = 40, offset: int = 0,
                      conn: sqlite3.Connection | None = None,
                      db_path: str | None = None) -> dict:
@@ -224,9 +241,18 @@ def search_documents(query: str = "", *, language: str | None = None,
 
     `translated_only` drops works with no English at all -- the usual case,
     since a parallel-text book needs both sides; `styled_only` narrows further
-    to works the stylizer has been over. Both are applied *after* counting
-    (coverage is not stored on the document row), so the returned `count` is
-    the number of documents matching the text/metadata filters.
+    to works the stylizer has been over.
+
+    `needs` looks the other way, at what is *un*finished, so a work can be
+    found in order to be worked on rather than printed (see corpus_jobs.py):
+    "translation" keeps works with segments that have no English yet, and
+    "styling" keeps works whose English exists but has not been through the
+    Victorian stylizer. Most of the corpus is unfinished, so these are the
+    filters that matter when queueing a pass rather than choosing a book.
+
+    All of them are applied *after* counting (coverage is not stored on the
+    document row), so the returned `count` is the number of documents matching
+    the text/metadata filters.
     """
     own = conn is None
     conn = conn or connect(db_path)
@@ -260,7 +286,7 @@ def search_documents(query: str = "", *, language: str | None = None,
 
         # Over-fetch when filtering on coverage, so a page is not left
         # near-empty by untranslated works being dropped after the fact.
-        post_filtered = translated_only or styled_only
+        post_filtered = translated_only or styled_only or needs
         fetch = limit * 4 if post_filtered else limit
         rows = conn.execute(f"""
             SELECT d.* FROM documents d {clause}
@@ -274,6 +300,13 @@ def search_documents(query: str = "", *, language: str | None = None,
             if translated_only and not doc.translated:
                 continue
             if styled_only and not doc.styled:
+                continue
+            # "Needs styling" deliberately requires something to style: a work
+            # with no English at all needs translating first, and listing it
+            # here would offer a pass that has nothing to do.
+            if needs == "translation" and doc.translated >= doc.segments:
+                continue
+            if needs == "styling" and not (doc.translated and doc.styled < doc.translated):
                 continue
             docs.append(doc)
             if len(docs) >= limit:

@@ -186,3 +186,39 @@ def test_source_note_discloses_machine_translation(corpus_db, small_doc):
     # An original-only edition prints no English, so there is nothing to
     # disclose about it.
     assert "machine translation" not in corpus.source_note(doc, translated=False)
+
+
+# --------------------------------------------------------------------------- #
+# Finding unfinished work
+#
+# Most of the corpus has no English yet, so browsing it to *work on* a text is
+# a different search from browsing it to print one.
+# --------------------------------------------------------------------------- #
+def test_needs_translation_finds_only_works_with_english_missing(corpus_db):
+    res = corpus.search_documents("", translated_only=False,
+                                  needs="translation", limit=10)
+    assert res["results"], "the corpus should have untranslated work in it"
+    for d in res["results"]:
+        assert d["translated"] < d["segments"]
+        assert d["pending_translation"] > 0
+
+
+def test_needs_styling_requires_english_to_style(corpus_db):
+    """A work with no English needs translating first -- offering it to the
+    stylizer would queue a pass with nothing to do."""
+    res = corpus.search_documents("", translated_only=False,
+                                  needs="styling", limit=10)
+    assert res["results"]
+    for d in res["results"]:
+        assert d["translated"] > 0
+        assert d["styled"] < d["translated"]
+        assert d["pending_styling"] > 0
+
+
+def test_pending_counts_never_go_negative():
+    doc = corpus.CorpusDoc(
+        id=1, title="t", author="a", language="la", language_stage="classical",
+        century=1, genre="", source="", license="", translation_status="none",
+        segments=10, translated=12, styled=20, sections=1)
+    assert doc.pending_translation == 0
+    assert doc.pending_styling == 0

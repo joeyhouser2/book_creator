@@ -11,8 +11,8 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import yaml
 
-from book_creator import (audio, corpus, decorations, epub_reader, fetch, fonts,
-                          perseus, pg_catalog, segment)
+from book_creator import (audio, corpus, corpus_jobs, decorations, epub_reader,
+                          fetch, fonts, perseus, pg_catalog, segment)
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec, PerseusSpec)
 from book_creator import pipeline
@@ -283,6 +283,7 @@ def api_corpus_search():
             century_to=_int("century_to"),
             translated_only=request.args.get("translated", "1") != "0",
             styled_only=request.args.get("styled", "0") == "1",
+            needs=request.args.get("needs") or None,
             limit=40,
             offset=(max(1, int(request.args.get("page", 1))) - 1) * 40,
         ))
@@ -307,6 +308,95 @@ def api_corpus_doc(doc_id: int):
             })
     except corpus.CorpusError as exc:
         return jsonify({"error": str(exc)}), 404
+
+
+# --------------------------------------------------------------------------- #
+# Corpus passes: translate / victorianize a work that is not finished yet.
+#
+# These are the only operations here that *write* to the corpus, and they do it
+# by driving the latin repo's own scripts in a subprocess — see
+# book_creator/corpus_jobs.py for why it is done that way. They share the build
+# job registry, so /api/status/<id> and /api/cancel/<id> work on them unchanged.
+# --------------------------------------------------------------------------- #
+@app.route("/api/corpus/pass/status")
+def api_corpus_pass_status():
+    """Whether passes can be run, and on which GPU."""
+    return jsonify(corpus_jobs.status())
+
+
+def _run_corpus_pass(job_id: str, kind: str, doc_id: int, opts: dict) -> None:
+    job = _jobs[job_id]
+
+    def on_log(msg: str) -> None:
+        with _lock:
+            job["log"].append(msg)
+        _store.save(job_id, job)
+
+    def on_progress(done: int, total: int, info: dict | None = None) -> None:
+        with _lock:
+            job["progress"] = {"done": done, "total": total,
+                               "percent": round(100 * done / max(1, total)),
+                               **(info or {})}
+        _store.save(job_id, job)
+
+    try:
+        result = corpus_jobs.run(kind, doc_id, opts=opts, on_log=on_log,
+                                 on_progress=on_progress,
+                                 should_stop=lambda: job.get("cancel", False))
+        verb = "Translated" if kind == "translate" else "Stylized"
+        with _lock:
+            job["artifacts"]["segments"] = result["segments"]
+            job["status"] = "cancelled" if result["cancelled"] else "done"
+            job["log"].append(f"✓ {verb} {result['segments']:,} segment(s).")
+    except Exception as exc:  # noqa: BLE001
+        with _lock:
+            job["status"] = "error"
+            job["error"] = str(exc)
+            job["log"].append(f"✗ {exc}")
+        traceback.print_exc()
+    finally:
+        _store.save(job_id, job, force=True)
+
+
+@app.route("/api/corpus/pass", methods=["POST"])
+def api_corpus_pass():
+    payload = request.get_json(force=True)
+    kind = payload.get("kind")
+    if kind not in ("translate", "stylize"):
+        return jsonify({"error": "kind must be 'translate' or 'stylize'"}), 400
+    try:
+        doc_id = int(payload.get("doc_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "doc_id is required"}), 400
+
+    # Name the job after the work, so the jobs list reads as history rather
+    # than a row of anonymous document ids.
+    try:
+        with corpus.connect() as conn:
+            doc = corpus.document(doc_id, conn=conn)
+    except corpus.CorpusError as exc:
+        return jsonify({"error": str(exc)}), 404
+    verb = "Translate" if kind == "translate" else "Victorianize"
+    title = f"{verb}: {doc.title[:60]}"
+
+    # Refuse work that has nothing to do rather than spending a model load
+    # discovering it — the scripts would exit cleanly having done nothing.
+    pending = doc.pending_translation if kind == "translate" else doc.pending_styling
+    if not pending:
+        return jsonify({"error": f"Nothing to do — {doc.title[:60]} has no "
+                                 f"segments awaiting this pass."}), 400
+
+    job_id = uuid.uuid4().hex[:12]
+    _jobs[job_id] = {"status": "running", "log": [], "pages": 0, "title": title,
+                     "kind": f"corpus-{kind}", "doc_id": doc_id,
+                     "pdf_path": None, "cover_path": None, "error": None,
+                     "progress": {"done": 0, "total": pending, "percent": 0},
+                     "artifacts": {}, "cancel": False}
+    _store.create(job_id, title)
+    threading.Thread(target=_run_corpus_pass,
+                     args=(job_id, kind, doc_id, payload.get("opts") or {}),
+                     daemon=True).start()
+    return jsonify({"job_id": job_id, "pending": pending})
 
 
 # --------------------------------------------------------------------------- #
@@ -595,6 +685,7 @@ def api_build():
     spec = _spec_from_payload(payload)
     title = spec.title or payload.get("title") or f"corpus #{spec.corpus.doc_id}"
     _jobs[job_id] = {"status": "running", "log": [], "pages": 0, "title": title,
+                     "kind": "build",
                      "pdf_path": None, "cover_path": None, "error": None,
                      "progress": None, "artifacts": {}, "cancel": False}
     _store.create(job_id, title)
@@ -610,10 +701,13 @@ def api_jobs():
 
 @app.route("/api/cancel/<job_id>", methods=["POST"])
 def api_cancel(job_id: str):
-    """Ask a running narration to stop after the current utterance.
+    """Ask a running job to stop at its next safe point.
 
-    Only the audio stage checks this — everything before it is fast enough that
-    stopping mid-way would just lose work.
+    Only the audio stage of a build checks this — everything before it is fast
+    enough that stopping mid-way would just lose work. A corpus translate or
+    stylize pass checks it too, and stops after the current chunk: those commit
+    as they go, so what has already been written to the corpus is kept and
+    re-running continues from there.
     """
     job = _jobs.get(job_id)
     if not job:
@@ -649,6 +743,8 @@ def api_status(job_id: str):
         art = job.get("artifacts") or {}
         return jsonify({
             "status": job["status"],
+            "kind": job.get("kind", "build"),
+            "segments": art.get("segments"),
             "log": job["log"],
             "pages": job["pages"],
             "has_cover": bool(job.get("cover_path") or art.get("cover")),

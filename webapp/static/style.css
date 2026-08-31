@@ -206,3 +206,39 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .audio-wrap audio { width: 100%; margin-bottom: 8px; }
 
 @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+/* --- Corpus passes: translating / victorianizing a work in place ---------- */
+.hidden { display: none; }
+
+.passbar {
+  height: 8px;
+  background: #e6e1d6;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.6rem 0 0.3rem;
+}
+
+.passbar > span {
+  display: block;
+  height: 100%;
+  background: #8a7a5c;
+  transition: width 0.4s ease;
+}
+
+/* The tail of the pass log. Fixed height so the panel does not jump on every
+   poll, and pre-wrap because model warnings are long single lines. */
+.passlog {
+  margin: 0.4rem 0 0;
+  padding: 0.5rem 0.6rem;
+  max-height: 7.5rem;
+  overflow-y: auto;
+  background: #f5f2ea;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #5a5346;
+}
+
+.passlog:empty { display: none; }

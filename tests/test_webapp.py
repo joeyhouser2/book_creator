@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -455,3 +456,111 @@ def test_audio_estimate_counts_chapter_headings(client, corpus_db, small_doc):
 
     # One extra utterance per chapter when titles are read aloud.
     assert utterances(True) > utterances(False)
+
+
+# --------------------------------------------------------------------------- #
+# Corpus passes (translate / victorianize)
+#
+# The passes need a GPU and a multi-gigabyte model, so these cover the HTTP
+# surface around them -- validation, naming, and refusing pointless work --
+# and never let a real one start.
+# --------------------------------------------------------------------------- #
+def test_pass_status_reports_when_the_repo_is_missing(client, monkeypatch):
+    monkeypatch.setattr(server.corpus_jobs, "status",
+                        lambda *a, **k: {"available": False, "error": "no repo"})
+    status, data = _get(client, "/api/corpus/pass/status")
+    assert status == 200
+    assert data["available"] is False
+
+
+def test_pass_rejects_an_unknown_kind(client):
+    res = client.post("/api/corpus/pass",
+                      json={"kind": "delete", "doc_id": 1})
+    assert res.status_code == 400
+    assert "translate" in res.get_json()["error"]
+
+
+def test_pass_requires_a_document(client):
+    res = client.post("/api/corpus/pass", json={"kind": "translate"})
+    assert res.status_code == 400
+    assert "doc_id" in res.get_json()["error"]
+
+
+def test_pass_refuses_work_with_nothing_to_do(client, monkeypatch, corpus_db):
+    """Loading a model to discover there is nothing to do wastes minutes."""
+    class Doc:
+        title = "Iam Perfectum"
+        pending_translation = 0
+        pending_styling = 0
+
+    monkeypatch.setattr(server.corpus, "document", lambda *a, **k: Doc())
+    res = client.post("/api/corpus/pass", json={"kind": "translate", "doc_id": 1})
+    assert res.status_code == 400
+    assert "Nothing to do" in res.get_json()["error"]
+
+
+def test_pass_starts_a_named_job_and_reports_progress(client, monkeypatch, corpus_db):
+    """The job is named after the work, so history is readable -- and it is
+    pre-seeded with the pending count so the bar is scaled before the model
+    has even loaded."""
+    class Doc:
+        title = "De Bello Gallico"
+        pending_translation = 250
+        pending_styling = 0
+
+    started = {}
+
+    def fake_run(kind, doc_id, *, opts=None, on_log=None, on_progress=None,
+                 should_stop=None, repo_path=None):
+        started.update(kind=kind, doc_id=doc_id, opts=opts)
+        on_log("working")
+        on_progress(250, 250, {"rate": 2.0})
+        return {"segments": 250, "cancelled": False}
+
+    monkeypatch.setattr(server.corpus, "document", lambda *a, **k: Doc())
+    monkeypatch.setattr(server.corpus_jobs, "run", fake_run)
+
+    res = client.post("/api/corpus/pass",
+                      json={"kind": "translate", "doc_id": 7,
+                            "opts": {"batch_size": 4}})
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["pending"] == 250
+    assert started == {"kind": "translate", "doc_id": 7, "opts": {"batch_size": 4}}
+
+    # The worker runs on a thread; wait for it rather than sleeping blindly.
+    job_id = body["job_id"]
+    for _ in range(200):
+        status, data = _get(client, f"/api/status/{job_id}")
+        if data["status"] != "running":
+            break
+        time.sleep(0.05)
+
+    assert data["status"] == "done"
+    assert data["kind"] == "corpus-translate"
+    assert data["segments"] == 250
+    assert server._store.recent(5)[0]["title"] == "Translate: De Bello Gallico"
+
+
+def test_a_failing_pass_surfaces_its_error(client, monkeypatch, corpus_db):
+    class Doc:
+        title = "Fragmenta"
+        pending_translation = 5
+        pending_styling = 0
+
+    def boom(*a, **k):
+        raise server.corpus_jobs.JobError("exited with status 3")
+
+    monkeypatch.setattr(server.corpus, "document", lambda *a, **k: Doc())
+    monkeypatch.setattr(server.corpus_jobs, "run", boom)
+
+    job_id = client.post("/api/corpus/pass",
+                         json={"kind": "translate", "doc_id": 1}).get_json()["job_id"]
+    for _ in range(200):
+        status, data = _get(client, f"/api/status/{job_id}")
+        if data["status"] != "running":
+            break
+        time.sleep(0.05)
+
+    assert data["status"] == "error"
+    assert "status 3" in data["error"]

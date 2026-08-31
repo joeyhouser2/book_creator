@@ -12,6 +12,9 @@ const state = {
   lsrc: null,            // local file {name, path, kind, size_mb, outline}
   ltgt: null,
   job: null,
+  passJob: null,        // a running corpus translate/victorianize pass
+  passPoll: null,
+  passOutcome: null,    // {docId, html} — survives the post-pass reload
   page: 0,
   pages: 0,
   poll: null,
@@ -342,6 +345,7 @@ async function doCorpusSearch() {
     century_to: $("cCentTo").value,
     translated: $("cTranslated").checked ? "1" : "0",
     styled: $("cStyledOnly").checked ? "1" : "0",
+    needs: $("cNeeds").value,
   });
   try {
     const data = await getJSON(`/api/corpus/search?${params}`);
@@ -368,6 +372,8 @@ function corpusRow(d) {
       <small>${escapeHtml(d.author)} · #${d.id} · ${d.language} ·
         ${d.segments.toLocaleString()} segments · ${pct}% English
         ${d.styled ? `· ${d.styled.toLocaleString()} stylized` : ""}
+        ${d.pending_translation ? `· <span class="badge">${d.pending_translation.toLocaleString()} to translate</span>` : ""}
+        ${d.pending_styling ? `· <span class="badge">${d.pending_styling.toLocaleString()} to victorianize</span>` : ""}
         <span class="badge risk-${d.license_risk}">${RISK_LABEL[d.license_risk]}</span>
       </small>
     </div>
@@ -443,8 +449,10 @@ function renderCorpusPick() {
       (<code>&lt;A&gt;ltus</code> → <code>Altus</code>) — a narrator can't say a bracket</label>
     <h3>Sections</h3>
     <div class="slot-range" id="range-corpus"></div>
+    ${passPanelHtml(d)}
     <h3>Preview</h3>
     <div class="pairs">${rows || `<p class="muted">No segments.</p>`}</div>`;
+  wirePassPanel(d);
 
   // Corpus sections have no front matter to skip, so the range starts at 1.
   renderRange($("range-corpus"),
@@ -454,6 +462,176 @@ function renderCorpusPick() {
     () => selectCorpusDoc(d.id, { preferStyled: $("cStyled").checked });
   $("cStrip").onchange =
     () => selectCorpusDoc(d.id, { stripMarkup: $("cStrip").checked });
+}
+
+// --------------------------------------------------------------------------- //
+// Corpus passes — translate / victorianize a work that isn't finished yet.
+//
+// Everything else on this tab reads the corpus. These two write to it, by
+// driving the latin repo's own scripts on the GPU (book_creator/corpus_jobs.py).
+// A pass can run for hours, so it reports progress and can be stopped; both
+// scripts commit as they go, so stopping keeps what has been done and starting
+// again continues from there.
+// --------------------------------------------------------------------------- //
+let PASSES = null;         // /api/corpus/pass/status, fetched once on load
+
+async function loadPassStatus() {
+  try {
+    PASSES = await getJSON("/api/corpus/pass/status");
+  } catch {
+    PASSES = { available: false, error: "Could not reach the server." };
+  }
+}
+
+function passPanelHtml(d) {
+  if (!PASSES) return "";
+  if (!PASSES.available) {
+    return `<h3>Prepare this text</h3>
+      <p class="muted small">Translating and victorianizing need the latin repo
+      itself, not just its database. ${escapeHtml(PASSES.error || "")}</p>`;
+  }
+  const gpuOpts = [
+    ...PASSES.gpus.map((g) =>
+      `<option value="${g.index}"${g.index === PASSES.default_gpu ? " selected" : ""}>
+         GPU ${g.index} — ${escapeHtml(g.name)} (${(g.total_mb / 1024).toFixed(0)} GB)
+       </option>`),
+    `<option value="cpu">CPU only (slow)</option>`,
+  ].join("");
+
+  // Each button is disabled when its pass has nothing to do, so the state of
+  // the work is readable from the panel without reading the counts above.
+  const trN = d.pending_translation, stN = d.pending_styling;
+  return `
+    <h3>Prepare this text</h3>
+    <p class="muted small">Runs on your GPU and writes back into the corpus, so
+      the work is done once and every later build of this text gets it. Both
+      passes save as they go — stopping keeps what is finished.</p>
+    <div class="facets">
+      <label>Run on <select id="passDevice">${gpuOpts}</select></label>
+      <label>Victorian engine
+        <select id="passBackend">
+          <option value="t5">trained stylizer (fast)</option>
+          <option value="llm">prompted local LLM (slower, richer)</option>
+        </select></label>
+      <label>Register
+        <select id="passPreset">
+          <option value="victorian_prose">Victorian prose</option>
+          <option value="verse_blank">verse — blank</option>
+          <option value="verse_couplet">verse — couplet</option>
+        </select></label>
+      <label>Batch
+        <input id="passBatch" type="number" min="1" max="64" step="1" value="16">
+        <span class="hint">segments per pass and per save. Smaller uses less
+          VRAM and updates progress more often; larger is faster overall.</span>
+      </label>
+    </div>
+    <div class="search-row">
+      <button id="passTranslate" ${trN ? "" : "disabled"}>
+        ${trN ? `Translate ${trN.toLocaleString()} segment(s)` : "Nothing left to translate"}
+      </button>
+      <button id="passStylize" ${stN ? "" : "disabled"}>
+        ${stN ? `Victorianize ${stN.toLocaleString()} segment(s)` : "Nothing left to victorianize"}
+      </button>
+      <button id="passCancel" class="hidden">Stop</button>
+    </div>
+    <div id="passProgress">${
+      // Finishing a pass reloads the work so its counts and buttons update,
+      // which rebuilds this panel -- so the outcome has to be re-rendered
+      // here, or the result of the run the user just watched disappears the
+      // instant it lands.
+      state.passOutcome && state.passOutcome.docId === d.id
+        ? state.passOutcome.html : ""}</div>`;
+}
+
+function wirePassPanel(d) {
+  if (!PASSES || !PASSES.available) return;
+  const t = $("passTranslate"), s = $("passStylize");
+  if (t) t.onclick = () => startPass("translate", d.id);
+  if (s) s.onclick = () => startPass("stylize", d.id);
+  const c = $("passCancel");
+  if (c) c.onclick = () => {
+    if (state.passJob) fetch(`/api/cancel/${state.passJob}`, { method: "POST" });
+    c.disabled = true;
+    c.textContent = "Stopping…";
+  };
+}
+
+async function startPass(kind, docId) {
+  const box = $("passProgress");
+  const opts = {
+    device: $("passDevice").value,
+    backend: $("passBackend").value,
+    preset: $("passPreset").value,
+    batch_size: Number($("passBatch").value) || 16,
+  };
+  state.passOutcome = null;
+  box.innerHTML = `<p class="muted">Starting…</p>`;
+  let data;
+  try {
+    data = await getJSON("/api/corpus/pass", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, doc_id: docId, opts }),
+    });
+  } catch (e) {
+    box.innerHTML = `<p>⚠ ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  state.passJob = data.job_id;
+  $("passTranslate").disabled = true;
+  $("passStylize").disabled = true;
+  $("passCancel").classList.remove("hidden");
+  pollPass(docId);
+}
+
+function pollPass(docId) {
+  clearTimeout(state.passPoll);
+  const box = $("passProgress");
+  const tick = async () => {
+    let data;
+    try {
+      data = await getJSON(`/api/status/${state.passJob}`);
+    } catch (e) {
+      box.innerHTML = `<p>⚠ ${escapeHtml(e.message)}</p>`;
+      return;
+    }
+    const p = data.progress || {};
+    // The model load happens before the first chunk lands, and on a cold start
+    // it is the longest silent stretch of the whole pass — so say what is
+    // happening rather than showing a bar stuck at zero with no explanation.
+    const bar = p.total
+      ? `<div class="passbar"><span style="width:${p.percent || 0}%"></span></div>
+         <p class="muted small">${(p.done || 0).toLocaleString()} of
+           ${p.total.toLocaleString()} segments (${p.percent || 0}%)
+           ${p.rate ? `· ${p.rate} seg/s` : ""}
+           ${p.eta_hours ? `· about ${p.eta_hours}h left` : ""}
+           ${!p.done ? "· loading the model and running the first batch — "
+                     + "nothing is reported until that batch is saved" : ""}</p>`
+      : `<p class="muted small">Starting…</p>`;
+    const tail = (data.log || []).slice(-6).map(escapeHtml).join("<br>");
+    box.innerHTML = bar + `<pre class="passlog">${tail}</pre>`;
+
+    if (data.status === "running") {
+      state.passPoll = setTimeout(tick, 1500);
+      return;
+    }
+    $("passCancel").classList.add("hidden");
+    $("passCancel").disabled = false;
+    $("passCancel").textContent = "Stop";
+    state.passJob = null;
+    const done = {
+      done: `✓ Finished — ${(data.segments || 0).toLocaleString()} segment(s) written.`,
+      cancelled: "■ Stopped. What was written is kept; run it again to continue.",
+      error: `⚠ ${escapeHtml(data.error || "failed")}`,
+    }[data.status] || data.status;
+    const outcome = `<p>${done}</p><pre class="passlog">${tail}</pre>`;
+    box.innerHTML = outcome;
+    state.passOutcome = { docId, html: outcome };
+    // Reload the work so the counts, the buttons, and the sample preview all
+    // reflect what the pass just wrote.
+    selectCorpusDoc(docId);
+  };
+  tick();
 }
 
 // --------------------------------------------------------------------------- //
@@ -1247,6 +1425,7 @@ $("searchBtn").onclick = doSearch;
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
 $("cSearchBtn").onclick = doCorpusSearch;
 $("cq").addEventListener("keydown", (e) => { if (e.key === "Enter") doCorpusSearch(); });
+$("cNeeds").addEventListener("change", doCorpusSearch);
 $("localRefresh").onclick = loadLocalFiles;
 $("pSearchBtn").onclick = doPerseusSearch;
 $("pq").addEventListener("keydown", (e) => { if (e.key === "Enter") doPerseusSearch(); });
@@ -1284,6 +1463,7 @@ document.addEventListener("keydown", (e) => {
 selectTab("gutenberg");
 loadFonts();
 loadCorpusStatus();
+loadPassStatus();
 loadPerseusStatus();
 loadFacets();
 loadLocalFiles();

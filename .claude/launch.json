@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["run_web.py"],
       "port": 5000
+    },
+    {
+      "name": "book_creator-web-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["run_web.py", "--port", "5001"],
+      "port": 5001
     }
   ]
 }
