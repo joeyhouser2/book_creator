@@ -59,6 +59,22 @@ The **Source** panel has three tabs.
 3. Pick a matching division range on each side.
 4. Tick the public-domain confirmation and **Build**.
 
+**If Gutendex is down**, search keeps working. Gutendex is a small
+volunteer-run API, and it does go down (503s and read timeouts) even while
+gutenberg.org itself is perfectly healthy — which used to leave the Gutenberg
+tab dead despite every text still being downloadable. So a failed search now
+falls back automatically to a local index of Gutenberg's *own* published
+catalog (~5.6 MB gzipped, 79,288 books), built on first need:
+
+```bash
+python make_book.py --update-catalog
+```
+
+Results then come from `cache/pg_catalog.db` in milliseconds, and the UI says
+so. What the CSV lacks versus Gutendex: download counts, and a separate
+translator field (it folds translators in with authors). Ids, titles, authors
+and languages — everything a build needs — are exact.
+
 Tip: the original and translation are usually *separate* Gutenberg entries —
 search once in the source language (e.g. `bello gallico`, lang `la`) and again in
 English. The catalog uses the work's real title, so search `de bello gallico`,
@@ -707,6 +723,7 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 | module | role |
 |--------|------|
 | `fetch.py` | download Gutenberg text, strip the license banner, cache locally |
+| `pg_catalog.py` | offline index of Gutenberg's own catalog, used when Gutendex is down |
 | `corpus.py` | read a pre-aligned work out of the `latin` repo's corpus.db (read-only) |
 | `epub_reader.py` | unpack a local EPUB into plain text, and report scan/OCR quality first |
 | `download_voices.py` | fetch public-domain narrator samples from LibriVox into voices/ |

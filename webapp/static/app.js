@@ -158,6 +158,11 @@ async function doSearch() {
   try {
     const url = `/api/search?q=${encodeURIComponent(q)}&lang=${encodeURIComponent($("lang").value)}`;
     const data = await getJSON(url);
+    // Say when results came from the offline catalog instead of Gutendex —
+    // the difference is visible (no download counts) and would otherwise look
+    // like the catalog had lost data.
+    $("searchSource").innerHTML = data.degraded
+      ? `<span class="caution">⚠ ${escapeHtml(data.degraded)}</span>` : "";
     if (!data.results.length) {
       box.innerHTML = `<div class="result muted">${escapeHtml(data.hint || "No results.")}</div>`;
       return;

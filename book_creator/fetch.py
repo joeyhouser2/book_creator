@@ -70,14 +70,57 @@ def load_text(*, path: str | None = None, gid: int | None = None, log=None) -> s
     raise ValueError("Either path or gid must be provided.")
 
 
-def search_gutenberg(query: str, language: str | None = None, page: int = 1) -> dict:
+def search_gutenberg(query: str, language: str | None = None, page: int = 1, *,
+                     fallback: bool = True, log=None) -> dict:
     """Search the Project Gutenberg catalog via the Gutendex JSON API.
 
     Gutendex (https://gutendex.com) is a free, read-only API over the
     Gutenberg catalog; the `id` it returns IS the ebook id `fetch_gutenberg`
     needs. Shared by the web UI (webapp/gutendex.py) and the librarian agent
     (librarian.py).
+
+    Gutendex is a small volunteer service and does go down. When it does --
+    and only then -- this falls back to a local index of Gutenberg's own
+    published catalog (see pg_catalog), building it on first need. gutenberg.org
+    itself being up is what actually matters, since that is where the texts
+    come from; losing the *search* to a third party's outage is not a good
+    enough reason to be unable to build a book.
     """
+    try:
+        return _search_gutendex(query, language, page)
+    except requests.RequestException as exc:
+        if not fallback:
+            raise
+        return _search_local(query, language, page, reason=exc, log=log)
+
+
+def _search_local(query: str, language: str | None, page: int, *,
+                  reason: Exception, log=None) -> dict:
+    from . import pg_catalog
+
+    def say(msg: str) -> None:
+        if log:
+            log(msg)
+
+    say(f"  ⚠  Gutendex is not responding ({type(reason).__name__}); "
+        "using the local Gutenberg catalog instead.")
+    try:
+        if not pg_catalog.available():
+            pg_catalog.build(log=log)
+        out = pg_catalog.search(query, language, page)
+    except pg_catalog.CatalogError as exc:
+        raise RuntimeError(
+            f"Gutendex is down ({reason}), and the local catalog fallback also "
+            f"failed: {exc}. The Latin corpus and Local files tabs do not need "
+            "either service.") from exc
+    out["degraded"] = (
+        "Gutendex is down, so these results come from Gutenberg's own catalog. "
+        "Download counts are unavailable and translators are folded in with "
+        "authors; ids, titles and languages are exact.")
+    return out
+
+
+def _search_gutendex(query: str, language: str | None, page: int) -> dict:
     params: dict = {"search": query, "page": page}
     if language:
         params["languages"] = language
@@ -103,6 +146,7 @@ def search_gutenberg(query: str, language: str | None = None, page: int = 1) -> 
         "count": data.get("count", 0),
         "has_next": bool(data.get("next")),
         "results": results,
+        "source": "gutendex",
     }
     if not results:
         out["hint"] = (

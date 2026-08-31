@@ -12,7 +12,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import yaml
 
 from book_creator import (audio, corpus, decorations, epub_reader, fetch, fonts,
-                          segment)
+                          pg_catalog, segment)
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec)
 from book_creator.pipeline import apply_sides, build_book
@@ -316,6 +316,22 @@ def api_audio_file(job_id: str, ext: str):
                                as_attachment=request.args.get("dl") == "1")
 
 
+@app.route("/api/catalog/status")
+def api_catalog_status():
+    """Whether the offline Gutenberg catalog is indexed, and how stale."""
+    return jsonify(pg_catalog.status())
+
+
+@app.route("/api/catalog/build", methods=["POST"])
+def api_catalog_build():
+    """Fetch/refresh the offline catalog on demand."""
+    try:
+        return jsonify(pg_catalog.build(
+            refresh=bool((request.get_json(silent=True) or {}).get("refresh"))))
+    except pg_catalog.CatalogError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
 @app.route("/api/search")
 def api_search():
     query = request.args.get("q", "").strip()
@@ -324,9 +340,11 @@ def api_search():
     if not query:
         return jsonify({"count": 0, "results": [], "has_next": False})
     try:
-        return jsonify(gutendex.search(query, language, page))
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": str(exc)}), 502
+        # Falls back to the local catalog when Gutendex is down, so a
+        # third-party outage does not take the Gutenberg tab with it.
+        return jsonify(fetch.search_gutenberg(query, language, page))
+    except Exception as exc:  # noqa: BLE001 - both sources failed
+        return jsonify({"error": str(exc)}), 503
 
 
 # --------------------------------------------------------------------------- #

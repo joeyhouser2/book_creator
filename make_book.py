@@ -23,7 +23,7 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-from book_creator import audio, corpus, fetch, segment
+from book_creator import audio, corpus, fetch, pg_catalog, segment
 from book_creator.config import load_specs
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec, MusicSpec)
@@ -200,6 +200,11 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--corpus-stage",
                    help="Filter by language stage (classical, late_antique, medieval…).")
     g.add_argument("--corpus-limit", type=int, default=40, help="Max search results.")
+    p.add_argument("--update-catalog", action="store_true",
+                   help="Download/refresh the offline Gutenberg catalog "
+                        "(~5.6 MB, 79k books) and exit. Gutendex is a small "
+                        "volunteer service that does go down; with this "
+                        "indexed, Gutenberg search keeps working when it does.")
     g.add_argument("--no-styled", action="store_true",
                    help="Use the plain machine translation even where a stylized "
                         "(Victorian) English rendering exists.")
@@ -234,6 +239,10 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--no-announce-chapters", action="store_true",
                    help="Don't read each chapter title aloud.")
     args = p.parse_args(argv)
+
+    if args.update_catalog:
+        pg_catalog.build(refresh=True, log=print)
+        return 0
 
     if args.audio_engines:
         print("\n=== TTS engines ===")
