@@ -176,8 +176,15 @@ Three things worth knowing:
 ## Perseus source (the classical canon, already paired)
 
 The [Perseus Digital Library](https://www.perseus.tufts.edu/) publishes the
-Greek and Latin canon as TEI, and for **789 works it has both the original and
-a human English translation** — 596 Greek, 193 Latin.
+Greek and Latin canon as TEI. Its two canonical repositories hold **1,223
+works**, and **789 of them have both the original and a human English
+translation** — 596 Greek, 193 Latin. Only those 789 are indexed here, because
+a work with no English cannot be a parallel text; the other 434 are the
+untranslated material the `latin` corpus exists to machine-translate.
+
+(A third repository, OpenGreekAndLatin's *First1KGreek*, adds 1,103 more Greek
+works — but only **41** of them carry an English translation, so it would grow
+the buildable set by about 5%. It is not indexed.)
 
 ```bash
 python make_book.py --update-perseus                      # index it (once)

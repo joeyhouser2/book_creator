@@ -15,6 +15,7 @@ from book_creator import (audio, corpus, decorations, epub_reader, fetch, fonts,
                           perseus, pg_catalog, segment)
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec, PerseusSpec)
+from book_creator import pipeline
 from book_creator.pipeline import apply_sides, build_book
 
 from . import gutendex, jobs as jobstore, preview
@@ -323,16 +324,39 @@ def api_audio_engines():
 def api_audio_estimate():
     """How long a narration would run, before committing the GPU to it.
 
-    Only a corpus source can be priced up front: it is already aligned, so the
-    beads exist without any work. A Gutenberg pair has to be fetched and
-    aligned first, which is the build itself.
+    A corpus work is already aligned, and a Perseus work is anchored on its
+    citation refs, so both can be priced in seconds. A Gutenberg pair or a
+    local file cannot: getting to beads means fetching and aligning two whole
+    editions, which is the build itself.
     """
     p = request.get_json(force=True)
+    sides = p.get("sides", "both")
+    spec = _audio_from(p.get("audio"))
+    spec.first = p.get("first", "src")
+
+    if p.get("perseus_id"):
+        # Reuse the build's own loader so the bead count is the real one,
+        # forcing the cheap aligner — an estimate does not warrant loading
+        # LaBSE, and the difference in bead count is immaterial.
+        book = BookSpec(title="", author="Unknown", src_lang="", sides=sides,
+                        aligner="gale-church",
+                        perseus=PerseusSpec(
+                            work_id=p["perseus_id"],
+                            division_range=_range(p.get("perseus_range"))))
+        try:
+            chapters = pipeline._chapters_from_perseus(book, lambda _m: None)
+        except Exception as exc:  # noqa: BLE001 - network or malformed TEI
+            return jsonify({"error": str(exc)}), 502
+        chapters = apply_sides(chapters, sides, lambda _m: None)
+        return jsonify({"estimate": audio.estimate(
+            chapters, spec=spec, src_lang=book.src_lang,
+            tgt_lang=p.get("tgt_lang", "en"))})
+
     if not p.get("corpus_id"):
         return jsonify({"estimate": None,
-                        "note": "Available for corpus sources; a Gutenberg pair "
-                                "has to be aligned first."})
-    sides = p.get("sides", "both")
+                        "note": "Available for corpus and Perseus works. A "
+                                "Gutenberg pair or local file has to be fetched "
+                                "and aligned first, which is the build itself."})
     try:
         load = corpus.load_chapters(
             int(p["corpus_id"]),
@@ -345,8 +369,6 @@ def api_audio_estimate():
     # A monolingual book is a monolingual audiobook — roughly half the runtime,
     # which is the main thing the estimate is for.
     chapters = apply_sides(load.chapters, sides, lambda _m: None)
-    spec = _audio_from(p.get("audio"))
-    spec.first = p.get("first", "src")
     return jsonify({"estimate": audio.estimate(
         chapters, spec=spec, src_lang=load.doc.language,
         tgt_lang=p.get("tgt_lang", "en"))})

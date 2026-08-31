@@ -368,6 +368,61 @@ def test_audio_estimate_declines_a_gutenberg_pair(client):
     assert "aligned" in body["note"]
 
 
+def test_audio_estimate_note_names_the_sources_that_do_work(client):
+    body = client.post("/api/audio/estimate", json={"src_id": 218}).get_json()
+    # The old message said "corpus sources" only, which read as a refusal on
+    # the Perseus tab even though Perseus can be priced.
+    assert "Perseus" in body["note"]
+    assert "corpus" in body["note"]
+
+
+def test_audio_estimate_handles_a_perseus_work(client, monkeypatch):
+    """Perseus is anchored on citation refs, so it can be priced without a build."""
+    from book_creator.model import Bead, Chapter
+
+    def fake_chapters(spec, log):
+        spec.src_lang = "grc"
+        return [Chapter(title="Book 1", beads=[
+            Bead(src=["ἓν"], tgt=["one"]), Bead(src=["δύο"], tgt=["two"])])]
+
+    monkeypatch.setattr(server.pipeline, "_chapters_from_perseus", fake_chapters)
+    res = client.post("/api/audio/estimate",
+                      json={"perseus_id": "greekLit:tlg0032.tlg006",
+                            "audio": {"announce_chapters": False}})
+    assert res.status_code == 200
+    est = res.get_json()["estimate"]
+    assert est["utterances"] == 4          # 2 beads x 2 sides
+    assert est["seconds"] > 0
+
+
+def test_perseus_estimate_halves_for_a_monolingual_edition(client, monkeypatch):
+    from book_creator.model import Bead, Chapter
+
+    def fake_chapters(spec, log):
+        spec.src_lang = "grc"
+        return [Chapter(title="Book 1", beads=[
+            Bead(src=["ἓν"], tgt=["one"]), Bead(src=["δύο"], tgt=["two"])])]
+
+    monkeypatch.setattr(server.pipeline, "_chapters_from_perseus", fake_chapters)
+
+    def utterances(sides):
+        return client.post("/api/audio/estimate", json={
+            "perseus_id": "x", "sides": sides,
+            "audio": {"announce_chapters": False}}).get_json()["estimate"]["utterances"]
+
+    assert utterances("both") == utterances("src") + utterances("tgt")
+
+
+def test_perseus_estimate_reports_a_fetch_failure(client, monkeypatch):
+    def boom(spec, log):
+        raise RuntimeError("Perseus is unreachable")
+
+    monkeypatch.setattr(server.pipeline, "_chapters_from_perseus", boom)
+    res = client.post("/api/audio/estimate", json={"perseus_id": "x"})
+    assert res.status_code == 502
+    assert "unreachable" in res.get_json()["error"]
+
+
 def test_audio_estimate_prices_a_corpus_work(client, corpus_db, small_doc):
     res = client.post("/api/audio/estimate", json={"corpus_id": small_doc})
     assert res.status_code == 200
