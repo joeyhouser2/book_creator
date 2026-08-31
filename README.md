@@ -345,6 +345,28 @@ Which is why `--audio-max-beads` exists: check the voice on 20 beads before
 committing a night to it. The utterance cache means a stopped or crashed run
 resumes without re-synthesizing anything.
 
+### Narrating a book you have already printed
+
+`--audio-only` (or the **Audiobook only** tick) builds the audiobook and
+nothing else — no PDF, no cover, no EPUB. Since nothing is rendered, the files
+from your earlier build cannot be overwritten:
+
+```bash
+python make_book.py --perseus-id greekLit:tlg0032.tlg006 --sides tgt --audio-only --audio-voice voices/en-gb-savage.wav
+```
+
+That narrates the English alone and writes `output/anabasis-en.mp3`, leaving
+`anabasis.pdf` byte-for-byte as it was.
+
+The `-en` suffix is automatic: a monolingual build names its files after the
+language it keeps, because an English-only edition is a different book from the
+parallel text and should not land on top of it. An explicit `slug` is never
+suffixed.
+
+A TTS failure normally just logs a warning, since the PDF is already written —
+but with `--audio-only` there is no PDF to fall back on, so the error is raised
+rather than leaving a "successful" build that produced nothing.
+
 ### Engines
 
 Pluggable, registered exactly the way `translators.py` registers translation

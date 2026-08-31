@@ -549,16 +549,22 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
     if engine.licence.startswith("CPML"):
         log(f"  !  {engine.label} is licensed {engine.licence} -- personal "
             "listening only, do not sell this audio.")
-    for lang, side in ((src_lang, "original"), (tgt_lang, "translation")):
+    plans = plan(chapters, spec=spec, src_lang=src_lang, tgt_lang=tgt_lang)
+
+    # Check only the languages actually spoken. A translation-only audiobook
+    # reads no Greek, so neither the engine's lack of a Greek voice nor the
+    # substitute-voice notice has anything to do with it.
+    spoken = {u.lang for _, items in plans for u in items}
+    for lang in sorted(spoken):
+        side = "original" if lang == src_lang else "translation"
         if not engine.supports(lang):
             raise AudioError(
                 f"{engine.label} has no voice for the {side} language "
                 f"'{lang}' (mapped to '{voice_lang(lang)}'). Pick another engine.")
-    if src_lang in VOICE_LANG_FALLBACK:
-        log(f"• {src_lang} has no TTS voice; reading it with the "
-            f"'{voice_lang(src_lang)}' voice (see audio.VOICE_LANG_FALLBACK).")
+        if lang in VOICE_LANG_FALLBACK:
+            log(f"• {lang} has no TTS voice; reading it with the "
+                f"'{voice_lang(lang)}' voice (see audio.VOICE_LANG_FALLBACK).")
 
-    plans = plan(chapters, spec=spec, src_lang=src_lang, tgt_lang=tgt_lang)
     total = sum(len(items) for _, items in plans)
     if not total:
         raise AudioError("Nothing to narrate: no beads with text.")

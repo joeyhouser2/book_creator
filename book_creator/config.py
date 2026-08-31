@@ -191,6 +191,7 @@ def load_specs(path: str) -> list[BookSpec]:
             copyright=_parse_copyright(raw.get("copyright")),
             cover=_parse_cover(raw.get("cover")),
             epub=bool(raw.get("epub", False)),
+            audio_only=bool(raw.get("audio_only", False)),
             review=bool(raw.get("review", False)),
             review_model=raw.get("review_model", "llama3.1"),
             review_host=raw.get("review_host", "http://localhost:11434"),

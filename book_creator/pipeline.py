@@ -401,8 +401,16 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
             f"Nothing left to print: sides='{spec.sides}' removed every bead.")
 
     slug = spec.slug or _slugify(spec.title)
+    # A monolingual edition is a different book from the parallel text, so it
+    # gets its own filenames. Without this, narrating the English of a book you
+    # already built would quietly overwrite the dual-language one beside it.
+    if not spec.slug and spec.sides != "both":
+        lang = spec.tgt_lang if spec.sides == "tgt" else spec.src_lang
+        slug = f"{slug}-{lang or spec.sides}"
+        log(f"• Monolingual output, so files are named {slug}.* — the "
+            "dual-language build is left alone.")
 
-    if spec.music.enabled:
+    if spec.music.enabled and not spec.audio_only:
         log(f"• Matching poems against musical-literature catalog ({spec.music.catalog})…")
         music_dir = Path(out_dir) / f"{slug}-music"
         matched = 0
@@ -458,6 +466,37 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         except reviewer.ReviewerError as exc:
             log(f"  ⚠  Review skipped: {exc}")
 
+    out_path = ""
+    if spec.audio_only:
+        # Rendering nothing is the point: an existing PDF for this book stays
+        # exactly as it was.
+        log("• Audio only — skipping the PDF, cover and EPUB.")
+    else:
+        out_path = _render_print(chapters, spec, slug, out_dir, out, log)
+
+    if spec.audio.enabled or spec.audio_only:
+        spec.audio.first = spec.first
+        try:
+            out["audio"] = audio.build_audiobook(
+                chapters, spec=spec.audio, out_dir=out_dir, slug=slug,
+                title=spec.title, author=spec.author, src_lang=spec.src_lang,
+                tgt_lang=spec.tgt_lang, log=log, on_progress=on_progress,
+                should_stop=should_stop,
+            )
+            out_path = out_path or (out["audio"].get("book") or "")
+        except audio.AudioError as exc:
+            # Never lose a finished book to a TTS problem — the PDF (when there
+            # is one) is already written, so report and carry on.
+            log(f"  ⚠  Audiobook skipped: {exc}")
+            if spec.audio_only:
+                raise
+
+    return out_path
+
+
+def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
+                  log) -> str:
+    """Render the print edition: interior PDF, then cover and EPUB if asked."""
     pages = _estimate_pages(chapters)
     out_path = str(Path(out_dir) / f"{slug}.pdf")
 
@@ -527,21 +566,5 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         )
         log(f"✓ EPUB: {epub_path}")
         out["epub"] = epub_path
-
-    if spec.audio.enabled:
-        # Narration reads whichever side the print edition puts first, so the
-        # audiobook and the page stay in the same order.
-        spec.audio.first = spec.first
-        try:
-            out["audio"] = audio.build_audiobook(
-                chapters, spec=spec.audio, out_dir=out_dir, slug=slug,
-                title=spec.title, author=spec.author, src_lang=spec.src_lang,
-                tgt_lang=spec.tgt_lang, log=log, on_progress=on_progress,
-                should_stop=should_stop,
-            )
-        except audio.AudioError as exc:
-            # Never lose a finished book to a TTS problem — the PDF is already
-            # written, so report and carry on.
-            log(f"  ⚠  Audiobook skipped: {exc}")
 
     return out_path

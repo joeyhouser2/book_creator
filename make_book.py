@@ -280,6 +280,11 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--audio-max-beads", type=int,
                    help="Narrate only the first N beads — a quick voice test before "
                         "committing hours of GPU time.")
+    a.add_argument("--audio-only", action="store_true",
+                   help="Build ONLY the audiobook: no PDF, cover or EPUB. For "
+                        "adding narration to a book you already printed — "
+                        "nothing is rendered, so the existing files cannot be "
+                        "overwritten. Implies --audio.")
     a.add_argument("--no-announce-chapters", action="store_true",
                    help="Don't read each chapter title aloud.")
     args = p.parse_args(argv)
@@ -329,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
         return _print_outlines(args)
 
     audio_spec = AudioSpec(
-        enabled=args.audio, engine=args.audio_engine,
+        enabled=args.audio or args.audio_only, engine=args.audio_engine,
         device=args.audio_device or (audio.best_device() if args.audio else "cpu"),
         src_voice=args.audio_src_voice or args.audio_voice,
         tgt_voice=args.audio_tgt_voice or args.audio_voice,
@@ -339,9 +344,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.config:
         specs = load_specs(args.config)
-        if args.audio:              # the CLI flag turns audio on for the whole batch
+        if args.audio or args.audio_only:   # CLI flags apply to the whole batch
             for spec in specs:
                 spec.audio = audio_spec
+                spec.audio_only = spec.audio_only or args.audio_only
     elif args.perseus_id or args.corpus_id or args.src_id or args.src_path:
         specs = [BookSpec(
             # A corpus document supplies its own title/language, so leave those
@@ -392,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
             review_sample=args.review_sample,
             music=MusicSpec(enabled=args.music, catalog=args.music_catalog),
             audio=audio_spec,
+            audio_only=args.audio_only,
         )]
     else:
         p.error("Provide a config file, --src-id/--src-path, --corpus-id, "

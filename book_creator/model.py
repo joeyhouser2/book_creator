@@ -307,6 +307,11 @@ class BookSpec:
     # Also emit a reflowable EPUB alongside the PDF (needs requirements-epub.txt).
     epub: bool = False
 
+    # Produce ONLY the audiobook: no PDF, no cover, no EPUB. Useful for adding
+    # narration to a book you have already printed, since skipping the render
+    # means the existing PDF cannot be overwritten. Implies audio.enabled.
+    audio_only: bool = False
+
     # Optional post-alignment QA pass: ask a local LLM (via Ollama) to flag
     # beads that look misaligned, have leftover markup, or are otherwise
     # malformed (book_creator/reviewer.py). Advisory only — never edits

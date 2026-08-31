@@ -481,6 +481,7 @@ def _spec_from_payload(p: dict) -> BookSpec:
         copyright=_copyright_from(p.get("copyright")),
         cover=_cover_from(p.get("cover")),
         epub=bool(p.get("epub", False)),
+        audio_only=bool(p.get("audio_only", False)),
     )
 
 
@@ -525,17 +526,22 @@ def _run_build(job_id: str, spec: BookSpec) -> None:
     artifacts: dict = {}
     job["artifacts"] = artifacts
     try:
-        pdf_path = build_book(spec, out_dir=OUTPUT_DIR, verbose=False,
-                              on_log=on_log, artifacts=artifacts,
-                              on_progress=on_progress, should_stop=should_stop)
-        pages = preview.page_count(pdf_path)
-        cover_cand = Path(pdf_path).with_name(Path(pdf_path).stem + "-cover.pdf")
+        build_book(spec, out_dir=OUTPUT_DIR, verbose=False,
+                   on_log=on_log, artifacts=artifacts,
+                   on_progress=on_progress, should_stop=should_stop)
+        # An audio-only build renders no PDF, so there is nothing to paginate
+        # or preview — the point of it is to leave an existing PDF untouched.
+        pdf_path = artifacts.get("pdf")
+        pages = preview.page_count(pdf_path) if pdf_path else 0
+        cover_cand = (Path(pdf_path).with_name(Path(pdf_path).stem + "-cover.pdf")
+                      if pdf_path else None)
         with _lock:
             job["pdf_path"] = pdf_path
             job["pages"] = pages
             job["title"] = spec.title or job["title"]
-            job["cover_path"] = str(cover_cand) if cover_cand.exists() else None
-            if cover_cand.exists():
+            job["cover_path"] = (str(cover_cand)
+                                 if cover_cand and cover_cand.exists() else None)
+            if cover_cand and cover_cand.exists():
                 artifacts.setdefault("cover", str(cover_cand))
             job["status"] = "cancelled" if job.get("cancel") else "done"
     except Exception as exc:  # noqa: BLE001
@@ -555,6 +561,8 @@ def api_build():
     payload = request.get_json(force=True)
     # A corpus document is a complete parallel text on its own; the Gutenberg
     # path needs an edition on each side.
+    if payload.get("audio_only"):
+        payload.setdefault("audio", {})["enabled"] = True
     if not (payload.get("corpus_id") or payload.get("perseus_id")):
         if not (payload.get("src_id") or payload.get("src_path")):
             return jsonify({"error": "Choose an original text."}), 400
@@ -622,6 +630,7 @@ def api_status(job_id: str):
             "log": job["log"],
             "pages": job["pages"],
             "has_cover": bool(job.get("cover_path") or art.get("cover")),
+            "has_pdf": bool(art.get("pdf") or job.get("pdf_path")),
             "progress": job.get("progress"),
             "audio": art.get("audio"),
             "epub": bool(art.get("epub")),

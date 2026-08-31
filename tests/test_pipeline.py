@@ -206,6 +206,78 @@ def test_epub_output_is_genuinely_optional(monkeypatch, tmp_path, chapters):
                            title="T", author="A", src_lang="la", tgt_lang="en")
 
 
+def test_audio_only_renders_no_print_files(corpus_db, small_doc, a_font,
+                                           tmp_path, tone_engine):
+    spec = _spec(small_doc, font=FontSpec(family=a_font), epub=True,
+                 audio_only=True,
+                 audio=AudioSpec(enabled=True, engine="tone", device="cpu",
+                                 format="mp3", max_beads=3))
+    art = {}
+    returned = build_book(spec, out_dir=str(tmp_path), verbose=False,
+                          artifacts=art, on_log=lambda _m: None)
+    assert "pdf" not in art and "epub" not in art and "cover" not in art
+    assert not list(Path(tmp_path).glob("*.pdf"))
+    assert art["audio"]["book"]
+    # The audiobook is the deliverable, so it is what gets returned.
+    assert returned == art["audio"]["book"]
+
+
+def test_audio_only_leaves_an_existing_pdf_untouched(corpus_db, small_doc,
+                                                     a_font, tmp_path,
+                                                     tone_engine):
+    """The point of audio-only: add narration without rebuilding the book."""
+    printed = _spec(small_doc, font=FontSpec(family=a_font))
+    art = {}
+    build_book(printed, out_dir=str(tmp_path), verbose=False, artifacts=art,
+               on_log=lambda _m: None)
+    pdf = Path(art["pdf"])
+    before = pdf.read_bytes()
+
+    narrate = _spec(small_doc, font=FontSpec(family=a_font), sides="tgt",
+                    audio_only=True,
+                    audio=AudioSpec(enabled=True, engine="tone", device="cpu",
+                                    format="mp3", max_beads=3))
+    build_book(narrate, out_dir=str(tmp_path), verbose=False,
+               on_log=lambda _m: None)
+    assert pdf.read_bytes() == before, "the printed book was modified"
+
+
+def test_monolingual_output_gets_its_own_filenames(corpus_db, small_doc,
+                                                   a_font, tmp_path):
+    # Otherwise an English-only edition silently overwrites the parallel text.
+    both, tgt = {}, {}
+    build_book(_spec(small_doc, font=FontSpec(family=a_font)),
+               out_dir=str(tmp_path), verbose=False, artifacts=both,
+               on_log=lambda _m: None)
+    build_book(_spec(small_doc, font=FontSpec(family=a_font), sides="tgt"),
+               out_dir=str(tmp_path), verbose=False, artifacts=tgt,
+               on_log=lambda _m: None)
+    assert both["pdf"] != tgt["pdf"]
+    assert Path(tgt["pdf"]).stem.endswith("-en")
+    assert Path(both["pdf"]).exists()
+
+
+def test_an_explicit_slug_is_never_suffixed(corpus_db, small_doc, a_font,
+                                            tmp_path):
+    art = {}
+    build_book(_spec(small_doc, font=FontSpec(family=a_font), sides="tgt",
+                     slug="my-own-name"),
+               out_dir=str(tmp_path), verbose=False, artifacts=art,
+               on_log=lambda _m: None)
+    assert Path(art["pdf"]).stem == "my-own-name"
+
+
+def test_audio_only_propagates_a_tts_failure(corpus_db, small_doc, a_font,
+                                             tmp_path):
+    # With no print edition to fall back on, swallowing the error would leave
+    # the build reporting success having produced nothing at all.
+    spec = _spec(small_doc, font=FontSpec(family=a_font), audio_only=True,
+                 audio=AudioSpec(enabled=True, engine="kokoro", device="cpu"))
+    with pytest.raises(Exception, match="pip install|not installed"):
+        build_book(spec, out_dir=str(tmp_path), verbose=False,
+                   on_log=lambda _m: None)
+
+
 def test_build_with_narration(corpus_db, small_doc, a_font, tmp_path, tone_engine):
     spec = _spec(small_doc, font=FontSpec(family=a_font),
                  audio=AudioSpec(enabled=True, engine="tone", device="cpu",

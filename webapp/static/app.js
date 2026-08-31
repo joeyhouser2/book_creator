@@ -1002,6 +1002,7 @@ function buildPayload() {
     trim: [parseFloat($("trimW").value), parseFloat($("trimH").value)],
     toc: $("tocSel").value === "yes",
     epub: $("epubEnabled").checked,
+    audio_only: $("auOnly").checked,
     decorations: decorPayload(),
     audio: audioPayload(),
     copyright: {
@@ -1143,15 +1144,22 @@ function pollStatus() {
     state.pages = data.pages;
     state.page = 0;
     state.viewingCover = false;
-    $("download").href = `/api/download/${state.job}.pdf`;
-    $("download").style.display = "inline-block";
+    if (data.has_pdf) {
+      $("download").href = `/api/download/${state.job}.pdf`;
+      $("download").style.display = "inline-block";
+    } else {
+      $("previewWrap").innerHTML =
+        `<p class="muted">Audiobook only — no pages were rendered, so any ` +
+        `PDF you built earlier is untouched.</p>`;
+      $("pageLabel").textContent = "— / —";
+    }
     if (data.has_cover) {
       $("coverToggle").style.display = "inline-block";
       $("coverDownload").href = `/api/cover-download/${state.job}.pdf`;
       $("coverDownload").style.display = "inline-block";
     }
     showAudio(data.audio);
-    showPage(0);
+    if (data.has_pdf) showPage(0);
   }, 700);
 }
 
@@ -1253,6 +1261,10 @@ $("coverToggle").onclick = toggleCover;
 $("auEstimateBtn").onclick = estimateAudio;
 $("auEngine").addEventListener("change", updateEngineNote);
 $("auVoice").addEventListener("change", updateVoiceNote);
+$("auOnly").addEventListener("change", () => {
+  // Audio-only without narration would produce nothing at all.
+  if ($("auOnly").checked) $("auEnabled").checked = true;
+});
 $("sides").addEventListener("change", updateSides);
 $("font").addEventListener("change", updateFontNote);
 $("srcLang").addEventListener("change", () => {

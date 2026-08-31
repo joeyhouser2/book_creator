@@ -203,6 +203,27 @@ def test_build_refuses_a_language_the_engine_cannot_read(chapters, tmp_path,
             cache_dir=str(tmp_path / "c"), log=lambda _m: None)
 
 
+def test_only_spoken_languages_are_checked(chapters, tmp_path, tone_engine):
+    """A translation-only audiobook reads no Greek, so a missing Greek voice
+    is irrelevant to it.
+
+    Checking both languages regardless refused perfectly buildable English
+    audiobooks, and announced a substitute Greek voice that was never used.
+    """
+    from book_creator.pipeline import apply_sides
+
+    tone_engine.languages = ("en",)          # no Greek voice at all
+    english_only = apply_sides(chapters, "tgt", lambda _m: None)
+
+    msgs = []
+    res = audio.build_audiobook(
+        english_only, spec=_spec(announce_chapters=False), out_dir=str(tmp_path),
+        slug="bk", title="T", author="A", src_lang="grc", tgt_lang="en",
+        cache_dir=str(tmp_path / "c"), log=msgs.append)
+    assert res["chapters"] >= 1
+    assert not any("grc" in m for m in msgs), msgs
+
+
 def test_build_reports_a_missing_engine(chapters, tmp_path):
     # The install check comes first: without the package there is nothing to
     # check languages against, and the message has to say how to fix it.
