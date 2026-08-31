@@ -25,7 +25,26 @@ function escapeHtml(s) {
 
 async function getJSON(url, opts) {
   const res = await fetch(url, opts);
-  const data = await res.json();
+  const body = await res.text();
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    // The server answered with something that isn't JSON — almost always
+    // Flask's HTML error page. Raw "Unexpected token '<'" tells the user
+    // nothing, so name the real cause instead.
+    if (res.status === 404) {
+      throw new Error(
+        `This build of the server has no ${url.split("?")[0]} endpoint ` +
+        `(HTTP 404). Flask reads templates and static files from disk on ` +
+        `every request but registers routes once at startup — so after an ` +
+        `update the page can be new while the routes are still old. ` +
+        `Restart the server.`);
+    }
+    throw new Error(
+      `The server returned ${res.status} ${res.statusText || ""} with a ` +
+      `non-JSON body. First line: ${body.split("\n")[0].slice(0, 120)}`);
+  }
   if (data.error) throw new Error(data.error);
   return data;
 }

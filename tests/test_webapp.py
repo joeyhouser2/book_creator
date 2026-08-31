@@ -191,6 +191,39 @@ def test_blank_decor_paths_become_none_not_empty_strings():
 
 
 # --------------------------------------------------------------------------- #
+# Perseus
+# --------------------------------------------------------------------------- #
+def test_perseus_status(client):
+    status, data = _get(client, "/api/perseus/status")
+    assert status == 200
+    assert "available" in data
+
+
+def test_perseus_search_endpoint_exists(client):
+    # Regression guard for a stale server: a missing route returns Flask's
+    # HTML error page, which the browser then fails to parse as JSON. The
+    # symptom ("Unexpected token '<'") points nowhere near the cause.
+    res = client.get("/api/perseus/search?q=anabasis")
+    assert res.status_code != 404
+    assert res.mimetype == "application/json"
+
+
+def test_every_api_route_answers_json_not_html(client):
+    """No /api/ route may return an HTML body on a normal request.
+
+    The front end parses every response as JSON, so an HTML page anywhere
+    surfaces as an unreadable parse error rather than the real problem.
+    """
+    checks = [
+        "/api/fonts", "/api/local/files", "/api/jobs",
+        "/api/audio/engines", "/api/catalog/status", "/api/perseus/status",
+    ]
+    for url in checks:
+        res = client.get(url)
+        assert res.mimetype == "application/json", f"{url} returned {res.mimetype}"
+
+
+# --------------------------------------------------------------------------- #
 # Corpus facets
 # --------------------------------------------------------------------------- #
 def test_corpus_facets(client, corpus_db):
