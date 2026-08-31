@@ -173,6 +173,47 @@ Three things worth knowing:
   printable on their own, so an original-only build keeps segments that the
   dual-language path would drop.
 
+## Perseus source (the classical canon, already paired)
+
+The [Perseus Digital Library](https://www.perseus.tufts.edu/) publishes the
+Greek and Latin canon as TEI, and for **789 works it has both the original and
+a human English translation** — 596 Greek, 193 Latin.
+
+```bash
+python make_book.py --update-perseus                      # index it (once)
+python make_book.py --perseus --perseus-search xenophon   # browse
+python make_book.py --perseus-id greekLit:tlg0032.tlg006 --perseus-range 1-1
+```
+
+Or the **Perseus** tab in the web UI. Two GitHub API calls index the whole
+catalogue; per-work metadata comes from a CDN, so it takes about a minute.
+
+Three things make this the best source here for classical texts:
+
+- **The English is a real translation.** No machine-translation disclosure on
+  the copyright page, unlike the corpus path.
+- **Alignment is anchored, not guessed.** Both editions carry the same CTS
+  citation scheme, down to the section. Xenophon's *Anabasis* has 7 books but
+  **1,469 sections**, and a section is one to three sentences — so the sentence
+  aligner never works over more than a few sentences and cannot accumulate the
+  off-by-one drift it does across a whole book. Measured with LaBSE as an
+  independent judge, badly-matched beads fall from 6.3% to 3.9%.
+- **The rights question is answerable.** The CTS metadata names the edition and
+  its year, so the pre-1929 test is a fact rather than a guess: 440 of the 789
+  translations are confirmed pre-1929, and the rest are flagged `check` or
+  `unknown` rather than assumed safe.
+
+```yaml
+  - perseus:
+      work_id: greekLit:tlg0032.tlg006
+      division_range: 1-2        # by BOOK, not section
+    mode: prose
+    font: gfsdidot               # needs a Greek face
+```
+
+Greek needs a ✔ Greek font or the glyphs render blank; Perseus's elision mark
+(U+02BC) is normalised to U+2019, which every bundled font has.
+
 ## Latin corpus source (the `latin` repo)
 
 The sibling project [`latin`](https://github.com/joeyhouser2/latin) maintains a
@@ -732,6 +773,7 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 |--------|------|
 | `fetch.py` | download Gutenberg text, strip the license banner, cache locally |
 | `pg_catalog.py` | offline index of Gutenberg's own catalog, used when Gutendex is down |
+| `perseus.py` | Perseus TEI: index paired works, fetch both editions, anchor on citation refs |
 | `corpus.py` | read a pre-aligned work out of the `latin` repo's corpus.db (read-only) |
 | `epub_reader.py` | unpack a local EPUB into plain text, and report scan/OCR quality first |
 | `download_voices.py` | fetch public-domain narrator samples from LibriVox into voices/ |

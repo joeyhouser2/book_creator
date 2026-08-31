@@ -163,6 +163,23 @@ class CorpusSpec:
 
 
 @dataclass
+class PerseusSpec:
+    """Build from the Perseus Digital Library: the classical canon, paired.
+
+    Perseus publishes the Greek/Latin original *and* a human English
+    translation as TEI, both carrying the same CTS citation scheme -- so the
+    two sides anchor on their own book/chapter numbers rather than being
+    matched statistically, and the English needs no machine-translation
+    disclosure. See book_creator/perseus.py.
+    """
+
+    work_id: str | None = None          # e.g. "greekLit:tlg0032.tlg006"
+    # Optional (first, last) division indices, 1-based inclusive, applied
+    # after the two editions are matched on their citation refs.
+    division_range: tuple[int, int] | None = None
+
+
+@dataclass
 class AudioSpec:
     """Interleaved bilingual audiobook narrated by a local GPU TTS model.
 
@@ -217,6 +234,8 @@ class BookSpec:
     # Or pull a pre-aligned work from the latin repo's corpus, which overrides
     # both of the above and skips fetch/segment/align (see CorpusSpec).
     corpus: "CorpusSpec" = field(default_factory=lambda: CorpusSpec())
+    # Or a Perseus work, which supplies both sides at once (see PerseusSpec).
+    perseus: "PerseusSpec" = field(default_factory=lambda: PerseusSpec())
 
     # "prose" -> sentence segmentation; "verse" -> line segmentation.
     mode: str = "prose"

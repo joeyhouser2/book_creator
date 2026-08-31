@@ -8,6 +8,7 @@ const state = {
   src: null,             // {id, title, authors, languages}
   tgt: null,
   corpus: null,          // {doc, sections, sample, note}
+  perseus: null,         // {work, sections, divisions, sample}
   lsrc: null,            // local file {name, path, kind, size_mb, outline}
   ltgt: null,
   job: null,
@@ -71,7 +72,7 @@ function updateSides() {
   // It is irrelevant on the corpus tab (that English is our own machine
   // translation) and irrelevant for an original-only edition, which publishes
   // no translation at all.
-  const needsPd = state.source !== "corpus" && sides !== "src";
+  const needsPd = !["corpus", "perseus"].includes(state.source) && sides !== "src";
   $("pdConfirmRow").style.display = needsPd ? "" : "none";
   $("pdBanner").style.display = needsPd ? "" : "none";
 
@@ -520,6 +521,147 @@ function wireDecorations() {
 }
 
 // --------------------------------------------------------------------------- //
+// Perseus — the classical canon, original plus a human English translation
+// --------------------------------------------------------------------------- //
+const PD_LABEL = {
+  ok: "pre-1929 · public domain",
+  check: "published 1929+ · check rights",
+  unknown: "no year recorded · check rights",
+};
+
+async function loadPerseusStatus() {
+  const el = $("perseusStatus");
+  try {
+    const s = await getJSON("/api/perseus/status");
+    if (!s.available) {
+      el.innerHTML = `No index yet. <button id="pBuild">Build it</button>
+        <span class="muted">— two API calls plus per-work metadata, about a minute.</span>`;
+      $("pBuild").onclick = buildPerseusIndex;
+      return;
+    }
+    const by = s.by_language || {};
+    el.innerHTML = `${s.works} work(s) with both the original and a human
+      English translation — ${by.grc || 0} Greek, ${by.lat || 0} Latin. Both
+      editions share a citation scheme, so the two sides anchor exactly rather
+      than being matched statistically.`;
+  } catch (e) {
+    el.textContent = `⚠ ${e.message}`;
+  }
+}
+
+async function buildPerseusIndex() {
+  $("perseusStatus").textContent = "Building the index…";
+  try {
+    await postJSON("/api/perseus/build", {});
+  } catch (e) {
+    $("perseusStatus").textContent = `⚠ ${e.message}`;
+    return;
+  }
+  loadPerseusStatus();
+}
+
+async function doPerseusSearch() {
+  const box = $("pResults");
+  box.innerHTML = `<div class="result muted">Searching…</div>`;
+  const params = new URLSearchParams({
+    q: $("pq").value.trim(), lang: $("pLang").value,
+  });
+  let data;
+  try {
+    data = await getJSON(`/api/perseus/search?${params}`);
+  } catch (e) {
+    box.innerHTML = `<div class="result">⚠ ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  if (!data.results.length) {
+    box.innerHTML = `<div class="result muted">No match.</div>`;
+    return;
+  }
+  box.innerHTML = "";
+  for (const w of data.results) {
+    const row = document.createElement("div");
+    row.className = "result";
+    row.innerHTML = `
+      <div class="meta">
+        <b>${escapeHtml(w.title)}</b>
+        <small>${escapeHtml(w.author)} · ${w.language}
+          <span class="badge risk-${w.pd_status === "ok" ? "ok" : "check"}">
+            ${PD_LABEL[w.pd_status]}</span></small>
+      </div>
+      <div class="pick"><button>→ Use this</button></div>`;
+    row.querySelector("button").onclick = () => selectPerseusWork(w.id);
+    box.appendChild(row);
+  }
+}
+
+async function selectPerseusWork(id) {
+  const detail = $("perseusDetail");
+  detail.innerHTML = `<p class="muted">Fetching both editions…</p>`;
+  let data;
+  try {
+    data = await getJSON(`/api/perseus/work/${id}`);
+  } catch (e) {
+    detail.innerHTML = `<p class="warn">⚠ ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  state.perseus = data;
+  renderPerseusPick();
+}
+
+function renderPerseusPick() {
+  const d = state.perseus;
+  const pick = $("perseusPick").querySelector(".slot-body");
+  const detail = $("perseusDetail");
+  if (!d) {
+    $("perseusPick").classList.remove("filled");
+    pick.className = "slot-body muted";
+    pick.textContent = "none selected";
+    detail.innerHTML = "";
+    return;
+  }
+  const w = d.work;
+  $("perseusPick").classList.add("filled");
+  pick.className = "slot-body";
+  pick.innerHTML = `<b>${escapeHtml(w.title)}</b>
+    <small class="muted">${escapeHtml(w.author)} · ${w.language} ·
+      ${d.sections} sections</small>
+    <span class="clear">clear</span>`;
+  pick.querySelector(".clear").onclick = () => { state.perseus = null; renderPerseusPick(); };
+
+  $("title").value = w.title;
+  $("author").value = w.author;
+  if ([...$("srcLang").options].some((o) => o.value === w.language))
+    $("srcLang").value = w.language;
+  else if (w.language === "lat") $("srcLang").value = "la";
+  updateFontNote();
+  updateVoiceNote();
+
+  const rows = d.sample.map((s) => `
+    <div class="pair">
+      <div class="pair-src"><span class="badge">${escapeHtml(s.ref)}</span>
+        ${escapeHtml(s.src)}</div>
+      <div class="pair-tgt">${escapeHtml(s.tgt)}</div>
+    </div>`).join("");
+
+  detail.innerHTML = `
+    <div class="corpus-meta">
+      <div><span class="k">original</span> ${escapeHtml(w.source_edition)}</div>
+      <div><span class="k">english</span> ${escapeHtml(w.translation_edition)}</div>
+      <div><span class="k">rights</span>
+        <span class="badge risk-${w.pd_status === "ok" ? "ok" : "check"}">
+          ${PD_LABEL[w.pd_status]}</span></div>
+      <div><span class="k">anchored</span> ${d.sections} citable sections,
+        matched exactly on both sides</div>
+    </div>
+    <h3>Divisions</h3>
+    <div class="slot-range" id="range-perseus"></div>
+    <h3>Preview</h3>
+    <div class="pairs">${rows}</div>`;
+
+  renderRange($("range-perseus"), d.divisions, false);
+}
+
+// --------------------------------------------------------------------------- //
 // Local files — your own .txt and .epub
 // --------------------------------------------------------------------------- //
 async function loadLocalFiles() {
@@ -858,7 +1000,14 @@ function buildPayload() {
     },
   };
 
-  if (state.source === "corpus") {
+  if (state.source === "perseus") {
+    if (!state.perseus) return p;
+    p.perseus_id = state.perseus.work.id;
+    p.perseus_range = readRange($("range-perseus"));
+    // Perseus English is a named human translation with a known year; the
+    // rights question is answered by that year, shown on the work itself.
+    p.translation_pd_confirmed = true;
+  } else if (state.source === "corpus") {
     if (!state.corpus) return p;
     p.corpus_id = state.corpus.doc.id;
     p.corpus_range = readRange($("range-corpus"));
@@ -898,6 +1047,15 @@ function validate() {
   const sides = $("sides").value;
   if (state.source === "corpus") {
     if (!state.corpus) return "Pick a work from the corpus.";
+    return null;
+  }
+  if (state.source === "perseus") {
+    if (!state.perseus) return "Pick a work from Perseus.";
+    const w = state.perseus.work;
+    if (w.pd_status !== "ok" && !confirm(
+        `This translation is ${PD_LABEL[w.pd_status]}. Build anyway?`)) {
+      return "Cancelled.";
+    }
     return null;
   }
   if (state.source === "local") {
@@ -1063,6 +1221,8 @@ $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); }
 $("cSearchBtn").onclick = doCorpusSearch;
 $("cq").addEventListener("keydown", (e) => { if (e.key === "Enter") doCorpusSearch(); });
 $("localRefresh").onclick = loadLocalFiles;
+$("pSearchBtn").onclick = doPerseusSearch;
+$("pq").addEventListener("keydown", (e) => { if (e.key === "Enter") doPerseusSearch(); });
 wireDecorations();
 $("historySection").addEventListener("toggle", (e) => {
   if (e.target.open) loadHistory();
@@ -1093,6 +1253,7 @@ document.addEventListener("keydown", (e) => {
 selectTab("gutenberg");
 loadFonts();
 loadCorpusStatus();
+loadPerseusStatus();
 loadFacets();
 loadLocalFiles();
 loadAudio();

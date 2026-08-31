@@ -24,7 +24,29 @@
       <div class="tabs" role="tablist">
         <button class="tab active" data-tab="gutenberg" role="tab">Gutenberg pair</button>
         <button class="tab" data-tab="corpus" role="tab">Latin corpus</button>
+        <button class="tab" data-tab="perseus" role="tab">Perseus</button>
         <button class="tab" data-tab="local" role="tab">Local files</button>
+      </div>
+
+      <!-- ---------- Perseus: original + human translation, one work ---------- -->
+      <div class="tabpane" id="pane-perseus">
+        <p class="corpus-status muted" id="perseusStatus">checking the index…</p>
+        <div class="search-row">
+          <input id="pq" type="text" placeholder="author or title, e.g. Xenophon">
+          <select id="pLang">
+            <option value="">any</option>
+            <option value="grc">Ancient Greek</option>
+            <option value="lat">Latin</option>
+          </select>
+          <button id="pSearchBtn">Search</button>
+        </div>
+        <div id="pResults" class="results"></div>
+
+        <div class="slot corpus-pick" id="perseusPick">
+          <div class="slot-label">Selected work</div>
+          <div class="slot-body muted">none selected</div>
+        </div>
+        <div id="perseusDetail"></div>
       </div>
 
       <!-- ---------- Gutenberg: two separate editions, aligned ---------- -->

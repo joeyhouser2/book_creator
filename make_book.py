@@ -23,10 +23,11 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-from book_creator import audio, corpus, fetch, pg_catalog, segment
+from book_creator import audio, corpus, fetch, perseus, pg_catalog, segment
 from book_creator.config import load_specs
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
-                                CoverSpec, DecorSpec, FontSpec, MusicSpec)
+                                CoverSpec, DecorSpec, FontSpec, MusicSpec,
+                                PerseusSpec)
 from book_creator.pipeline import build_book
 
 
@@ -69,6 +70,31 @@ def _print_corpus(args) -> int:
     if res.get("hint"):
         print(f"\n  {res['hint']}")
     print("\n  Inspect one with: --corpus --corpus-id <id>")
+    return 0
+
+
+def _print_perseus(args) -> int:
+    """Browse the Perseus index from the command line."""
+    if args.perseus_id:
+        w = perseus.get(args.perseus_id)
+        print(f"\n=== {w['id']} ===")
+        print(f"  author      {w['author']}")
+        print(f"  title       {w['title']}")
+        print(f"  language    {w['language']}")
+        print(f"  source      {w['source_edition']}")
+        print(f"  translation {w['translation_edition']}")
+        print(f"  PD status   {w['pd_status']} (translation year "
+              f"{w['translation_year'] or 'unknown'})")
+        print("\n  Build it with: --perseus-id " + w["id"])
+        return 0
+
+    res = perseus.search(args.perseus_search, language=args.perseus_lang,
+                         limit=args.corpus_limit)
+    print(f"\n=== perseus: {res['count']} paired work(s) match ===")
+    for w in res["results"]:
+        print(f"  {w['id']:<26} {w['author'][:18]:<20} {w['title'][:34]:<36} "
+              f"[{w['language']}] {w['pd_status']}")
+    print("\n  Inspect one with: --perseus --perseus-id <id>")
     return 0
 
 
@@ -200,6 +226,24 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--corpus-stage",
                    help="Filter by language stage (classical, late_antique, medieval…).")
     g.add_argument("--corpus-limit", type=int, default=40, help="Max search results.")
+    ps = p.add_argument_group("perseus")
+    ps.add_argument("--perseus", action="store_true",
+                    help="Browse the Perseus index and exit. Combine with "
+                         "--perseus-search / --perseus-lang.")
+    ps.add_argument("--perseus-id",
+                    help="Build from a Perseus work id, e.g. "
+                         "greekLit:tlg0032.tlg006. Supplies BOTH sides: the "
+                         "original and a human English translation, anchored "
+                         "on their shared CTS citation scheme.")
+    ps.add_argument("--perseus-range",
+                    help="Division range within the work, e.g. 1-2.")
+    ps.add_argument("--perseus-search", default="",
+                    help="Title/author substring to search the index for.")
+    ps.add_argument("--perseus-lang", choices=["grc", "lat"],
+                    help="Filter the Perseus index by language.")
+    ps.add_argument("--update-perseus", action="store_true",
+                    help="Rebuild the Perseus index (2 GitHub API calls plus "
+                         "per-work metadata) and exit.")
     p.add_argument("--update-catalog", action="store_true",
                    help="Download/refresh the offline Gutenberg catalog "
                         "(~5.6 MB, 79k books) and exit. Gutendex is a small "
@@ -239,6 +283,13 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--no-announce-chapters", action="store_true",
                    help="Don't read each chapter title aloud.")
     args = p.parse_args(argv)
+
+    if args.update_perseus:
+        perseus.build(refresh=True, log=print)
+        return 0
+
+    if args.perseus:
+        return _print_perseus(args)
 
     if args.update_catalog:
         pg_catalog.build(refresh=True, log=print)
@@ -291,13 +342,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.audio:              # the CLI flag turns audio on for the whole batch
             for spec in specs:
                 spec.audio = audio_spec
-    elif args.corpus_id or args.src_id or args.src_path:
+    elif args.perseus_id or args.corpus_id or args.src_id or args.src_path:
         specs = [BookSpec(
             # A corpus document supplies its own title/language, so leave those
             # blank unless the user overrode them (see _chapters_from_corpus).
-            title="" if (args.corpus_id and args.title == "Untitled") else args.title,
+            title=("" if ((args.corpus_id or args.perseus_id)
+                          and args.title == "Untitled") else args.title),
             author=args.author,
-            src_lang="" if args.corpus_id else args.src_lang,
+            src_lang="" if (args.corpus_id or args.perseus_id) else args.src_lang,
+            perseus=PerseusSpec(
+                work_id=args.perseus_id,
+                division_range=_parse_range(args.perseus_range),
+            ),
             corpus=CorpusSpec(
                 doc_id=args.corpus_id, db_path=args.corpus_db,
                 section_range=_parse_range(args.corpus_range),
@@ -338,7 +394,8 @@ def main(argv: list[str] | None = None) -> int:
             audio=audio_spec,
         )]
     else:
-        p.error("Provide a config file, --src-id/--src-path, or --corpus-id.")
+        p.error("Provide a config file, --src-id/--src-path, --corpus-id, "
+                "or --perseus-id.")
         return 2
 
     failures = 0

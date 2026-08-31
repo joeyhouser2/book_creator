@@ -12,9 +12,9 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import yaml
 
 from book_creator import (audio, corpus, decorations, epub_reader, fetch, fonts,
-                          pg_catalog, segment)
+                          perseus, pg_catalog, segment)
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
-                                CoverSpec, DecorSpec, FontSpec)
+                                CoverSpec, DecorSpec, FontSpec, PerseusSpec)
 from book_creator.pipeline import apply_sides, build_book
 
 from . import gutendex, jobs as jobstore, preview
@@ -189,6 +189,55 @@ def api_local_outline():
             text, mode=request.args.get("mode", "prose"))})
     except (epub_reader.EpubError, OSError) as exc:
         return jsonify({"error": str(exc)}), 400
+
+
+# --------------------------------------------------------------------------- #
+# Perseus (the classical canon, original + human translation)
+# --------------------------------------------------------------------------- #
+@app.route("/api/perseus/status")
+def api_perseus_status():
+    return jsonify(perseus.status())
+
+
+@app.route("/api/perseus/build", methods=["POST"])
+def api_perseus_build():
+    try:
+        return jsonify(perseus.build(
+            refresh=bool((request.get_json(silent=True) or {}).get("refresh"))))
+    except perseus.PerseusError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+@app.route("/api/perseus/search")
+def api_perseus_search():
+    try:
+        return jsonify(perseus.search(
+            request.args.get("q", ""),
+            language=request.args.get("lang") or None,
+            page=max(1, int(request.args.get("page", 1)))))
+    except perseus.PerseusError as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/perseus/work/<path:work_id>")
+def api_perseus_work(work_id: str):
+    """Metadata plus a preview of the first few aligned sections."""
+    try:
+        meta = perseus.get(work_id)
+        src, tgt, _ = perseus.fetch_pair(work_id)
+        pairs = perseus.pair_divisions(src, tgt)
+    except perseus.PerseusError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    tops = list(dict.fromkeys(s.top for s, _ in pairs))
+    return jsonify({
+        "work": meta,
+        "sections": len(pairs),
+        "divisions": [{"index": i, "title": f"Book {t}", "ref": t}
+                      for i, t in enumerate(tops, start=1)],
+        "sample": [{"ref": s.ref, "src": s.text[:400], "tgt": t.text[:400]}
+                   for s, t in pairs[:8]],
+    })
 
 
 # --------------------------------------------------------------------------- #
@@ -390,7 +439,9 @@ def _corpus_from(p: dict) -> CorpusSpec:
 def _spec_from_payload(p: dict) -> BookSpec:
     trim = p.get("trim", [6.0, 9.0])
     decor = p.get("decorations", {}) or {}
-    from_corpus = bool(p.get("corpus_id"))
+    # A corpus document and a Perseus work each supply both sides and their
+    # own metadata, so title/author/language are filled in at build time.
+    from_corpus = bool(p.get("corpus_id") or p.get("perseus_id"))
     return BookSpec(
         # A corpus document carries its own title/author/language; leave them
         # blank so the pipeline fills them in unless the user typed something.
@@ -399,6 +450,9 @@ def _spec_from_payload(p: dict) -> BookSpec:
         src_lang=p.get("src_lang") or ("" if from_corpus else "la"),
         tgt_lang=p.get("tgt_lang", "en"),
         corpus=_corpus_from(p),
+        perseus=PerseusSpec(
+            work_id=p.get("perseus_id") or None,
+            division_range=_range(p.get("perseus_range"))),
         audio=_audio_from(p.get("audio")),
         src_gutenberg_id=p.get("src_id"),
         tgt_gutenberg_id=p.get("tgt_id"),
@@ -501,7 +555,7 @@ def api_build():
     payload = request.get_json(force=True)
     # A corpus document is a complete parallel text on its own; the Gutenberg
     # path needs an edition on each side.
-    if not payload.get("corpus_id"):
+    if not (payload.get("corpus_id") or payload.get("perseus_id")):
         if not (payload.get("src_id") or payload.get("src_path")):
             return jsonify({"error": "Choose an original text."}), 400
         if not (payload.get("tgt_id") or payload.get("tgt_path")):
@@ -623,6 +677,10 @@ def _payload_to_yaml(p: dict) -> dict:
                           "strip_markup": bool(p.get("strip_markup", True))}
         if p.get("corpus_range"):
             book["corpus"]["section_range"] = list(p["corpus_range"])
+    if p.get("perseus_id"):
+        book["perseus"] = {"work_id": p["perseus_id"]}
+        if p.get("perseus_range"):
+            book["perseus"]["division_range"] = list(p["perseus_range"])
     if p.get("src_id"):
         book["src_gutenberg_id"] = p["src_id"]
     if p.get("tgt_id"):

@@ -182,6 +182,96 @@ def _chapters_from_corpus(spec: BookSpec, log) -> list[Chapter]:
     return load.chapters
 
 
+def _chapters_from_perseus(spec: BookSpec, log) -> list[Chapter]:
+    """Build from a Perseus work: both editions, anchored on their citation refs.
+
+    The structural pairing is exact -- "Book 3" is "Book 3" by the work's own
+    canonical numbering -- so alignment only ever runs *inside* a division,
+    where sentence-level matching is what it is good at. That is a materially
+    better starting point than the Gutenberg path, where the division match is
+    itself a guess.
+    """
+    from . import perseus
+
+    p = spec.perseus
+    src_divs, tgt_divs, meta = perseus.fetch_pair(p.work_id, log=log)
+    pairs = perseus.pair_divisions(src_divs, tgt_divs, log=log)
+
+    if p.division_range:
+        # The range is over the OUTERMOST references (books), which is what a
+        # reader means by "Book 1". Pairs are sections, so slicing them
+        # directly would silently keep one section instead of one book.
+        first, last = p.division_range
+        tops = list(dict.fromkeys(s.top for s, _ in pairs))
+        keep = set(tops[max(1, first) - 1:min(len(tops), last)])
+        pairs = [(s, t) for s, t in pairs if s.top in keep]
+        log(f"• Scoped to division(s) {first}–{last} "
+            f"({', '.join(sorted(keep)) or 'none'}): {len(pairs)} section(s).")
+
+    if not spec.title:
+        spec.title = meta["title"]
+    if spec.author in ("", "Unknown"):
+        spec.author = meta["author"]
+    if not spec.src_lang:
+        spec.src_lang = meta["language"]
+    if not spec.translation_source_note:
+        spec.translation_source_note = meta["translation_edition"]
+
+    log(f"• {meta['title']} — {meta['author']} ({meta['language']})")
+    log(f"• Translation: {meta['translation_edition'][:110]}")
+
+    # Perseus translations are mostly Loeb-era and usually public domain, but
+    # "usually" is not a licence: report the year and let the user affirm it.
+    if meta["pd_status"] == "ok":
+        log(f"• Translation published {meta['translation_year']} — before 1929, "
+            "so public domain in the US.")
+    elif meta["pd_status"] == "check":
+        log(f"  ⚠  Translation published {meta['translation_year']}, which is "
+            "1929 or later — verify its copyright status before publishing.")
+    else:
+        log("  ⚠  No publication year recorded for this translation — check its "
+            "copyright status before publishing.")
+
+    # Sections are the alignment unit but not the printing unit: group them
+    # back under their outermost reference so the book still has chapters.
+    grouped: dict[str, list] = {}
+    for s, t in pairs:
+        grouped.setdefault(s.top, []).append((s, t))
+
+    aligners.reset_announcement()
+    chapters: list[Chapter] = []
+    for top, members in grouped.items():
+        beads: list[Bead] = []
+        src_segments: list[str] = []
+        tgt_segments: list[str] = []
+        for s, t in members:
+            s_segs = segment.segment(s.text, spec.mode, spec.src_lang)
+            t_segs = segment.segment(t.text, spec.mode, spec.tgt_lang)
+            if spec.clean:
+                s_segs = clean.clean_segments(s_segs)
+                t_segs = clean.clean_segments(t_segs)
+            if not s_segs and not t_segs:
+                continue
+            src_segments.extend(s_segs)
+            tgt_segments.extend(t_segs)
+            # One sentence each side is the common case at this granularity,
+            # and needs no alignment at all.
+            if len(s_segs) == 1 and len(t_segs) == 1:
+                beads.append(Bead(src=s_segs, tgt=t_segs))
+            else:
+                beads.extend(aligners.align(
+                    s_segs, t_segs, method=spec.aligner,
+                    src_lang=spec.src_lang, log=lambda _m: None))
+        if beads:
+            title = members[0][0].title or members[0][1].title or f"Book {top}"
+            chapters.append(Chapter(title=title, src_segments=src_segments,
+                                    tgt_segments=tgt_segments, beads=beads))
+
+    total = sum(len(c.beads) for c in chapters)
+    log(f"• Aligned into {total} bead(s) across {len(chapters)} chapter(s).")
+    return chapters
+
+
 def _chapters_from_editions(spec: BookSpec, log) -> list[Chapter]:
     """Fetch, segment, and align two separate editions (the Gutenberg path)."""
     log(f"• Fetching source ({spec.src_lang})…")
@@ -228,6 +318,17 @@ def _chapters_from_editions(spec: BookSpec, log) -> list[Chapter]:
         if len(src_chaps) != len(tgt_chaps):
             log("• Division counts differ; aligning selected text as a single block.")
 
+    return _align_paired(paired, spec, log)
+
+
+def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
+    """Segment and align each already-paired division into beads.
+
+    Shared by every source that arrives as matched divisions: the Gutenberg
+    path (paired by heading count or by meaning) and the Perseus path
+    (paired exactly on the CTS citation scheme). Only the *pairing* differs
+    between them; what happens inside a division is the same work.
+    """
     aligners.reset_announcement()
     verse_note_logged = False
     chapters: list[Chapter] = []
@@ -282,6 +383,8 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
 
     if spec.corpus.doc_id:
         chapters = _chapters_from_corpus(spec, log)
+    elif spec.perseus.work_id:
+        chapters = _chapters_from_perseus(spec, log)
     else:
         if not spec.translation_pd_confirmed:
             log(

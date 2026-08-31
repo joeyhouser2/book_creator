@@ -8,7 +8,7 @@ import yaml
 
 from . import restylers, translators
 from .model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec, CoverSpec,
-                    DecorSpec, FontSpec, MusicSpec)
+                    DecorSpec, FontSpec, MusicSpec, PerseusSpec)
 
 
 def _parse_cover(raw) -> CoverSpec:
@@ -106,6 +106,18 @@ def _parse_corpus(raw) -> CorpusSpec:
     )
 
 
+def _parse_perseus(raw) -> PerseusSpec:
+    """`perseus:` block, or the shorthand `perseus: greekLit:tlg0032.tlg006`."""
+    if raw is None or raw is False:
+        return PerseusSpec()
+    if isinstance(raw, str):
+        return PerseusSpec(work_id=raw)
+    return PerseusSpec(
+        work_id=raw.get("work_id") or raw.get("id"),
+        division_range=_parse_range(raw.get("division_range") or raw.get("range")),
+    )
+
+
 def _parse_audio(raw) -> AudioSpec:
     if raw is None or raw is False:
         return AudioSpec(enabled=False)
@@ -148,11 +160,14 @@ def load_specs(path: str) -> list[BookSpec]:
         # A corpus entry carries its own title and language, so those fields
         # are optional there and get filled in from the document at build time.
         specs.append(BookSpec(
-            title=raw["title"] if not corpus.doc_id else raw.get("title", ""),
+            title=(raw.get("title", "") if (corpus.doc_id or raw.get("perseus"))
+                   else raw["title"]),
             author=raw.get("author", "Unknown"),
-            src_lang=raw["src_lang"] if not corpus.doc_id else raw.get("src_lang", ""),
+            src_lang=(raw.get("src_lang", "") if (corpus.doc_id or raw.get("perseus"))
+                      else raw["src_lang"]),
             tgt_lang=raw.get("tgt_lang", "en"),
             corpus=corpus,
+            perseus=_parse_perseus(raw.get("perseus")),
             src_gutenberg_id=raw.get("src_gutenberg_id"),
             tgt_gutenberg_id=raw.get("tgt_gutenberg_id"),
             src_path=raw.get("src_path"),
