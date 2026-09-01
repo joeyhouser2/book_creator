@@ -18,6 +18,7 @@ def _parse_cover(raw) -> CoverSpec:
         return CoverSpec(enabled=True)
     return CoverSpec(
         enabled=bool(raw.get("enabled", True)),
+        style=raw.get("style", "ornament"),
         paper=raw.get("paper", "white"),
         background=raw.get("background", "#f4ead5"),
         accent=raw.get("accent"),

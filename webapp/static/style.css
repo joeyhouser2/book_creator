@@ -242,3 +242,33 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 .passlog:empty { display: none; }
+
+/* --- Corpus location settings --------------------------------------------- */
+.corpus-settings {
+  margin: 0 0 0.8rem;
+  padding: 0.4rem 0.7rem;
+  background: #f5f2ea;
+  border-radius: 5px;
+  font-size: 0.85rem;
+}
+
+.corpus-settings > summary { cursor: pointer; color: #5a5346; }
+.corpus-settings label { display: block; margin: 0.6rem 0; }
+.corpus-settings input[type="text"] { width: 100%; max-width: 34rem; }
+.corpus-settings p { margin: 0.4rem 0 0; }
+.caution { color: #8a5a2b; }
+
+/* --- Front-cover style picker --------------------------------------------- */
+.cover-preview { margin-top: 0.6rem; }
+
+.cover-preview img {
+  display: block;
+  width: 210px;
+  max-width: 100%;
+  border: 1px solid #ddd6c6;
+  border-radius: 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  background: #f4ead5;
+}
+
+.cover-preview img:not([src]) { display: none; }

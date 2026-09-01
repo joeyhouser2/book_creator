@@ -22,6 +22,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import settings
 from .model import Bead, Chapter
 
 # Where to look for the latin repo, in order. Override with LATIN_REPO.
@@ -48,19 +49,65 @@ class CorpusError(RuntimeError):
 # --------------------------------------------------------------------------- #
 # Locating and opening the database
 # --------------------------------------------------------------------------- #
+# Settings keys the corpus honours (written by the UI, see webapp/server.py).
+# LATIN_REPO stays supported for CLI and CI use; a stored setting wins because
+# it is the more deliberate of the two -- someone typed it into this app.
+SETTING_REPO = "latin_repo"
+SETTING_DB = "corpus_db"
+
+
+def _as_db(p: Path) -> Path:
+    """Interpret a path as *the database*, or as a checkout containing one.
+
+    Decided on what the path actually is rather than on its suffix: the latin
+    repo's snapshots are named `corpus.db.bak-preOcrFix-20260720201447`, whose
+    suffix is the timestamp, not `.db`. A suffix test would take those for
+    directories and go looking for `data/corpus.db` inside them.
+    """
+    if p.is_file():
+        return p
+    if p.is_dir():
+        return p / _DB_RELATIVE
+    # Neither exists: guess from the name so the error names the right thing.
+    return p if ".db" in p.name else p / _DB_RELATIVE
+
+
+def _configured() -> tuple[str | None, str | None]:
+    """(repo, database) as stored by the settings UI, if anything is."""
+    stored = settings.load()
+    return stored.get(SETTING_REPO), stored.get(SETTING_DB)
+
+
 def find_db(path: str | None = None) -> Path:
     """Resolve the corpus database path, or raise CorpusError.
 
     Accepts either the repo root or the .db file itself, so `LATIN_REPO` can
     point at a checkout and `--corpus-db` at a copied-out database.
-    """
-    candidates: list[Path] = []
-    for raw in (path, os.environ.get("LATIN_REPO"), *_REPO_CANDIDATES):
-        if not raw:
-            continue
-        p = Path(raw).expanduser()
-        candidates.append(p if p.suffix == ".db" else p / _DB_RELATIVE)
 
+    Order: an explicit argument, then the stored setting, then LATIN_REPO, then
+    the usual sibling locations. A location that was *named* -- by argument or
+    by setting -- is never silently replaced by one found elsewhere: reading a
+    different corpus than the one you chose would make every count and every
+    build quietly wrong.
+    """
+    named: list[tuple[Path, str]] = []
+    repo_setting, db_setting = _configured()
+    if path:
+        named.append((Path(path).expanduser(), "the path given"))
+    if db_setting:
+        named.append((Path(db_setting).expanduser(), f"the {SETTING_DB} setting"))
+    elif repo_setting:
+        named.append((Path(repo_setting).expanduser(), f"the {SETTING_REPO} setting"))
+
+    for p, source in named:
+        cand = _as_db(p)
+        if cand.is_file():
+            return cand.resolve()
+        raise CorpusError(f"{source} ({p}) has no corpus database: "
+                          f"expected {cand} to exist.")
+
+    candidates = [_as_db(Path(raw).expanduser())
+                  for raw in (os.environ.get("LATIN_REPO"), *_REPO_CANDIDATES) if raw]
     for c in candidates:
         if c.is_file():
             return c.resolve()
@@ -69,6 +116,40 @@ def find_db(path: str | None = None) -> Path:
     raise CorpusError(
         "Could not find the latin corpus database. Set LATIN_REPO to the "
         "latin repo checkout (or pass an explicit path). Tried:\n  " + tried)
+
+
+def databases(repo: str | Path | None = None) -> list[dict]:
+    """Every corpus database file in a checkout's data/ directory.
+
+    The latin repo keeps dated `.bak-*` snapshots beside the live database, so
+    a reader can be pointed at one to see the corpus as it was. Only the live
+    `corpus.db` can be *written* to, though -- the latin repo's scripts open
+    `data/corpus.db` by name -- so each entry says whether passes can run
+    against it, and the UI refuses to offer them for the rest.
+    """
+    root = Path(repo).expanduser() if repo else None
+    if root is None:
+        try:
+            root = find_db().parent.parent
+        except CorpusError:
+            return []
+    data_dir = root if root.name == "data" else root / "data"
+    if not data_dir.is_dir():
+        return []
+
+    out = []
+    for p in sorted(data_dir.glob("corpus.db*")):
+        # -wal and -shm are SQLite's own sidecars, not databases to choose.
+        if p.suffix in (".db-wal", ".db-shm") or p.name.endswith(("-wal", "-shm")):
+            continue
+        out.append({
+            "path": str(p.resolve()),
+            "name": p.name,
+            "size_mb": round(p.stat().st_size / 1024 ** 2, 1),
+            "live": p.name == "corpus.db",
+            "writable": p.name == "corpus.db",
+        })
+    return out
 
 
 def connect(path: str | None = None) -> sqlite3.Connection:
@@ -341,6 +422,50 @@ def document(doc_id: int, *, conn: sqlite3.Connection | None = None,
         if r is None:
             raise CorpusError(f"No document {doc_id} in the corpus.")
         return _row_to_doc(r, _count_for_docs(conn, [doc_id]).get(doc_id, {}))
+    finally:
+        if own:
+            conn.close()
+
+
+def pending(doc_id: int, *, section_range: tuple[int, int] | None = None,
+            conn: sqlite3.Connection | None = None,
+            db_path: str | None = None) -> dict:
+    """How much work each pass has left, over a range of sections or all of it.
+
+    The whole-document counts on CorpusDoc answer "is this work finished"; this
+    answers "is there anything to do in the part I am about to print", which is
+    a different number as soon as a range is chosen -- and the one worth
+    checking before spending a model load. Section numbering matches `outline`:
+    1-based over `ord`, inclusive.
+    """
+    own = conn is None
+    conn = conn or connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT id FROM sections WHERE doc_id = ? ORDER BY ord",
+            (doc_id,)).fetchall()
+        if section_range:
+            first, last = section_range
+            rows = rows[max(1, first) - 1:min(len(rows), last)]
+        ids = [r["id"] for r in rows]
+        if not ids:
+            return {"segments": 0, "translation": 0, "styling": 0}
+
+        marks = ",".join("?" * len(ids))
+        row = conn.execute(f"""
+            SELECT COUNT(*) AS segments,
+                   SUM(CASE WHEN english_text IS NULL OR TRIM(english_text) = ''
+                            THEN 1 ELSE 0 END) AS translation,
+                   SUM(CASE WHEN english_text IS NOT NULL
+                             AND TRIM(english_text) <> ''
+                             AND (english_styled IS NULL
+                                  OR TRIM(english_styled) = '')
+                            THEN 1 ELSE 0 END) AS styling
+              FROM segments WHERE section_id IN ({marks})
+        """, ids).fetchone()
+        return {"segments": row["segments"] or 0,
+                "translation": row["translation"] or 0,
+                "styling": row["styling"] or 0}
     finally:
         if own:
             conn.close()

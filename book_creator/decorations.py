@@ -392,15 +392,309 @@ def _flourish_rule(c, cx: float, y: float, width: float) -> None:
         )
 
 
+def _celtic_knot(c, cx: float, y: float, width: float) -> None:
+    """Insular interlace: three interwoven rings on a plaited rule.
+
+    For the early-medieval Latin the corpus is full of -- Bede, Alcuin, the
+    Hiberno-Latin hymns -- where a Victorian rosette is centuries out of place.
+    """
+    half = width / 2.0
+    r = 7.0
+    c.setLineWidth(1.15)
+    for k in (-1, 0, 1):
+        c.circle(cx + k * r * 1.35, y, r, fill=0, stroke=1)
+        c.circle(cx + k * r * 1.35, y, r * 0.55, fill=0, stroke=1)
+    # Plaited strands running out to each end.
+    for side in (-1, 1):
+        x0 = cx + side * r * 2.5
+        x1 = cx + side * half
+        span = abs(x1 - x0)
+        for phase in (0.0, math.pi):
+            p = c.beginPath()
+            p.moveTo(x0, y)
+            for i in range(1, 25):
+                f = i / 24.0
+                p.lineTo(x0 + side * f * span,
+                         y + 3.4 * math.sin(f * math.pi * 3 + phase))
+            c.drawPath(p, fill=0, stroke=1)
+    _diamond(c, cx - half, y, 2.0)
+    _diamond(c, cx + half, y, 2.0)
+
+
+def _gothic_arcade(c, cx: float, y: float, width: float) -> None:
+    """A row of pointed arches with trefoils — a cathedral arcade in miniature."""
+    half = width / 2.0
+    n = 5
+    aw = min(width * 0.13, 20.0)
+    c.setLineWidth(1.0)
+    for i in range(n):
+        x = cx + (i - (n - 1) / 2.0) * aw * 1.12
+        p = c.beginPath()
+        p.moveTo(x - aw / 2, y - aw * 0.42)
+        p.lineTo(x - aw / 2, y)
+        p.curveTo(x - aw / 2, y + aw * 0.42, x, y + aw * 0.62, x, y + aw * 0.78)
+        p.curveTo(x, y + aw * 0.62, x + aw / 2, y + aw * 0.42, x + aw / 2, y)
+        p.lineTo(x + aw / 2, y - aw * 0.42)
+        c.drawPath(p, fill=0, stroke=1)
+        for k in (-1, 0, 1):        # trefoil in the arch head
+            c.circle(x + k * aw * 0.19, y + aw * 0.20 + abs(k) * -aw * 0.06,
+                     aw * 0.10, fill=1, stroke=0)
+    c.setLineWidth(0.7)
+    c.line(cx - half, y - aw * 0.42, cx + half, y - aw * 0.42)
+    _diamond(c, cx - half, y - aw * 0.42, 2.0)
+    _diamond(c, cx + half, y - aw * 0.42, 2.0)
+
+
+def _palmette(c, cx: float, y: float, width: float) -> None:
+    """A Greek anthemion: a fan of palm fronds rising from paired volutes.
+
+    The fronds are outlined rather than filled. Filled leaves radiating from a
+    common origin overlap near the base and merge into one solid blob at this
+    size — the shape only reads if the separations between fronds are drawn.
+    """
+    half = width / 2.0
+    R = min(width * 0.115, 22.0)
+    n = 7
+    base_y = y - R * 0.30
+
+    c.setLineWidth(0.9)
+    for i in range(n):
+        f = (i / (n - 1)) * 2 - 1                       # -1 .. 1
+        ang = math.radians(90 - f * 58)
+        length = R * (1.0 - 0.30 * abs(f))
+        tipx, tipy = cx + length * math.cos(ang), base_y + length * math.sin(ang)
+        # A narrow lens: out along the spine and back, bowed to each side.
+        nx, ny = -math.sin(ang), math.cos(ang)
+        wdt = R * 0.13 * (1.0 - 0.35 * abs(f))
+        p = c.beginPath()
+        p.moveTo(cx, base_y)
+        p.curveTo(cx + nx * wdt, base_y + ny * wdt,
+                  tipx + nx * wdt * 0.6, tipy - (tipy - base_y) * 0.25, tipx, tipy)
+        p.curveTo(tipx - nx * wdt * 0.6, tipy - (tipy - base_y) * 0.25,
+                  cx - nx * wdt, base_y + ny * wdt, cx, base_y)
+        c.drawPath(p, fill=0, stroke=1)
+
+    for side in (-1, 1):                                # volutes under the fan
+        vx = cx + side * R * 0.30
+        p = c.beginPath()
+        p.moveTo(vx, base_y)
+        p.curveTo(vx + side * R * 0.62, base_y - R * 0.08,
+                  vx + side * R * 0.50, base_y - R * 0.48, vx + side * R * 0.14,
+                  base_y - R * 0.40)
+        c.drawPath(p, fill=0, stroke=1)
+    c.circle(cx, base_y - R * 0.16, R * 0.07, fill=1, stroke=0)
+
+    c.setLineWidth(0.7)
+    for side in (-1, 1):
+        c.line(cx + side * R * 0.95, base_y - R * 0.40,
+               cx + side * half, base_y - R * 0.40)
+        _diamond(c, cx + side * half, base_y - R * 0.40, 2.0)
+
+
+def _asterism(c, cx: float, y: float, width: float) -> None:
+    """Three asterisks in a triangle — the quietest break there is.
+
+    Wanted often enough between sections of the same chapter that it deserves
+    to be a choice rather than something to fake with a fleuron.
+    """
+    r = 3.6
+    for dx, dy in ((-r * 2.2, -r * 0.9), (r * 2.2, -r * 0.9), (0, r * 1.7)):
+        for k in range(3):
+            a = math.radians(90 + k * 60)
+            c.setLineWidth(0.9)
+            c.line(cx + dx - r * math.cos(a), y + dy - r * math.sin(a),
+                   cx + dx + r * math.cos(a), y + dy + r * math.sin(a))
+
+
 # --------------------------------------------------------------------------- #
 # Per-page margin art
 # --------------------------------------------------------------------------- #
+# How much clear space each margin style needs *outside* the text block, in
+# points. render_pdf reserves this before it builds the text frame, so the
+# text block shrinks to make room rather than the art being drawn over it.
+#
+# Without this the two were sized independently and simply hoped not to meet:
+# a style could be widened, or the page margins narrowed, and the art would
+# quietly start printing through the text.
+_MARGIN_INSETS = {
+    "none": 0.0,
+    "rule": 14.0,       # a vertical rule in the outer margin only
+    "corners": 22.0,    # elbow ornaments at the four corners
+    "frame": 13.0,      # double rule with corner diamonds
+    "rules": 13.0,      # head and foot rules
+    "beaded": 14.0,     # beaded rectangle
+    "key": 22.0,        # Greek meander band down the outer margin
+    "vine": 22.0,       # leafy vine down the outer margin
+    "rope": 20.0,       # two twisting strands
+    "lozenge": 18.0,    # a column of diamonds on a hairline
+    "dentil": 20.0,     # classical dentil blocks
+    "halfframe": 15.0,  # rules on the outer and foot edges only
+}
+ALL_MARGIN_STYLES = list(_MARGIN_INSETS)
+
+MARGIN_STYLE_LABELS = {
+    "none": "none — plain page",
+    "rule": "rule — flourished vertical rule in the outer margin",
+    "corners": "corners — elbow ornaments framing the text block",
+    "frame": "frame — double rule with corner diamonds",
+    "rules": "rules — head and foot rules only",
+    "beaded": "beaded — a rectangle of small beads",
+    "key": "key — Greek meander band down the outer margin",
+    "vine": "vine — a leafy vine down the outer margin",
+    "rope": "rope — two strands twisting down the outer margin",
+    "lozenge": "lozenge — a column of diamonds on a hairline",
+    "dentil": "dentil — classical blocks, as under a cornice",
+    "halfframe": "half frame — rules on the outer and foot edges only",
+}
+
+# A user PNG in the corners needs the most room of all.
+_CORNER_IMAGE_INSET = 26.0
+
+
+def margin_inset(style: str, corner_image: str | None = None) -> float:
+    """Points of clear space this margin style would like outside the text."""
+    if corner_image:
+        return _CORNER_IMAGE_INSET
+    return _MARGIN_INSETS.get(style, 0.0)
+
+
+def reserved_band(style: str, corner_image: str | None,
+                  outside: float, vertical: float,
+                  safe: float = 0.25 * inch) -> float:
+    """What a page can actually spare for margin art, in points.
+
+    A style asks for `margin_inset`, but the page may not have it: the outer
+    and vertical margins have to keep `safe` points clear of the trim, and the
+    gutter is a binding KDP minimum that cannot be spent on ornament. The band
+    is whatever survives that.
+
+    Every caller must size its art from *this*, not from `margin_inset` — the
+    two differ whenever a style is clamped, and drawing to the unclamped figure
+    puts ink outside the space that was actually set aside for it.
+    """
+    return max(0.0, min(margin_inset(style, corner_image),
+                        outside - safe, vertical - safe))
+
+
+def _meander_band(c, x, y0, y1, width) -> None:
+    """A vertical Greek fret running between y0 and y1, `width` wide.
+
+    Drawn as one unbroken polyline whose repeating unit tiles exactly, so it
+    reads as a continuous border. Drawn as separate motifs with a gap between
+    them it just looked like a column of small unrelated glyphs.
+    """
+    u = width / 2.0
+    unit = 4 * u                       # vertical period of the fret
+    n = max(1, int((y1 - y0) // unit))
+    c.setLineWidth(max(0.7, u * 0.34))
+    c.setLineJoin(0)
+    c.setLineCap(0)
+
+    pts = [(x, y0)]
+    for i in range(n):
+        base = y0 + i * unit
+        # Out, up, back, up — a square fret that ends where the next begins.
+        pts += [(x + 2 * u, base),
+                (x + 2 * u, base + u),
+                (x, base + u),
+                (x, base + 2 * u),
+                (x + 2 * u, base + 2 * u),
+                (x + 2 * u, base + 3 * u),
+                (x, base + 3 * u),
+                (x, base + 4 * u)]
+    p = c.beginPath()
+    p.moveTo(*pts[0])
+    for px, py in pts[1:]:
+        p.lineTo(px, py)
+    c.drawPath(p, fill=0, stroke=1)
+
+
+def _vine_band(c, x, y0, y1, half) -> None:
+    """A waving stem with ivy leaves alternating off it, centred on x.
+
+    `half` is the space available either side of the stem. Leaves are swept
+    back towards the stem rather than held out square to it: a leaf at right
+    angles needs its whole length in horizontal room, which the outer margin
+    does not have, and shrinking it far enough to fit left something too small
+    to read as a leaf at all.
+    """
+    amp = half * 0.30
+    leaf = half * 0.95
+    tilt = 58                      # from vertical: keeps the leaf's reach narrow
+    waves = max(3.0, (y1 - y0) / (14.0 * max(half, 1.0)))
+
+    c.setLineWidth(0.9)
+    steps = 96
+    p = c.beginPath()
+    p.moveTo(x, y0)
+    for i in range(1, steps + 1):
+        f = i / steps
+        p.lineTo(x + amp * math.sin(f * math.pi * waves), y0 + f * (y1 - y0))
+    c.drawPath(p, fill=0, stroke=1)
+
+    n = max(4, int(waves * 2))
+    for i in range(1, n):
+        f = i / n
+        yy = y0 + f * (y1 - y0)
+        sx = x + amp * math.sin(f * math.pi * waves)
+        side = 1 if i % 2 else -1
+        _leaf(c, sx, yy, leaf, side * tilt)
+        if i % 2 == 0:             # a berry tucked into the opposite crook
+            c.circle(sx - side * half * 0.16, yy - leaf * 0.10,
+                     max(0.9, half * 0.10), fill=1, stroke=0)
+
+
+def _rope_band(c, x, y0, y1, half) -> None:
+    """Two strands twisting round each other — a rope or guilloche border."""
+    turns = max(4.0, (y1 - y0) / (10.0 * max(half, 1.0)))
+    steps = 140
+    c.setLineWidth(0.9)
+    for phase in (0.0, math.pi):
+        p = c.beginPath()
+        p.moveTo(x + half * math.sin(phase), y0)
+        for i in range(1, steps + 1):
+            f = i / steps
+            p.lineTo(x + half * math.sin(f * math.pi * turns + phase),
+                     y0 + f * (y1 - y0))
+        c.drawPath(p, fill=0, stroke=1)
+
+
+def _lozenge_band(c, x, y0, y1, half) -> None:
+    """A column of diamonds joined by a hairline — quiet, and very legible."""
+    step = max(10.0, half * 3.2)
+    n = max(2, int((y1 - y0) // step))
+    c.setLineWidth(0.5)
+    c.line(x, y0, x, y1)
+    for i in range(n + 1):
+        yy = y0 + (y1 - y0) * i / n
+        _diamond(c, x, yy, half * (0.85 if i % 2 == 0 else 0.45))
+
+
+def _dentil_band(c, x, y0, y1, half) -> None:
+    """Classical dentils: small blocks in a row, as under a cornice."""
+    block = half * 1.1
+    gap = block * 0.85
+    step = block + gap
+    n = max(2, int((y1 - y0) // step))
+    c.setLineWidth(0.6)
+    c.line(x - half, y0, x - half, y1)
+    for i in range(n):
+        yy = y0 + i * step
+        c.rect(x - half * 0.15, yy, block, block, fill=1, stroke=0)
+
+
+_MARGIN_BANDS = {"key": _meander_band, "vine": _vine_band,
+                 "rope": _rope_band, "lozenge": _lozenge_band,
+                 "dentil": _dentil_band}
+
 def draw_margin(c, geom: dict, recto: bool, style: str, color: str,
                 corner_image: str | None) -> None:
     """Draw margin decoration for one page.
 
     geom keys: left, right, top, bottom (text-block edges in points),
-    page_w, outside.
+    page_w, outside. The caller has already reserved `margin_inset(style)`
+    points outside those edges, so anything drawn within that band is
+    guaranteed not to touch the text.
     """
     if style == "none" and not corner_image:
         return
@@ -411,23 +705,29 @@ def draw_margin(c, geom: dict, recto: bool, style: str, color: str,
 
     left, right = geom["left"], geom["right"]
     top, bottom = geom["top"], geom["bottom"]
+    # The layout tells us how much room it set aside; fall back to the style's
+    # own appetite only for callers that did not reserve anything.
+    band = geom.get("band")
+    if band is None:
+        band = margin_inset(style, corner_image)
+    outer_x = (right + band * 0.55) if recto else (left - band * 0.55)
 
     if corner_image:
         _corner_images(c, left, right, top, bottom, corner_image)
     elif style == "corners":
-        # Anchored OUTSIDE the text frame, in the blank margin, with the arms
-        # pointing back toward (but stopping short of) the frame corner — so
-        # the ornament never overlaps text even on a page that's fully packed
-        # top-to-bottom. `off > size` keeps the arm tip, and its curl's slight
-        # overshoot, clear of the frame edge.
-        size = 0.22 * inch
-        off = size * 1.3
-        _corner_motif(c, left - off, top + off, size, +1, -1)     # top-left
-        _corner_motif(c, right + off, top + off, size, -1, -1)    # top-right
-        _corner_motif(c, left - off, bottom - off, size, +1, +1)  # bottom-left
-        _corner_motif(c, right + off, bottom - off, size, -1, +1)  # bottom-right
+        # The elbow sits at the outer edge of the reserved band and the arms
+        # run back *toward* the text, stopping a few points short of it. The
+        # ornament therefore brackets the text-block corner instead of drifting
+        # off to the corner of the sheet, where it used to sit — close enough
+        # to the trim to risk being cut off, and far enough from the text to
+        # look unrelated to it.
+        gap = 4.0
+        size = band - gap
+        _corner_motif(c, left - band, top + band, size, +1, -1)
+        _corner_motif(c, right + band, top + band, size, -1, -1)
+        _corner_motif(c, left - band, bottom - band, size, +1, +1)
+        _corner_motif(c, right + band, bottom - band, size, -1, +1)
     elif style == "frame":
-        # Double rule rectangle with corner diamonds.
         c.setLineWidth(1.0)
         pad = 6
         c.rect(left - pad, bottom - pad, (right - left) + 2 * pad, (top - bottom) + 2 * pad)
@@ -437,9 +737,46 @@ def draw_margin(c, geom: dict, recto: bool, style: str, color: str,
         for cx in (left - pad, right + pad):
             for cy in (bottom - pad, top + pad):
                 _diamond(c, cx, cy, 2.4)
+    elif style == "rules":
+        # Head and foot rules only — the quietest way to close a text block.
+        pad = 8
+        for yy in (top + pad, bottom - pad):
+            c.setLineWidth(0.9)
+            c.line(left, yy, right, yy)
+            _diamond(c, left, yy, 2.0)
+            _diamond(c, right, yy, 2.0)
+    elif style == "beaded":
+        pad = 8
+        r = 1.5
+        step = 7.0
+        x0, x1 = left - pad, right + pad
+        y0, y1 = bottom - pad, top + pad
+        nx = max(2, int((x1 - x0) / step))
+        ny = max(2, int((y1 - y0) / step))
+        for i in range(nx + 1):
+            xx = x0 + (x1 - x0) * i / nx
+            c.circle(xx, y0, r, fill=1, stroke=0)
+            c.circle(xx, y1, r, fill=1, stroke=0)
+        for j in range(1, ny):
+            yy = y0 + (y1 - y0) * j / ny
+            c.circle(x0, yy, r, fill=1, stroke=0)
+            c.circle(x1, yy, r, fill=1, stroke=0)
+    elif style in _MARGIN_BANDS:
+        # Every outer-margin band is drawn about `outer_x`, given the half
+        # width it may use either side of that centre line.
+        _MARGIN_BANDS[style](c, outer_x, bottom + 10, top - 10, band * 0.40)
+    elif style == "halfframe":
+        # An open frame: it closes the outer edge and the foot and leaves the
+        # gutter and head open, which suits a text that runs page to page.
+        pad = 7
+        ox = (right + pad) if recto else (left - pad)
+        c.setLineWidth(0.9)
+        c.line(ox, bottom - pad, ox, top + pad)
+        c.line(left - pad, bottom - pad, right + pad, bottom - pad)
+        _diamond(c, ox, top + pad, 2.2)
+        _diamond(c, ox, bottom - pad, 2.6)
+        _diamond(c, left - pad if recto else right + pad, bottom - pad, 2.2)
     elif style == "rule":
-        # A thin flourished vertical rule in the OUTER margin.
-        outer_x = (right + 0.16 * inch) if recto else (left - 0.16 * inch)
         c.setLineWidth(0.8)
         c.line(outer_x, bottom + 6, outer_x, top - 6)
         for yy in (bottom + 6, top - 6):
@@ -543,14 +880,34 @@ def chapter_ornament(style: str, color: str, width_hint: float = 2.4 * inch,
         def _draw(c, aw, h):
             _art_deco_ornament(c, aw / 2.0, h / 2.0, min(width_hint, aw * 0.62))
         return OrnamentFlowable(28, _draw, color)
+    if style == "celtic":
+        def _draw(c, aw, h):
+            _celtic_knot(c, aw / 2.0, h / 2.0, min(width_hint, aw * 0.66))
+        return OrnamentFlowable(28, _draw, color)
+    if style == "gothic":
+        def _draw(c, aw, h):
+            _gothic_arcade(c, aw / 2.0, h / 2.0, min(width_hint, aw * 0.66))
+        return OrnamentFlowable(30, _draw, color)
+    if style == "palmette":
+        def _draw(c, aw, h):
+            _palmette(c, aw / 2.0, h / 2.0, min(width_hint, aw * 0.66))
+        return OrnamentFlowable(30, _draw, color)
+    if style == "asterism":
+        def _draw(c, aw, h):
+            _asterism(c, aw / 2.0, h / 2.0, min(width_hint, aw * 0.5))
+        return OrnamentFlowable(22, _draw, color)
     return None
 
 
 # Every ornamented (non-"none") chapter style, for `chapter: random` — a
 # deterministic per-chapter pick (see pick_random_style) so the PDF and EPUB
 # editions of the same book agree, and repeat builds are reproducible.
+# A separator between beads is the same vocabulary as a chapter ornament,
+# just used smaller and more often -- so every ornament is offered rather
+# than the single fleuron this used to allow.
 ALL_CHAPTER_STYLES = ["fleuron", "rule", "medieval", "victorian", "classical",
-                      "baroque", "nouveau", "rococo", "artdeco"]
+                      "baroque", "nouveau", "rococo", "artdeco",
+                      "celtic", "gothic", "palmette", "asterism"]
 
 
 def pick_random_style(seed_key) -> str:
@@ -581,6 +938,10 @@ def render_ornament_png(style: str, color: str, out_path: str, *,
         "nouveau": lambda c, w, h: _art_nouveau_ornament(c, w / 2.0, h / 2.0, w * 0.78),
         "rococo": lambda c, w, h: _rococo_ornament(c, w / 2.0, h / 2.0, w * 0.78),
         "artdeco": lambda c, w, h: _art_deco_ornament(c, w / 2.0, h / 2.0, w * 0.78),
+        "celtic": lambda c, w, h: _celtic_knot(c, w / 2.0, h / 2.0, w * 0.85),
+        "gothic": lambda c, w, h: _gothic_arcade(c, w / 2.0, h / 2.0, w * 0.85),
+        "palmette": lambda c, w, h: _palmette(c, w / 2.0, h / 2.0, w * 0.85),
+        "asterism": lambda c, w, h: _asterism(c, w / 2.0, h / 2.0, w * 0.5),
     }.get(style)
     if draw_fn is None:
         return None
@@ -633,10 +994,14 @@ def render_margin_png(style: str, color: str, out_path: str, *,
 
     page_w, page_h = trim[0] * inch, trim[1] * inch
     gutter, outside, vertical = 0.88 * inch, 0.5 * inch, 0.75 * inch
+    band = reserved_band(style, corner_image, outside, vertical)
+    gutter += band
+    outside += band
+    vertical += band
     geom = ({"left": gutter, "right": page_w - outside}
             if recto else {"left": outside, "right": page_w - gutter})
     geom |= {"top": page_h - vertical, "bottom": vertical,
-             "page_w": page_w, "outside": outside}
+             "page_w": page_w, "outside": outside, "band": band}
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_pdf = str(Path(tmp) / "margin.pdf")
@@ -664,3 +1029,8 @@ def render_margin_png(style: str, color: str, out_path: str, *,
         pix.save(out_path)
         doc.close()
     return out_path
+
+
+# A bead separator is a chapter ornament used small and often, so the two share
+# a vocabulary; "none" is the default because most books want nothing there.
+ALL_BEAD_SEPARATORS = ["none", *ALL_CHAPTER_STYLES]

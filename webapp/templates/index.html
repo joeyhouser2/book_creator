@@ -87,6 +87,10 @@
       <!-- ---------- Latin corpus: already sentence-aligned ---------- -->
       <div class="tabpane" id="pane-corpus">
         <p class="corpus-status muted" id="corpusStatus">checking for the corpus…</p>
+        <details class="corpus-settings" id="corpusSettings">
+          <summary>Corpus location</summary>
+          <div id="corpusSettingsBody" class="muted">loading…</div>
+        </details>
         <div class="search-row">
           <input id="cq" type="text" placeholder="title or author, e.g. Alcuinus">
           <select id="cLang">
@@ -323,6 +327,14 @@
           </label>
           <label class="wide">Back-cover blurb
             <textarea id="cvBlurb" rows="2"></textarea></label>
+          <label class="wide">Front-cover design
+            <select id="cvStyle"></select>
+            <span class="hint" id="cvStyleNote"></span></label>
+          <div class="wide cover-preview">
+            <img id="cvPreview" alt="front cover preview">
+            <p class="muted small">Drawn by the same code the build uses, from
+              the title, author, language and font set above.</p>
+          </div>
         </div>
       </details>
 

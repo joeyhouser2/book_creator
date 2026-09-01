@@ -86,6 +86,22 @@ class _BookDoc(BaseDocTemplate):
         outside = 0.5 * inch
         top = 0.6 * inch
         bottom = 0.6 * inch
+
+        # Margin art is drawn *outside* the text block, so the block has to
+        # give up the space it needs. Reserving it here — rather than letting
+        # both be sized independently and hoping they miss — is what keeps the
+        # text inside its border: any style can be added or widened and the
+        # text simply moves in to accommodate it.
+        # Clamped by the page, not just requested by the style — and the same
+        # figure is handed to the renderer below, so the art is sized from the
+        # room that actually exists rather than the room it asked for.
+        inset = decorations.reserved_band(
+            self.decor.margin, self.decor.corner_image, outside, top)
+        gutter += inset
+        outside += inset
+        top += inset
+        bottom += inset
+
         text_w = w - gutter - outside
         text_h = h - top - bottom
         self._page_w = w
@@ -93,10 +109,10 @@ class _BookDoc(BaseDocTemplate):
         # Text-block edges for each side, consumed by the margin renderer.
         self._geom_recto = {"left": gutter, "right": w - outside,
                             "top": h - top, "bottom": bottom,
-                            "page_w": w, "outside": outside}
+                            "page_w": w, "outside": outside, "band": inset}
         self._geom_verso = {"left": outside, "right": w - gutter,
                             "top": h - top, "bottom": bottom,
-                            "page_w": w, "outside": outside}
+                            "page_w": w, "outside": outside, "band": inset}
 
         # Recto (odd / right-hand): gutter on the LEFT.
         recto = Frame(gutter, bottom, text_w, text_h, id="recto")
@@ -104,9 +120,28 @@ class _BookDoc(BaseDocTemplate):
         verso = Frame(outside, bottom, text_w, text_h, id="verso")
 
         self.addPageTemplates([
-            PageTemplate(id="recto", frames=[recto], onPage=self._furniture, autoNextPageTemplate="verso"),
-            PageTemplate(id="verso", frames=[verso], onPage=self._furniture, autoNextPageTemplate="recto"),
+            PageTemplate(id="recto", frames=[recto], onPage=self._furniture),
+            PageTemplate(id="verso", frames=[verso], onPage=self._furniture),
         ])
+
+    def handle_pageBegin(self):
+        """Pick the template from the page number, not from template state.
+
+        These two templates used to chain with `autoNextPageTemplate`, which
+        ReportLab advances in handle_pageEnd. Explicit PageBreaks and the extra
+        multiBuild passes needed for the table of contents both disturb that
+        chain, and it drifted: the text frame ended up alternating every *two*
+        pages while the margin art, drawn from `doc.page % 2`, alternated every
+        one. Half the book was then printed with the gutter on the wrong side
+        and the border ruled straight through the text.
+
+        Deriving the template from the page number instead makes the two
+        impossible to disagree: there is only one source of truth for which
+        side of the page the gutter is on. `self.page` is incremented inside
+        the base implementation, so the page about to be laid out is page + 1.
+        """
+        self.pageTemplate = self.pageTemplates[0 if (self.page + 1) % 2 else 1]
+        super().handle_pageBegin()
 
     def afterFlowable(self, flowable):
         if isinstance(flowable, _BodyStart):
@@ -359,8 +394,8 @@ def render(
             story.append(orn)
             story.append(Spacer(1, 8))
         for i, bead in enumerate(ch.beads):
-            if i > 0 and decor.bead_separator == "fleuron":
-                sep = decorations.chapter_ornament("fleuron", decor.color)
+            if i > 0 and decor.bead_separator not in ("", "none", None):
+                sep = decorations.chapter_ornament(decor.bead_separator, decor.color)
                 if sep is not None:
                     story.append(sep)
             _render_bead(story, bead, st, first, opener=(i == 0 and opener_font))

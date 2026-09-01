@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from book_creator import corpus
@@ -222,3 +224,60 @@ def test_pending_counts_never_go_negative():
         segments=10, translated=12, styled=20, sections=1)
     assert doc.pending_translation == 0
     assert doc.pending_styling == 0
+
+
+# --------------------------------------------------------------------------- #
+# Where the corpus lives
+# --------------------------------------------------------------------------- #
+def test_a_snapshot_is_recognised_as_a_database_not_a_folder(tmp_path):
+    """The latin repo's snapshots are named corpus.db.bak-preOcrFix-2026...,
+    whose suffix is the timestamp -- a `.db` suffix test takes them for
+    directories and goes looking for data/corpus.db inside them."""
+    snap = tmp_path / "corpus.db.bak-preOcrFix-20260720201447"
+    snap.write_bytes(b"")
+    assert corpus._as_db(snap) == snap
+    assert corpus.find_db(str(snap)) == snap.resolve()
+
+
+def test_a_named_location_is_never_swapped_for_one_found_elsewhere(tmp_path):
+    """Reading a different corpus than the one chosen would make every count
+    and every build quietly wrong."""
+    with pytest.raises(corpus.CorpusError, match="has no corpus database"):
+        corpus.find_db(str(tmp_path / "nowhere"))
+
+
+def test_the_stored_setting_is_honoured_and_validated(tmp_path, monkeypatch, corpus_db):
+    from book_creator import settings
+
+    store = tmp_path / "settings.json"
+    monkeypatch.setattr(settings, "SETTINGS_PATH", store)
+
+    settings.save({corpus.SETTING_DB: corpus_db})
+    assert corpus.find_db() == Path(corpus_db).resolve()
+
+    # A setting pointing nowhere must fail loudly rather than fall back.
+    settings.save({corpus.SETTING_DB: str(tmp_path / "gone.db")})
+    with pytest.raises(corpus.CorpusError, match=corpus.SETTING_DB):
+        corpus.find_db()
+
+
+def test_settings_survive_a_corrupt_file(tmp_path, monkeypatch):
+    """A hand-edit with a trailing comma should read as "nothing set", not
+    take the corpus tab down."""
+    from book_creator import settings
+
+    store = tmp_path / "settings.json"
+    store.write_text("{ not json,", encoding="utf-8")
+    monkeypatch.setattr(settings, "SETTINGS_PATH", store)
+    assert settings.load() == {}
+
+
+def test_databases_lists_snapshots_and_marks_them_unwritable(corpus_db):
+    found = corpus.databases(Path(corpus_db).parent.parent)
+    assert found, "the live database at least should be listed"
+    live = [d for d in found if d["live"]]
+    assert len(live) == 1 and live[0]["name"] == "corpus.db"
+    # Only the live database can be written: the latin scripts open it by name.
+    assert all(d["writable"] == d["live"] for d in found)
+    # SQLite's own sidecars are not databases to choose between.
+    assert not any(d["name"].endswith(("-wal", "-shm")) for d in found)

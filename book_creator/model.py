@@ -102,6 +102,9 @@ class CoverSpec:
     """Wraparound KDP cover (back + spine + front) with a per-language motif."""
 
     enabled: bool = False
+    # Front-cover layout: ornament | plate | typographic | band. The emblem and
+    # accent stay per-language; this is how they are arranged (cover.py).
+    style: str = "ornament"
     # Paper stock sets the spine thickness per page: white | cream | color.
     paper: str = "white"
     background: str = "#f4ead5"      # parchment

@@ -42,7 +42,9 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from .corpus import _DB_RELATIVE, _REPO_CANDIDATES
+from . import settings
+from .corpus import (_DB_RELATIVE, _REPO_CANDIDATES, SETTING_DB,
+                     SETTING_REPO)
 
 # Both scripts print one progress line per committed chunk, in the same shape:
 #   [42] Corpus Corporum    1,200/9,000  | overall 1,200/9,000 3.1 seg/s ETA 0.7h
@@ -95,7 +97,9 @@ def find_repo(path: str | None = None) -> Path:
     different corpus than the one the caller named is the worst thing this
     module could do.
     """
+    stored = settings.load()
     for raw, source in ((path, "the path given"),
+                        (stored.get(SETTING_REPO), f"the {SETTING_REPO} setting"),
                         (os.environ.get("LATIN_REPO"), "LATIN_REPO")):
         if not raw:
             continue
@@ -241,11 +245,31 @@ def _terminate_tree(proc: subprocess.Popen) -> None:
     proc.terminate()
 
 
+def _range_args(opts: dict) -> list[str]:
+    """`--section-range FIRST LAST`, when only part of the work is wanted.
+
+    The corpus tab already scopes a *build* to a range of sections; without the
+    same scoping here, printing four sections of a hundred-thousand-segment
+    work would mean translating all hundred thousand first.
+    """
+    rng = opts.get("section_range")
+    if not rng:
+        return []
+    first, last = (int(rng[0]), int(rng[1])) if not isinstance(rng, dict) else (
+        int(rng["first"]), int(rng["last"]))
+    if first < 1 or last < first:
+        raise JobError(f"section range {first}-{last} is not a range; "
+                       "sections are numbered from 1 and last must not "
+                       "precede first")
+    return ["--section-range", str(first), str(last)]
+
+
 def _translate_cmd(doc_id: int, opts: dict) -> list[str]:
     return ["scripts/translate_pending.py", "--doc-id", str(doc_id),
             "--batch-size", str(int(opts.get("batch_size") or 16)),
             "--chunk", str(int(opts.get("chunk") or 200)),
-            "--max-length", str(int(opts.get("max_length") or 256))]
+            "--max-length", str(int(opts.get("max_length") or 256)),
+            *_range_args(opts)]
 
 
 def _stylize_cmd(doc_id: int, opts: dict) -> list[str]:
@@ -257,7 +281,8 @@ def _stylize_cmd(doc_id: int, opts: dict) -> list[str]:
         raise JobError(f"unknown backend {backend!r}; choose from {list(BACKENDS)}")
     return ["scripts/stylize_library.py", "--doc-id", str(doc_id),
             "--preset", preset, "--backend", backend,
-            "--batch-size", str(int(opts.get("batch_size") or 20))]
+            "--batch-size", str(int(opts.get("batch_size") or 20)),
+            *_range_args(opts)]
 
 
 _BUILDERS = {"translate": _translate_cmd, "stylize": _stylize_cmd}
@@ -276,6 +301,12 @@ def run(kind: str, doc_id: int, *, opts: dict | None = None,
     """
     if kind not in _BUILDERS:
         raise JobError(f"unknown pass {kind!r}; choose from {list(_BUILDERS)}")
+    snapshot = reading_snapshot()
+    if snapshot:
+        raise JobError(
+            f"refusing to run a pass while reading {Path(snapshot).name}: it "
+            f"would write to the live corpus.db instead, and you would not see "
+            f"the result. Switch the corpus setting back to the live database.")
     opts = opts or {}
     repo = find_repo(repo_path)
     python = find_python(repo)
@@ -395,9 +426,31 @@ def run(kind: str, doc_id: int, *, opts: dict | None = None,
     return {"segments": segments, "cancelled": False}
 
 
+def reading_snapshot() -> str | None:
+    """The chosen database, when it is not the one a pass would write to.
+
+    The latin repo's scripts open `data/corpus.db` by name, so a pass always
+    writes there no matter which file the reader has been pointed at. Running
+    one while reading a dated snapshot would translate into a database the UI
+    is not showing -- work that silently goes somewhere you cannot see. Passes
+    are refused instead.
+    """
+    chosen = settings.load().get(SETTING_DB)
+    if not chosen:
+        return None
+    return None if Path(chosen).name == "corpus.db" else str(Path(chosen))
+
+
 def status(repo_path: str | None = None) -> dict:
     """Whether passes can be run at all, for the UI to grey out its buttons."""
     cards = [g.as_dict() for g in gpus()]
+    snapshot = reading_snapshot()
+    if snapshot:
+        return {"available": False, "gpus": cards, "snapshot": snapshot,
+                "error": f"Reading a snapshot ({Path(snapshot).name}), so passes "
+                         f"are off: they would write to the live corpus.db, not "
+                         f"to the file you are reading. Switch back to the live "
+                         f"database to run one."}
     try:
         repo = find_repo(repo_path)
     except JobError as exc:

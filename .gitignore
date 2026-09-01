@@ -28,3 +28,7 @@ input/*.pdf
 input/caesar_*.txt
 input/pere_goriot_*.txt
 input/eugenie_grandet_*.txt
+
+# Local settings written by the web UI (machine-specific paths:
+# where the latin corpus lives, which database file to read).
+config/settings.json

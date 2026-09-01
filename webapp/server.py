@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import traceback
 import uuid
@@ -11,11 +12,13 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import yaml
 
-from book_creator import (audio, corpus, corpus_jobs, decorations, epub_reader,
-                          fetch, fonts, perseus, pg_catalog, segment)
+from book_creator import (audio, corpus, corpus_jobs, cover, decorations,
+                          epub_reader, fetch, fonts, perseus, pg_catalog,
+                          segment)
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec, PerseusSpec)
 from book_creator import pipeline
+from book_creator import settings as corpus_settings
 from book_creator.pipeline import apply_sides, build_book
 
 from . import gutendex, jobs as jobstore, preview
@@ -98,6 +101,70 @@ def api_preview_margin():
         color=request.args.get("color", "#8a7a5c"),
         corner_image=request.args.get("corner_image") or None,
         recto=request.args.get("recto", "1") != "0")
+
+
+@app.route("/api/decor-styles")
+def api_decor_styles():
+    """Margin, chapter and bead-separator styles, straight from the code.
+
+    The pickers used to list these by hand in the template, so adding an
+    ornament meant remembering to add it in two places — and the bead
+    separator offered one of the nine ornaments for no reason other than that
+    being the only one wired up.
+    """
+    return jsonify({
+        "margin": [{"id": m, "label": decorations.MARGIN_STYLE_LABELS.get(m, m)}
+                   for m in decorations.ALL_MARGIN_STYLES],
+        "chapter": ["none", *decorations.ALL_CHAPTER_STYLES],
+        "bead": decorations.ALL_BEAD_SEPARATORS,
+    })
+
+
+@app.route("/api/cover-styles")
+def api_cover_styles():
+    """The front-cover layouts, with a line on each — the names say little."""
+    return jsonify({"styles": [{"id": s, "label": cover.COVER_STYLE_LABELS.get(s, s)}
+                               for s in cover.ALL_COVER_STYLES],
+                    "default": cover.DEFAULT_COVER_STYLE})
+
+
+@app.route("/api/preview/cover.png")
+def api_preview_cover():
+    """The front cover as it would print, from the options currently set.
+
+    Rendered from the real drawing code rather than mocked up, so what the
+    picker shows is what the build produces — four layouts described in words
+    are impossible to choose between.
+    """
+    import tempfile
+
+    trim = (request.args.get("trim_w", type=float) or 6.0,
+            request.args.get("trim_h", type=float) or 9.0)
+    family = request.args.get("font") or None
+    with tempfile.TemporaryDirectory() as tmp:
+        out = str(Path(tmp) / "cover.png")
+        try:
+            cover.render_ebook_cover(
+                out,
+                style=request.args.get("style") or cover.DEFAULT_COVER_STYLE,
+                title=request.args.get("title") or "Untitled",
+                author=request.args.get("author") or "",
+                src_lang=request.args.get("src_lang") or "la",
+                tgt_lang=request.args.get("tgt_lang") or "en",
+                trim=trim,
+                font_spec=FontSpec(family=family) if family else None,
+                background=request.args.get("background") or "#f4ead5",
+                accent=request.args.get("accent") or None,
+                edition_line=request.args.get("edition_line") or None,
+                # Low enough to stay responsive while the user clicks through
+                # the styles; the build renders at 400.
+                dpi=96,
+            )
+            data = Path(out).read_bytes()
+        except (ValueError, RuntimeError) as exc:
+            return Response(f"could not render: {exc}", status=400)
+    return Response(data, mimetype="image/png",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.route("/api/outline")
@@ -256,6 +323,52 @@ def api_corpus_status():
     return jsonify({"available": True, "path": str(db), "documents": docs})
 
 
+@app.route("/api/corpus/settings", methods=["GET", "POST"])
+def api_corpus_settings():
+    """Where the corpus lives, and which database file in it to read.
+
+    GET reports what is set, where it resolved to, and what else is available.
+    POST validates before storing: a saved setting that does not resolve would
+    break the corpus tab on every later page load, and the point of validating
+    here is that the user finds out while the dialog is still in front of them.
+    """
+    if request.method == "POST":
+        payload = request.get_json(force=True)
+        repo = (payload.get("repo") or "").strip() or None
+        db = (payload.get("db") or "").strip() or None
+
+        # Check the choice resolves *before* persisting it.
+        probe = db or repo
+        if probe:
+            try:
+                corpus.find_db(probe)
+            except corpus.CorpusError as exc:
+                return jsonify({"error": str(exc)}), 400
+        corpus_settings.save({corpus.SETTING_REPO: repo, corpus.SETTING_DB: db})
+
+    stored = corpus_settings.load()
+    out = {
+        "repo": stored.get(corpus.SETTING_REPO),
+        "db": stored.get(corpus.SETTING_DB),
+        "env_latin_repo": os.environ.get("LATIN_REPO"),
+        "settings_file": str(corpus_settings.SETTINGS_PATH.resolve()),
+    }
+    try:
+        resolved = corpus.find_db()
+        out["resolved"] = str(resolved)
+        out["databases"] = corpus.databases(resolved.parent.parent)
+        with corpus.connect() as conn:
+            out["documents"] = conn.execute(
+                "SELECT COUNT(*) FROM documents").fetchone()[0]
+    except corpus.CorpusError as exc:
+        out["error"] = str(exc)
+        out["databases"] = []
+    # Passes write to the live database whatever is being read, so say plainly
+    # when the two have been pointed at different files.
+    out["snapshot"] = corpus_jobs.reading_snapshot()
+    return jsonify(out)
+
+
 @app.route("/api/corpus/facets")
 def api_corpus_facets():
     """Author / genre / period / stage picklists — 13k works is too many to
@@ -324,30 +437,80 @@ def api_corpus_pass_status():
     return jsonify(corpus_jobs.status())
 
 
+@app.route("/api/corpus/pending/<int:doc_id>")
+def api_corpus_pending(doc_id: int):
+    """Work outstanding in a range of sections, for the pass buttons.
+
+    Scoping a pass to a range changes what each button would do, so the counts
+    on them have to follow the range picker rather than the whole document.
+    """
+    first = request.args.get("from", type=int)
+    last = request.args.get("to", type=int)
+    section_range = (first, last) if first and last else None
+    try:
+        with corpus.connect() as conn:
+            return jsonify(corpus.pending(doc_id, section_range=section_range,
+                                          conn=conn))
+    except corpus.CorpusError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+
+# The passes a `kind` expands to. "both" is the sequence an untranslated work
+# actually needs -- the stylizer rewrites an English crib, so it has nothing to
+# do until the translator has produced one. Running them as one job rather than
+# two means the user does not have to come back and click again when the first
+# finishes, which for a long work could be hours later.
+_PASS_STEPS = {"translate": ("translate",),
+               "stylize": ("stylize",),
+               "both": ("translate", "stylize")}
+_PASS_VERB = {"translate": "Translated", "stylize": "Stylized"}
+
+
 def _run_corpus_pass(job_id: str, kind: str, doc_id: int, opts: dict) -> None:
     job = _jobs[job_id]
+    steps = _PASS_STEPS[kind]
 
     def on_log(msg: str) -> None:
         with _lock:
             job["log"].append(msg)
         _store.save(job_id, job)
 
-    def on_progress(done: int, total: int, info: dict | None = None) -> None:
-        with _lock:
-            job["progress"] = {"done": done, "total": total,
-                               "percent": round(100 * done / max(1, total)),
-                               **(info or {})}
-        _store.save(job_id, job)
+    def stopping() -> bool:
+        return job.get("cancel", False)
 
     try:
-        result = corpus_jobs.run(kind, doc_id, opts=opts, on_log=on_log,
-                                 on_progress=on_progress,
-                                 should_stop=lambda: job.get("cancel", False))
-        verb = "Translated" if kind == "translate" else "Stylized"
+        total_written = 0
+        for n, step in enumerate(steps, start=1):
+            # Each step counts its own segments, and the second step's total is
+            # not even knowable until the first has run, so progress is
+            # reported per step with the step named rather than pretending the
+            # two are one scale.
+            def on_progress(done, total, info=None, _step=step, _n=n):
+                with _lock:
+                    job["progress"] = {
+                        "done": done, "total": total,
+                        "percent": round(100 * done / max(1, total)),
+                        "phase": _step,
+                        **({"step": _n, "steps": len(steps)} if len(steps) > 1 else {}),
+                        **(info or {})}
+                _store.save(job_id, job)
+
+            if len(steps) > 1:
+                on_log(f"— step {n} of {len(steps)}: {step} —")
+            result = corpus_jobs.run(step, doc_id, opts=opts, on_log=on_log,
+                                     on_progress=on_progress,
+                                     should_stop=stopping)
+            total_written += result["segments"]
+            on_log(f"✓ {_PASS_VERB[step]} {result['segments']:,} segment(s).")
+            if result["cancelled"]:
+                with _lock:
+                    job["status"] = "cancelled"
+                break
+        else:
+            with _lock:
+                job["status"] = "done"
         with _lock:
-            job["artifacts"]["segments"] = result["segments"]
-            job["status"] = "cancelled" if result["cancelled"] else "done"
-            job["log"].append(f"✓ {verb} {result['segments']:,} segment(s).")
+            job["artifacts"]["segments"] = total_written
     except Exception as exc:  # noqa: BLE001
         with _lock:
             job["status"] = "error"
@@ -362,29 +525,63 @@ def _run_corpus_pass(job_id: str, kind: str, doc_id: int, opts: dict) -> None:
 def api_corpus_pass():
     payload = request.get_json(force=True)
     kind = payload.get("kind")
-    if kind not in ("translate", "stylize"):
-        return jsonify({"error": "kind must be 'translate' or 'stylize'"}), 400
+    if kind not in _PASS_STEPS:
+        return jsonify({"error": "kind must be 'translate', 'stylize' or 'both'"}), 400
     try:
         doc_id = int(payload.get("doc_id"))
     except (TypeError, ValueError):
         return jsonify({"error": "doc_id is required"}), 400
+
+    # A pass writes to the live corpus.db whatever the reader is pointed at,
+    # so refuse before starting a job rather than letting it fail on the
+    # worker thread — corpus_jobs.run guards this too, but by then the user
+    # has a job in their history that never had a chance of running.
+    snapshot = corpus_jobs.reading_snapshot()
+    if snapshot:
+        return jsonify({"error": f"Reading the snapshot {Path(snapshot).name}, "
+                                 f"so passes are off — they would write to the "
+                                 f"live corpus.db, not to what you are reading. "
+                                 f"Switch back to the live database first."}), 409
+
+    opts = payload.get("opts") or {}
+    section_range = _range(opts.get("section_range"))
+    opts["section_range"] = section_range
 
     # Name the job after the work, so the jobs list reads as history rather
     # than a row of anonymous document ids.
     try:
         with corpus.connect() as conn:
             doc = corpus.document(doc_id, conn=conn)
+            todo = corpus.pending(doc_id, section_range=section_range, conn=conn)
     except corpus.CorpusError as exc:
         return jsonify({"error": str(exc)}), 404
-    verb = "Translate" if kind == "translate" else "Victorianize"
-    title = f"{verb}: {doc.title[:60]}"
+    verb = {"translate": "Translate", "stylize": "Victorianize",
+            "both": "Translate + victorianize"}[kind]
+    scope = f" ({section_range[0]}–{section_range[1]})" if section_range else ""
+    title = f"{verb}: {doc.title[:60]}{scope}"
 
     # Refuse work that has nothing to do rather than spending a model load
     # discovering it — the scripts would exit cleanly having done nothing.
-    pending = doc.pending_translation if kind == "translate" else doc.pending_styling
+    # For a chained run, translating gives the stylizer more to do, so either
+    # step having work is enough to be worth starting.
+    pending = sum(todo[step] for step in {"translate": ["translation"],
+                                          "stylize": ["styling"],
+                                          "both": ["translation", "styling"]}[kind])
     if not pending:
-        return jsonify({"error": f"Nothing to do — {doc.title[:60]} has no "
-                                 f"segments awaiting this pass."}), 400
+        return jsonify({"error": f"Nothing to do — {doc.title[:60]}{scope} has "
+                                 f"no segments awaiting this pass."}), 400
+
+    # One card, one pass. The stylizer alone can sit at 16 GB of a 16 GB card,
+    # so a second pass started from another work's panel would not queue -- it
+    # would OOM one or both of them partway through.
+    with _lock:
+        running = next((j for j in _jobs.values()
+                        if str(j.get("kind", "")).startswith("corpus-")
+                        and j.get("status") == "running"), None)
+    if running:
+        return jsonify({"error": f"A pass is already running ({running['title']}). "
+                                 f"Wait for it, or stop it first — passes share "
+                                 f"one GPU."}), 409
 
     job_id = uuid.uuid4().hex[:12]
     _jobs[job_id] = {"status": "running", "log": [], "pages": 0, "title": title,
@@ -394,8 +591,7 @@ def api_corpus_pass():
                      "artifacts": {}, "cancel": False}
     _store.create(job_id, title)
     threading.Thread(target=_run_corpus_pass,
-                     args=(job_id, kind, doc_id, payload.get("opts") or {}),
-                     daemon=True).start()
+                     args=(job_id, kind, doc_id, opts), daemon=True).start()
     return jsonify({"job_id": job_id, "pending": pending})
 
 

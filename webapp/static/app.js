@@ -14,6 +14,7 @@ const state = {
   job: null,
   passJob: null,        // a running corpus translate/victorianize pass
   passPoll: null,
+  passDoc: null,        // which work that pass is for
   passOutcome: null,    // {docId, html} — survives the post-pass reload
   page: 0,
   pages: 0,
@@ -290,6 +291,78 @@ function renderSlot(which) {
 // --------------------------------------------------------------------------- //
 // Latin corpus
 // --------------------------------------------------------------------------- //
+// --------------------------------------------------------------------------- //
+// Corpus location — which checkout, and which database file inside it
+// --------------------------------------------------------------------------- //
+async function loadCorpusSettings() {
+  const box = $("corpusSettingsBody");
+  if (!box) return;
+  let s;
+  try {
+    s = await getJSON("/api/corpus/settings");
+  } catch (e) {
+    box.innerHTML = `⚠ ${escapeHtml(e.message)}`;
+    return;
+  }
+
+  const dbs = s.databases || [];
+  // The dated .bak-* snapshots beside the live database can be read, but a
+  // pass always writes to corpus.db, so say which is which right on the option.
+  const opts = [`<option value="">live database (default)</option>`]
+    .concat(dbs.filter((d) => !d.live).map((d) =>
+      `<option value="${escapeHtml(d.path)}"${s.db === d.path ? " selected" : ""}>
+         ${escapeHtml(d.name)} — ${d.size_mb} MB (read-only snapshot)
+       </option>`))
+    .join("");
+
+  box.innerHTML = `
+    <label>Latin repo folder
+      <input id="setRepo" type="text" spellcheck="false"
+             placeholder="${escapeHtml(s.env_latin_repo || "../latin")}"
+             value="${escapeHtml(s.repo || "")}">
+      <span class="hint">leave blank to search the usual places${
+        s.env_latin_repo ? ` and <code>LATIN_REPO</code>` : ""}</span></label>
+    <label>Database ${dbs.length > 1
+      ? `<select id="setDb">${opts}</select>`
+      : `<span class="hint">only the live database is present</span>
+         <input id="setDb" type="hidden" value="${escapeHtml(s.db || "")}">`}</label>
+    <div class="search-row">
+      <button id="setSave">Save</button>
+      <button id="setReset">Use defaults</button>
+      <span id="setMsg" class="hint"></span>
+    </div>
+    <p class="muted small">${s.error
+      ? `⚠ ${escapeHtml(s.error)}`
+      : `Reading <code>${escapeHtml(s.resolved || "")}</code>` +
+        (s.documents ? ` — ${s.documents.toLocaleString()} works.` : ".")}</p>
+    ${s.snapshot ? `<p class="caution small">⚠ Reading a snapshot, so translate
+      and victorianize are switched off: they would write to the live
+      <code>corpus.db</code>, not to the file you are looking at.</p>` : ""}
+    <p class="muted small">Stored in <code>${escapeHtml(s.settings_file)}</code>.</p>`;
+
+  const save = async (values) => {
+    const msg = $("setMsg");
+    msg.textContent = "saving…";
+    try {
+      await postJSON("/api/corpus/settings", values);
+    } catch (e) {
+      msg.innerHTML = `⚠ ${escapeHtml(e.message)}`;
+      return;
+    }
+    msg.textContent = "saved";
+    // Everything on this tab was read out of the old database, so reload it
+    // all rather than leaving stale counts beside a new location.
+    state.corpus = null;
+    renderCorpusPick();
+    await Promise.all([loadCorpusStatus(), loadPassStatus(), loadFacets(),
+                       loadCorpusSettings()]);
+  };
+
+  $("setSave").onclick = () =>
+    save({ repo: $("setRepo").value.trim(), db: $("setDb").value });
+  $("setReset").onclick = () => save({ repo: "", db: "" });
+}
+
 async function loadCorpusStatus() {
   const el = $("corpusStatus");
   try {
@@ -452,12 +525,14 @@ function renderCorpusPick() {
     ${passPanelHtml(d)}
     <h3>Preview</h3>
     <div class="pairs">${rows || `<p class="muted">No segments.</p>`}</div>`;
-  wirePassPanel(d);
 
   // Corpus sections have no front matter to skip, so the range starts at 1.
   renderRange($("range-corpus"),
     c.sections.map((s) => ({ index: s.index, title: `${s.title} (${s.segments})` })),
     false);
+  // After renderRange: the pass panel listens to the range picker's selects,
+  // which do not exist until it has built them.
+  wirePassPanel(d);
   $("cStyled").onchange =
     () => selectCorpusDoc(d.id, { preferStyled: $("cStyled").checked });
   $("cStrip").onchange =
@@ -501,6 +576,9 @@ function passPanelHtml(d) {
   // Each button is disabled when its pass has nothing to do, so the state of
   // the work is readable from the panel without reading the counts above.
   const trN = d.pending_translation, stN = d.pending_styling;
+  // A pass anywhere blocks a pass here: there is one card between them.
+  const busy = !!state.passJob;
+  const mine = busy && state.passDoc === d.id;
   return `
     <h3>Prepare this text</h3>
     <p class="muted small">Runs on your GPU and writes back into the corpus, so
@@ -525,15 +603,24 @@ function passPanelHtml(d) {
           VRAM and updates progress more often; larger is faster overall.</span>
       </label>
     </div>
+    <label class="inline-check"><input id="passScoped" type="checkbox" checked>
+      only the sections chosen above
+      <span class="hint">a pass over a whole work can run for hours; this
+        prepares just the part you are about to print</span></label>
     <div class="search-row">
-      <button id="passTranslate" ${trN ? "" : "disabled"}>
+      <button id="passTranslate" ${trN && !busy ? "" : "disabled"}>
         ${trN ? `Translate ${trN.toLocaleString()} segment(s)` : "Nothing left to translate"}
       </button>
-      <button id="passStylize" ${stN ? "" : "disabled"}>
+      <button id="passStylize" ${stN && !busy ? "" : "disabled"}>
         ${stN ? `Victorianize ${stN.toLocaleString()} segment(s)` : "Nothing left to victorianize"}
       </button>
-      <button id="passCancel" class="hidden">Stop</button>
+      <button id="passBoth" ${(trN || stN) && !busy ? "" : "disabled"}>
+        Translate, then victorianize
+      </button>
+      <button id="passCancel" class="${busy && mine ? "" : "hidden"}">Stop</button>
     </div>
+    ${busy && !mine ? `<p class="muted small">A pass is running on another
+      work. They share one GPU, so this one waits.</p>` : ""}
     <div id="passProgress">${
       // Finishing a pass reloads the work so its counts and buttons update,
       // which rebuilds this panel -- so the outcome has to be re-rendered
@@ -543,11 +630,51 @@ function passPanelHtml(d) {
         ? state.passOutcome.html : ""}</div>`;
 }
 
+// The section span a pass should cover: the one picked for the build, unless
+// the user has widened it back to the whole work.
+function passRange() {
+  const box = $("range-corpus");
+  if (!box || !$("passScoped") || !$("passScoped").checked) return null;
+  return readRange(box);
+}
+
+async function refreshPassCounts(docId) {
+  const rng = passRange();
+  const t = $("passTranslate"), s = $("passStylize"), b = $("passBoth");
+  if (!t || !s) return;
+  const qs = rng ? `?from=${rng[0]}&to=${rng[1]}` : "";
+  let p;
+  try {
+    p = await getJSON(`/api/corpus/pending/${docId}${qs}`);
+  } catch { return; }
+  // A pass that has just been started must not have its buttons re-enabled
+  // underneath it by a count arriving late.
+  const busy = !!state.passJob;
+  t.textContent = p.translation
+    ? `Translate ${p.translation.toLocaleString()} segment(s)`
+    : "Nothing left to translate";
+  s.textContent = p.styling
+    ? `Victorianize ${p.styling.toLocaleString()} segment(s)`
+    : "Nothing left to victorianize";
+  t.disabled = !p.translation || busy;
+  s.disabled = !p.styling || busy;
+  if (b) b.disabled = !(p.translation || p.styling) || busy;
+}
+
 function wirePassPanel(d) {
   if (!PASSES || !PASSES.available) return;
-  const t = $("passTranslate"), s = $("passStylize");
+  const t = $("passTranslate"), s = $("passStylize"), b = $("passBoth");
   if (t) t.onclick = () => startPass("translate", d.id);
   if (s) s.onclick = () => startPass("stylize", d.id);
+  if (b) b.onclick = () => startPass("both", d.id);
+
+  // The counts on the buttons describe the chosen scope, so they have to
+  // follow both the checkbox and the range picker it refers to.
+  const scoped = $("passScoped");
+  if (scoped) scoped.onchange = () => refreshPassCounts(d.id);
+  for (const sel of document.querySelectorAll("#range-corpus select"))
+    sel.addEventListener("change", () => refreshPassCounts(d.id));
+  refreshPassCounts(d.id);
   const c = $("passCancel");
   if (c) c.onclick = () => {
     if (state.passJob) fetch(`/api/cancel/${state.passJob}`, { method: "POST" });
@@ -563,6 +690,7 @@ async function startPass(kind, docId) {
     backend: $("passBackend").value,
     preset: $("passPreset").value,
     batch_size: Number($("passBatch").value) || 16,
+    section_range: passRange(),
   };
   state.passOutcome = null;
   box.innerHTML = `<p class="muted">Starting…</p>`;
@@ -578,8 +706,9 @@ async function startPass(kind, docId) {
     return;
   }
   state.passJob = data.job_id;
-  $("passTranslate").disabled = true;
-  $("passStylize").disabled = true;
+  state.passDoc = docId;
+  for (const id of ["passTranslate", "passStylize", "passBoth"])
+    if ($(id)) $(id).disabled = true;
   $("passCancel").classList.remove("hidden");
   pollPass(docId);
 }
@@ -599,9 +728,13 @@ function pollPass(docId) {
     // The model load happens before the first chunk lands, and on a cold start
     // it is the longest silent stretch of the whole pass — so say what is
     // happening rather than showing a bar stuck at zero with no explanation.
+    const phase = p.phase
+      ? (p.steps ? `step ${p.step} of ${p.steps} — ` : "")
+        + (p.phase === "translate" ? "translating" : "victorianizing") + ": "
+      : "";
     const bar = p.total
       ? `<div class="passbar"><span style="width:${p.percent || 0}%"></span></div>
-         <p class="muted small">${(p.done || 0).toLocaleString()} of
+         <p class="muted small">${phase}${(p.done || 0).toLocaleString()} of
            ${p.total.toLocaleString()} segments (${p.percent || 0}%)
            ${p.rate ? `· ${p.rate} seg/s` : ""}
            ${p.eta_hours ? `· about ${p.eta_hours}h left` : ""}
@@ -609,23 +742,27 @@ function pollPass(docId) {
                      + "nothing is reported until that batch is saved" : ""}</p>`
       : `<p class="muted small">Starting…</p>`;
     const tail = (data.log || []).slice(-6).map(escapeHtml).join("<br>");
-    box.innerHTML = bar + `<pre class="passlog">${tail}</pre>`;
+    if (box.isConnected) box.innerHTML = bar + `<pre class="passlog">${tail}</pre>`;
 
     if (data.status === "running") {
       state.passPoll = setTimeout(tick, 1500);
       return;
     }
-    $("passCancel").classList.add("hidden");
-    $("passCancel").disabled = false;
-    $("passCancel").textContent = "Stop";
+    const cancel = $("passCancel");
+    if (cancel) {
+      cancel.classList.add("hidden");
+      cancel.disabled = false;
+      cancel.textContent = "Stop";
+    }
     state.passJob = null;
+    state.passDoc = null;
     const done = {
       done: `✓ Finished — ${(data.segments || 0).toLocaleString()} segment(s) written.`,
       cancelled: "■ Stopped. What was written is kept; run it again to continue.",
       error: `⚠ ${escapeHtml(data.error || "failed")}`,
     }[data.status] || data.status;
     const outcome = `<p>${done}</p><pre class="passlog">${tail}</pre>`;
-    box.innerHTML = outcome;
+    if (box.isConnected) box.innerHTML = outcome;
     state.passOutcome = { docId, html: outcome };
     // Reload the work so the counts, the buttons, and the sample preview all
     // reflect what the pass just wrote.
@@ -635,8 +772,86 @@ function pollPass(docId) {
 }
 
 // --------------------------------------------------------------------------- //
+// Front cover — four layouts, previewed live
+//
+// The names mean nothing on their own ("plate"? "band"?), and the difference
+// between them is entirely visual, so the picker renders the real thing from
+// the same code the build uses rather than describing it.
+// --------------------------------------------------------------------------- //
+let COVER_STYLES = [];
+let coverTimer = null;
+
+async function loadCoverStyles() {
+  const sel = $("cvStyle");
+  if (!sel) return;
+  try {
+    const data = await getJSON("/api/cover-styles");
+    COVER_STYLES = data.styles || [];
+    sel.innerHTML = COVER_STYLES
+      .map((s) => `<option value="${s.id}">${escapeHtml(s.id)}</option>`).join("");
+    sel.value = data.default;
+  } catch {
+    sel.innerHTML = `<option value="ornament">ornament</option>`;
+  }
+  refreshCoverPreview();
+}
+
+function refreshCoverPreview() {
+  const sel = $("cvStyle"), img = $("cvPreview");
+  if (!sel || !img) return;
+  const chosen = COVER_STYLES.find((s) => s.id === sel.value);
+  $("cvStyleNote").textContent = chosen ? chosen.label : "";
+
+  // Debounced: the title field fires on every keystroke and each preview is a
+  // full ReportLab render plus a rasterize.
+  clearTimeout(coverTimer);
+  coverTimer = setTimeout(() => {
+    const params = new URLSearchParams({
+      style: sel.value,
+      title: $("title").value || "Untitled",
+      author: $("author").value || "",
+      src_lang: $("srcLang").value || "la",
+      trim_w: $("trimW").value || "6",
+      trim_h: $("trimH").value || "9",
+      font: $("font").value || "",
+    });
+    img.src = `/api/preview/cover.png?${params}`;
+  }, 350);
+}
+
+// --------------------------------------------------------------------------- //
 // Decorations — live previews, because eleven ornament names mean nothing
 // --------------------------------------------------------------------------- //
+// Decoration pickers are filled from the server so the lists can never drift
+// from what the renderer actually supports.
+async function loadDecorStyles() {
+  let d;
+  try {
+    d = await getJSON("/api/decor-styles");
+  } catch {
+    return;                       // the hardcoded fallbacks in the HTML stand
+  }
+  const fill = (id, items, keep) => {
+    const sel = $(id);
+    if (!sel) return;
+    const previous = sel.value;
+    sel.innerHTML = items.map((it) => {
+      const value = typeof it === "string" ? it : it.id;
+      const label = typeof it === "string" ? it : it.label;
+      return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+    }).join("");
+    sel.value = items.some((it) => (typeof it === "string" ? it : it.id) === previous)
+      ? previous : keep;
+  };
+  fill("margin", d.margin, "none");
+  fill("chapter", d.chapter, "fleuron");
+  fill("beadSep", d.bead, "none");
+  // Only the <option> elements are replaced, so the change listeners bound to
+  // the <select> in wireDecorations() are still attached — re-wiring here
+  // would bind them a second time.
+  refreshDecorPreview();
+}
+
 function decorPayload() {
   return {
     margin: $("margin").value,
@@ -1193,6 +1408,7 @@ function buildPayload() {
     },
     cover: {
       enabled: $("cvEnabled").checked,
+      style: $("cvStyle").value,
       paper: $("cvPaper").value,
       blurb: $("cvBlurb").value,
     },
@@ -1424,6 +1640,10 @@ for (const t of document.querySelectorAll(".tab"))
 $("searchBtn").onclick = doSearch;
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
 $("cSearchBtn").onclick = doCorpusSearch;
+$("cvStyle").addEventListener("change", refreshCoverPreview);
+for (const id of ["title", "author", "trimW", "trimH", "font", "srcLang"])
+  $(id).addEventListener("change", refreshCoverPreview);
+$("title").addEventListener("input", refreshCoverPreview);
 $("cq").addEventListener("keydown", (e) => { if (e.key === "Enter") doCorpusSearch(); });
 $("cNeeds").addEventListener("change", doCorpusSearch);
 $("localRefresh").onclick = loadLocalFiles;
@@ -1462,7 +1682,10 @@ document.addEventListener("keydown", (e) => {
 
 selectTab("gutenberg");
 loadFonts();
+loadCoverStyles();
+loadDecorStyles();
 loadCorpusStatus();
+loadCorpusSettings();
 loadPassStatus();
 loadPerseusStatus();
 loadFacets();

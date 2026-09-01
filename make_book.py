@@ -23,7 +23,8 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-from book_creator import audio, corpus, fetch, perseus, pg_catalog, segment
+from book_creator import (audio, corpus, cover, fetch, perseus, pg_catalog,
+                          segment)
 from book_creator.config import load_specs
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec, MusicSpec,
@@ -176,6 +177,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--translator", default="", help="Translator name (public-domain credit).")
     p.add_argument("--cover", action="store_true",
                    help="Also generate a wraparound cover PDF (<slug>-cover.pdf).")
+    p.add_argument("--cover-style", choices=cover.ALL_COVER_STYLES,
+                   default=cover.DEFAULT_COVER_STYLE,
+                   help="Front-cover layout: "
+                        + " | ".join(cover.ALL_COVER_STYLES) + ".")
     p.add_argument("--paper", choices=["white", "cream", "color"], default="white",
                    help="Paper stock (sets spine width).")
     p.add_argument("--blurb", default="", help="Back-cover description text.")
@@ -390,7 +395,8 @@ def main(argv: list[str] | None = None) -> int:
                 isbn=args.isbn,
                 translator=args.translator,
             ),
-            cover=CoverSpec(enabled=args.cover, paper=args.paper, blurb=args.blurb),
+            cover=CoverSpec(enabled=args.cover, style=args.cover_style,
+                            paper=args.paper, blurb=args.blurb),
             epub=args.epub,
             review=args.review,
             review_model=args.review_model,

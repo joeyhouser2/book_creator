@@ -465,6 +465,19 @@ def test_audio_estimate_counts_chapter_headings(client, corpus_db, small_doc):
 # surface around them -- validation, naming, and refusing pointless work --
 # and never let a real one start.
 # --------------------------------------------------------------------------- #
+def _stub_corpus(monkeypatch, title, *, translation, styling):
+    """Stand in for the corpus so these never touch the real database."""
+    class Doc:
+        pass
+
+    doc = Doc()
+    doc.title = title
+    monkeypatch.setattr(server.corpus, "document", lambda *a, **k: doc)
+    monkeypatch.setattr(server.corpus, "pending", lambda *a, **k: {
+        "segments": translation + styling,
+        "translation": translation, "styling": styling})
+
+
 def test_pass_status_reports_when_the_repo_is_missing(client, monkeypatch):
     monkeypatch.setattr(server.corpus_jobs, "status",
                         lambda *a, **k: {"available": False, "error": "no repo"})
@@ -488,12 +501,7 @@ def test_pass_requires_a_document(client):
 
 def test_pass_refuses_work_with_nothing_to_do(client, monkeypatch, corpus_db):
     """Loading a model to discover there is nothing to do wastes minutes."""
-    class Doc:
-        title = "Iam Perfectum"
-        pending_translation = 0
-        pending_styling = 0
-
-    monkeypatch.setattr(server.corpus, "document", lambda *a, **k: Doc())
+    _stub_corpus(monkeypatch, "Iam Perfectum", translation=0, styling=0)
     res = client.post("/api/corpus/pass", json={"kind": "translate", "doc_id": 1})
     assert res.status_code == 400
     assert "Nothing to do" in res.get_json()["error"]
@@ -503,11 +511,7 @@ def test_pass_starts_a_named_job_and_reports_progress(client, monkeypatch, corpu
     """The job is named after the work, so history is readable -- and it is
     pre-seeded with the pending count so the bar is scaled before the model
     has even loaded."""
-    class Doc:
-        title = "De Bello Gallico"
-        pending_translation = 250
-        pending_styling = 0
-
+    _stub_corpus(monkeypatch, "De Bello Gallico", translation=250, styling=0)
     started = {}
 
     def fake_run(kind, doc_id, *, opts=None, on_log=None, on_progress=None,
@@ -517,7 +521,6 @@ def test_pass_starts_a_named_job_and_reports_progress(client, monkeypatch, corpu
         on_progress(250, 250, {"rate": 2.0})
         return {"segments": 250, "cancelled": False}
 
-    monkeypatch.setattr(server.corpus, "document", lambda *a, **k: Doc())
     monkeypatch.setattr(server.corpus_jobs, "run", fake_run)
 
     res = client.post("/api/corpus/pass",
@@ -526,7 +529,8 @@ def test_pass_starts_a_named_job_and_reports_progress(client, monkeypatch, corpu
     assert res.status_code == 200
     body = res.get_json()
     assert body["pending"] == 250
-    assert started == {"kind": "translate", "doc_id": 7, "opts": {"batch_size": 4}}
+    assert started["kind"] == "translate" and started["doc_id"] == 7
+    assert started["opts"]["batch_size"] == 4
 
     # The worker runs on a thread; wait for it rather than sleeping blindly.
     job_id = body["job_id"]
@@ -543,15 +547,11 @@ def test_pass_starts_a_named_job_and_reports_progress(client, monkeypatch, corpu
 
 
 def test_a_failing_pass_surfaces_its_error(client, monkeypatch, corpus_db):
-    class Doc:
-        title = "Fragmenta"
-        pending_translation = 5
-        pending_styling = 0
+    _stub_corpus(monkeypatch, "Fragmenta", translation=5, styling=0)
 
     def boom(*a, **k):
         raise server.corpus_jobs.JobError("exited with status 3")
 
-    monkeypatch.setattr(server.corpus, "document", lambda *a, **k: Doc())
     monkeypatch.setattr(server.corpus_jobs, "run", boom)
 
     job_id = client.post("/api/corpus/pass",
@@ -564,3 +564,49 @@ def test_a_failing_pass_surfaces_its_error(client, monkeypatch, corpus_db):
 
     assert data["status"] == "error"
     assert "status 3" in data["error"]
+
+
+def test_only_one_pass_runs_at_a_time(client, monkeypatch, corpus_db):
+    """Passes share one GPU, and the stylizer alone can fill a 16 GB card, so
+    a second one would not queue behind the first -- it would OOM them both."""
+    import threading
+
+    _stub_corpus(monkeypatch, "Occupatus", translation=100, styling=100)
+    release = threading.Event()
+
+    def blocking_run(*a, **k):
+        release.wait(timeout=10)
+        return {"segments": 1, "cancelled": False}
+
+    monkeypatch.setattr(server.corpus_jobs, "run", blocking_run)
+
+    first = client.post("/api/corpus/pass", json={"kind": "translate", "doc_id": 1})
+    assert first.status_code == 200
+    try:
+        second = client.post("/api/corpus/pass", json={"kind": "stylize", "doc_id": 2})
+        assert second.status_code == 409
+        assert "already running" in second.get_json()["error"]
+    finally:
+        release.set()
+
+
+def test_pass_is_refused_while_reading_a_snapshot(client, monkeypatch, corpus_db):
+    """A pass writes to the live corpus.db whatever the reader is pointed at,
+    so it must be refused up front, not fail later on the worker thread."""
+    _stub_corpus(monkeypatch, "Vetus", translation=10, styling=10)
+    monkeypatch.setattr(server.corpus_jobs, "reading_snapshot",
+                        lambda: "/repo/data/corpus.db.bak-preOcrFix-20260720201447")
+    res = client.post("/api/corpus/pass", json={"kind": "translate", "doc_id": 1})
+    assert res.status_code == 409
+    assert "live corpus.db" in res.get_json()["error"]
+
+
+def test_settings_refuse_a_location_with_no_corpus(client, tmp_path, monkeypatch):
+    """Validated before storing: a bad setting would otherwise break the
+    corpus tab on every later page load, far from where it was typed."""
+    from book_creator import settings as bc_settings
+
+    monkeypatch.setattr(bc_settings, "SETTINGS_PATH", tmp_path / "settings.json")
+    res = client.post("/api/corpus/settings", json={"repo": str(tmp_path / "nope")})
+    assert res.status_code == 400
+    assert bc_settings.load() == {}, "a rejected setting must not be stored"

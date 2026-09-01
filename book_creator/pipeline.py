@@ -525,6 +525,7 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
         cover_path = str(Path(out_dir) / f"{slug}-cover.pdf")
         _, dims = cover.render_cover(
             cover_path,
+            style=spec.cover.style,
             title=spec.title, author=spec.author,
             src_lang=spec.src_lang, tgt_lang=spec.tgt_lang,
             trim=spec.trim, pages=actual_pages, paper=spec.cover.paper,
@@ -542,7 +543,8 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
         try:
             ebook_cover_path = str(Path(out_dir) / f"{slug}-epub-cover.png")
             cover.render_ebook_cover(
-                ebook_cover_path, title=spec.title, author=spec.author,
+                ebook_cover_path, style=spec.cover.style,
+                title=spec.title, author=spec.author,
                 src_lang=spec.src_lang, tgt_lang=spec.tgt_lang, trim=spec.trim,
                 font_spec=spec.font, accent=spec.cover.accent,
                 background=spec.cover.background,
