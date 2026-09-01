@@ -190,6 +190,17 @@
             <option value="en">English</option>
           </select>
         </label>
+        <label>Split long sections
+          <select id="splitSections">
+            <option value="0">no — keep the book's own divisions</option>
+            <option value="30000">into parts of ~35 min / 18 pages</option>
+            <option value="20000">into parts of ~24 min / 12 pages</option>
+            <option value="12000">into parts of ~14 min / 7 pages</option>
+          </select>
+          <small class="muted">For a text with no internal headings — a
+            continuous commentary, say — which otherwise becomes one chapter
+            marker hours wide. Single-language builds only.</small>
+        </label>
         <label>Mode
           <select id="mode">
             <option value="prose">prose (sentences)</option>

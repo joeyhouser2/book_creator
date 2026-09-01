@@ -252,9 +252,14 @@ def api_local_outline():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     try:
-        text = fetch.load_text(path=str(p))
-        return jsonify({"divisions": segment.outline(
-            text, mode=request.args.get("mode", "prose"))})
+        # The same loader the build uses, so what the picker lists is what gets
+        # built: an EPUB is asked for its own divisions rather than being
+        # flattened and re-detected.
+        divisions = fetch.load_divisions(
+            path=str(p), mode=request.args.get("mode", "prose"))
+        divisions = segment.subdivide(
+            divisions, request.args.get("split", type=int) or 0)
+        return jsonify({"divisions": segment.outline_of(divisions)})
     except (epub_reader.EpubError, OSError) as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -796,6 +801,7 @@ def _spec_from_payload(p: dict) -> BookSpec:
         tgt_range=_range(p.get("tgt_range")),
         first=p.get("first", "src"),
         sides=p.get("sides", "both"),
+        split_long_divisions=int(p.get("split_long_divisions") or 0),
         trim=(float(trim[0]), float(trim[1])),
         translation_pd_confirmed=bool(p.get("translation_pd_confirmed", False)),
         toc=bool(p.get("toc", True)),

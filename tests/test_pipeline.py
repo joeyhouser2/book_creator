@@ -341,3 +341,28 @@ def test_build_routes_a_lone_edition_to_the_single_path(tmp_path):
                     sides="src", epub=False)
     out = pipeline.build_book(spec, out_dir=str(tmp_path), verbose=False)
     assert Path(out).exists()
+
+
+def test_subdivide_splits_only_oversized_divisions():
+    from book_creator import segment
+    small = ("Short", "a\n\nb")
+    big = ("Long", "\n\n".join(["paragraph " * 20] * 40))
+    out = segment.subdivide([small, big], 2000)
+    assert out[0] == small, "a division under the limit is untouched"
+    parts = [t for t, _ in out if t.startswith("Long")]
+    assert len(parts) > 1
+    assert all(len(b) <= 2000 or "\n\n" not in b for _, b in out)
+
+
+def test_subdivide_is_off_by_default():
+    from book_creator import segment
+    divs = [("T", "x" * 100_000)]
+    assert segment.subdivide(divs, 0) == divs
+
+
+def test_subdivide_never_cuts_mid_paragraph():
+    from book_creator import segment
+    paras = [f"Paragraph number {i} with some words in it." for i in range(30)]
+    out = segment.subdivide([("T", "\n\n".join(paras))], 300)
+    rejoined = "\n\n".join(b for _, b in out)
+    assert rejoined.replace("\n\n", " ") == "\n\n".join(paras).replace("\n\n", " ")

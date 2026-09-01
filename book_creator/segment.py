@@ -149,10 +149,20 @@ def outline(text: str, mode: str = "prose", poem_titles: bool = False) -> list[d
     Returns [{index, title, chars}], index 1-based. Index 1 is usually the
     front matter (text before the first heading).
     """
-    divs = detect_chapters(text, mode=mode, poem_titles=poem_titles)
+    return outline_of(detect_chapters(text, mode=mode, poem_titles=poem_titles))
+
+
+def outline_of(divisions: list[tuple[str, str]]) -> list[dict]:
+    """The same shape, for divisions a caller has already loaded.
+
+    Split out so a source that carries its own structure -- an EPUB's spine and
+    headings -- can be listed in the range picker without being flattened back
+    to text and re-detected, which is what reduced a whole novel to one row.
+    """
     return [
-        {"index": i + 1, "title": title or "(front matter / untitled)", "chars": len(body)}
-        for i, (title, body) in enumerate(divs)
+        {"index": i + 1, "title": title or "(front matter / untitled)",
+         "chars": len(body)}
+        for i, (title, body) in enumerate(divisions)
     ]
 
 
@@ -240,3 +250,59 @@ def segment(text: str, mode: str, lang: str = "default") -> list[str]:
     if mode == "verse":
         return segment_verse(text)
     return segment_prose(text, lang)
+
+
+def subdivide(divisions: list[tuple[str, str]], max_chars: int,
+              log=None) -> list[tuple[str, str]]:
+    """Break divisions longer than `max_chars` into parts at paragraph breaks.
+
+    Some books have no internal marks to split on. Pale Fire's Commentary runs
+    to 190,000 characters without a heading; a continuous scholarly text can be
+    the whole book. Printed, that is one very long chapter; narrated, it is a
+    single chapter marker four hours wide, which makes an audiobook impossible
+    to navigate or to resume.
+
+    Splits only ever fall on a blank line, so a part never begins mid-sentence.
+    A paragraph longer than the limit on its own is left whole rather than cut:
+    an oversized part is a much smaller problem than a severed sentence.
+
+    Off unless asked for (`max_chars` of 0 returns the input untouched): for a
+    printed book these parts are invented structure, not the author's, and
+    that is the caller's decision to make.
+    """
+    if not max_chars or max_chars <= 0:
+        return divisions
+
+    out: list[tuple[str, str]] = []
+    untitled = 0
+    split_count = 0
+    for title, body in divisions:
+        if len(body) <= max_chars:
+            out.append((title, body))
+            continue
+
+        paras = re.split(r"\n\s*\n", body)
+        parts: list[str] = []
+        buf = ""
+        for para in paras:
+            if buf and len(buf) + len(para) + 2 > max_chars:
+                parts.append(buf)
+                buf = para
+            else:
+                buf = f"{buf}\n\n{para}" if buf else para
+        if buf:
+            parts.append(buf)
+
+        split_count += 1
+        for i, part in enumerate(parts, start=1):
+            if title:
+                out.append((f"{title} ({i} of {len(parts)})", part))
+            else:
+                untitled += 1
+                out.append((f"Part {untitled}", part))
+
+    if log and split_count:
+        log(f"• Split {split_count} long division(s) into parts of at most "
+            f"{max_chars:,} characters — {len(divisions)} division(s) became "
+            f"{len(out)}.")
+    return out

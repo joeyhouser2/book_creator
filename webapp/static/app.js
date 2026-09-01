@@ -1160,13 +1160,19 @@ async function loadLocalOutline(which) {
   box.innerHTML = `<small class="muted">reading outline…</small>`;
   try {
     const url = `/api/local/outline?path=${encodeURIComponent(f.path)}` +
-                `&mode=${encodeURIComponent($("mode").value)}`;
+                `&mode=${encodeURIComponent($("mode").value)}` +
+                `&split=${Number($("splitSections").value) || 0}`;
     f.outline = (await getJSON(url)).divisions || [];
   } catch (e) {
     box.innerHTML = `<small class="muted">outline unavailable — ${escapeHtml(e.message)}</small>`;
     return;
   }
   renderRange(box, f.outline);
+  const n = f.outline.length;
+  box.insertAdjacentHTML("beforeend",
+    `<small class="muted">${n} division(s) found` +
+    (n === 1 ? " — try “Split long sections” above to break this "
+             + "into parts you can select between." : "") + `</small>`);
 }
 
 function renderLocalSlot(which) {
@@ -1406,6 +1412,7 @@ function buildPayload() {
     aligner: $("aligner").value,
     first: $("first").value,
     sides: $("sides").value,
+    split_long_divisions: Number($("splitSections").value) || 0,
     font: $("font").value,
     trim: [parseFloat($("trimW").value), parseFloat($("trimH").value)],
     toc: $("tocSel").value === "yes",
@@ -1680,6 +1687,9 @@ $("auOnly").addEventListener("change", () => {
   if ($("auOnly").checked) $("auEnabled").checked = true;
 });
 $("sides").addEventListener("change", updateSides);
+$("splitSections").addEventListener("change", () => {
+  for (const which of ["lsrc", "ltgt"]) if (state[which]) loadLocalOutline(which);
+});
 $("font").addEventListener("change", updateFontNote);
 $("srcLang").addEventListener("change", () => {
   updateFontNote();

@@ -229,6 +229,12 @@ class BookSpec:
     tgt_lang: str = "en"
 
     # Project Gutenberg ebook IDs (integers from the URL).
+    # Break divisions longer than this many characters into parts, at
+    # paragraph breaks. 0 = leave them whole. See segment.subdivide: a
+    # continuous text with no internal headings is otherwise one chapter
+    # marker hours wide in an audiobook.
+    split_long_divisions: int = 0
+
     src_gutenberg_id: int | None = None
     tgt_gutenberg_id: int | None = None
     # Or local file paths (override Gutenberg IDs if given).

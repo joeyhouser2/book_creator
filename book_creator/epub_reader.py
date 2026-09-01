@@ -269,3 +269,115 @@ def _document_text(soup) -> str:
         if line or (out and out[-1]):
             out.append(line)
     return "\n".join(out).strip()
+
+
+# --------------------------------------------------------------------------- #
+# Structural divisions
+#
+# An EPUB already knows where its chapters are: the spine orders its content
+# documents, and headings mark divisions inside them. Flattening all of that to
+# one string and then hunting for headings with a regex throws the structure
+# away and then tries to guess it back -- which is how a 457,000-character
+# novel ends up as a single division, and a single chapter marker in a
+# nine-hour audiobook.
+# --------------------------------------------------------------------------- #
+
+# Headings that are not chapter titles. Converted EPUBs routinely use <h1> for
+# any large type, so the front matter of a paperback arrives as headings.
+_NON_TITLE = re.compile(
+    r"^(printing|printed in\b|copyright\b|all rights reserved|isbn\b|"
+    r"first (published|edition)|contents|book)\b", re.I)
+
+
+def _is_title(text: str) -> bool:
+    """Whether a heading looks like a division title rather than furniture.
+
+    Empty headings are common in converted files (used purely for spacing),
+    and a "heading" running to a paragraph's length is a styling artefact, not
+    a title.
+    """
+    t = (text or "").strip()
+    return bool(t) and len(t) <= 100 and not _NON_TITLE.match(t)
+
+
+def _split_document(soup) -> list[tuple[str, str]]:
+    """One content document as [(title, text)], split at credible headings.
+
+    Text before the first heading stays as its own untitled division rather
+    than being attached to the heading that follows it: it belongs to what
+    came before, and in practice it is a run-on from the previous document.
+    """
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+
+    heads = [h for h in soup.find_all(_HEADING_TAGS)
+             if _is_title(h.get_text(" ", strip=True))]
+    if not heads:
+        text = _document_text(soup)
+        return [("", text)] if text.strip() else []
+
+    # Mark each kept heading so the flattened text can be cut at it again.
+    marks = {}
+    for i, h in enumerate(heads):
+        token = f"\n\n@@BCDIV{i}@@\n\n"
+        marks[i] = h.get_text(" ", strip=True)
+        h.insert_before(token)
+
+    text = _document_text(soup)
+    out: list[tuple[str, str]] = []
+    pieces = re.split(r"@@BCDIV(\d+)@@", text)
+    lead = pieces[0].strip()
+    if lead:
+        out.append(("", lead))
+    for idx, body in zip(pieces[1::2], pieces[2::2]):
+        title = marks[int(idx)]
+        body = body.strip()
+        # The heading's own text leads the body it introduces; drop that copy
+        # so the title is not read out twice.
+        if body.startswith(title):
+            body = body[len(title):].strip()
+        if body:
+            out.append((title, body))
+    return out
+
+
+def read_divisions(path: str | Path, *, log=None) -> list[tuple[str, str]]:
+    """An EPUB as [(title, body), ...], following the book's own structure.
+
+    Falls back to a single untitled division only when the file genuinely has
+    no usable structure, so callers can always treat the result as the book's
+    divisions.
+    """
+    _require_deps()
+    from bs4 import BeautifulSoup
+    from ebooklib import epub
+
+    p = Path(path)
+    report = inspect(p)
+    if log:
+        for w in report.warnings:
+            log(f"  ⚠  {p.name}: {w}")
+    try:
+        book = epub.read_epub(str(p))
+    except Exception as exc:  # noqa: BLE001 - ebooklib raises assorted types
+        raise EpubError(f"Could not read {p.name}: {exc}") from exc
+
+    divisions: list[tuple[str, str]] = []
+    for item in _documents_in_reading_order(book):
+        try:
+            html = item.get_content().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            continue
+        divisions.extend(_split_document(BeautifulSoup(html, "html.parser")))
+
+    if not divisions:
+        raise EpubError(
+            f"No text could be extracted from {p.name}. If it is a scan, it "
+            "has no text layer to read.")
+    if log:
+        chars = sum(len(b) for _, b in divisions)
+        titled = sum(1 for t, _ in divisions if t)
+        log(f"• Extracted {chars:,} characters from {p.name} "
+            f"({report.documents} document(s), {len(divisions)} division(s), "
+            f"{titled} titled).")
+    return divisions

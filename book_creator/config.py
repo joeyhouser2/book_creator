@@ -190,6 +190,7 @@ def load_specs(path: str) -> list[BookSpec]:
             font=_parse_font(raw.get("font")),
             decor=_parse_decor(raw.get("decorations")),
             copyright=_parse_copyright(raw.get("copyright")),
+            split_long_divisions=int(raw.get("split_long_divisions", 0) or 0),
             cover=_parse_cover(raw.get("cover")),
             epub=bool(raw.get("epub", False)),
             audio_only=bool(raw.get("audio_only", False)),

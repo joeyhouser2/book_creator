@@ -221,3 +221,46 @@ def test_load_text_is_case_insensitive_about_the_suffix(good_epub):
     upper = good_epub.with_suffix(".EPUB")
     upper.write_bytes(good_epub.read_bytes())
     assert "Gallia" in fetch.load_text(path=str(upper))
+
+
+# --------------------------------------------------------------------------- #
+# Structural divisions
+# --------------------------------------------------------------------------- #
+def test_divisions_follow_headings_inside_a_document(tmp_path):
+    """A converted EPUB routinely puts several chapters in one file."""
+    path = _make_epub(tmp_path / "h.epub", [("c1.html",
+        "<html><body><h1>Chapter One</h1><p>First body.</p>" + _FILLER +
+        "<h1>Chapter Two</h1><p>Second body.</p>" + _FILLER + "</body></html>")])
+    divs = epub_reader.read_divisions(path)
+    titles = [t for t, _ in divs]
+    assert "Chapter One" in titles and "Chapter Two" in titles
+
+
+def test_document_boundaries_are_divisions(tmp_path):
+    path = _make_epub(tmp_path / "d.epub", [
+        ("a.html", "<html><body><p>Alpha body text.</p>" + _FILLER + "</body></html>"),
+        ("b.html", "<html><body><p>Beta body text.</p>" + _FILLER + "</body></html>"),
+    ])
+    divs = epub_reader.read_divisions(path)
+    assert len(divs) == 2
+
+
+def test_empty_and_boilerplate_headings_are_not_titles(tmp_path):
+    """Converters use <h1> for any large type, so a paperback's front matter
+    arrives as headings. An empty one is pure spacing."""
+    assert not epub_reader._is_title("")
+    assert not epub_reader._is_title("   ")
+    assert not epub_reader._is_title("PRINTED IN THE UNITED STATES OF AMERICA")
+    assert not epub_reader._is_title("Copyright 1962")
+    assert not epub_reader._is_title("x" * 200)
+    assert epub_reader._is_title("THE SACRED TREE")
+    assert epub_reader._is_title("Chapter One")
+
+
+def test_a_heading_is_not_repeated_into_its_own_body(tmp_path):
+    path = _make_epub(tmp_path / "r.epub", [("c.html",
+        "<html><body><h1>Canto One</h1><p>The body follows.</p>"
+        + _FILLER + "</body></html>")])
+    divs = epub_reader.read_divisions(path)
+    title, body = next((t, b) for t, b in divs if t == "Canto One")
+    assert not body.startswith("Canto One")

@@ -188,3 +188,37 @@ def strip_gutenberg_boilerplate(text: str) -> str:
     if end:
         text = text[: end.start()]
     return text.strip()
+
+
+def load_divisions(*, path: str | None = None, gid: int | None = None,
+                   mode: str = "prose", poem_titles: bool = False,
+                   log=None) -> list[tuple[str, str]]:
+    """Load a source as its divisions: [(title, body), ...].
+
+    An EPUB is asked for its own structure -- the spine orders its content
+    documents and headings mark divisions inside them -- because flattening it
+    to one string and then recovering headings with a regex loses exactly the
+    information the file already carries. Everything else is plain text, where
+    heading detection is the only option there has ever been.
+
+    Falls back to detecting headings in the flattened text when an EPUB's own
+    structure yields nothing useful: a file converted so poorly that every
+    document is one blob may still have "CHAPTER I" lines in it.
+    """
+    from . import segment
+
+    if path and Path(path).suffix.lower() == ".epub":
+        from . import epub_reader
+        divisions = epub_reader.read_divisions(path, log=log)
+        if len(divisions) > 1:
+            return divisions
+        text = divisions[0][1]
+        detected = segment.detect_chapters(text, mode=mode,
+                                           poem_titles=poem_titles)
+        if len(detected) > 1 and log:
+            log(f"• The EPUB has no usable structure of its own; found "
+                f"{len(detected)} division(s) in its text instead.")
+        return detected
+
+    text = load_text(path=path, gid=gid, log=log)
+    return segment.detect_chapters(text, mode=mode, poem_titles=poem_titles)

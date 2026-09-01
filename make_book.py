@@ -184,6 +184,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--paper", choices=["white", "cream", "color"], default="white",
                    help="Paper stock (sets spine width).")
     p.add_argument("--blurb", default="", help="Back-cover description text.")
+    p.add_argument("--split-sections", type=int, default=0, metavar="CHARS",
+                   help="Break divisions longer than CHARS into parts at "
+                        "paragraph breaks (monolingual builds only). "
+                        "20000 is about 24 minutes of narration.")
     p.add_argument("--no-copyright", action="store_true", help="Omit the copyright page.")
     p.add_argument("--no-toc", action="store_true",
                    help="Omit the table of contents.")
@@ -395,6 +399,7 @@ def main(argv: list[str] | None = None) -> int:
                 isbn=args.isbn,
                 translator=args.translator,
             ),
+            split_long_divisions=args.split_sections,
             cover=CoverSpec(enabled=args.cover, style=args.cover_style,
                             paper=args.paper, blurb=args.blurb),
             epub=args.epub,

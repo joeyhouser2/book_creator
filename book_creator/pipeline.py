@@ -275,18 +275,19 @@ def _chapters_from_perseus(spec: BookSpec, log) -> list[Chapter]:
 def _chapters_from_editions(spec: BookSpec, log) -> list[Chapter]:
     """Fetch, segment, and align two separate editions (the Gutenberg path)."""
     log(f"• Fetching source ({spec.src_lang})…")
-    src_text = fetch.load_text(path=spec.src_path, gid=spec.src_gutenberg_id,
-                               log=log)
+    src_div = fetch.load_divisions(path=spec.src_path, gid=spec.src_gutenberg_id,
+                                   mode=spec.mode,
+                                   poem_titles=spec.poem_titles, log=log)
     log(f"• Fetching translation ({spec.tgt_lang})…")
-    tgt_text = fetch.load_text(path=spec.tgt_path, gid=spec.tgt_gutenberg_id,
-                               log=log)
+    tgt_div = fetch.load_divisions(path=spec.tgt_path, gid=spec.tgt_gutenberg_id,
+                                   mode=spec.mode,
+                                   poem_titles=spec.poem_titles, log=log)
 
-    # Structural anchoring: split both sides into divisions, optionally scoping
-    # each to a selected range so the two editions cover the same content.
-    src_chaps = _apply_range(
-        segment.detect_chapters(src_text, mode=spec.mode, poem_titles=spec.poem_titles), spec.src_range)
-    tgt_chaps = _apply_range(
-        segment.detect_chapters(tgt_text, mode=spec.mode, poem_titles=spec.poem_titles), spec.tgt_range)
+    # Structural anchoring: both sides as divisions, optionally scoped to a
+    # selected range so the two editions cover the same content. Deliberately
+    # not subdivided by length here — see _chapters_from_single_edition.
+    src_chaps = _apply_range(src_div, spec.src_range)
+    tgt_chaps = _apply_range(tgt_div, spec.tgt_range)
     rng = ""
     if spec.src_range or spec.tgt_range:
         rng = f" (range src={spec.src_range or 'all'}, tgt={spec.tgt_range or 'all'})"
@@ -352,10 +353,13 @@ def _chapters_from_single_edition(spec: BookSpec, log) -> list[Chapter]:
     rng = spec.tgt_range if keep == "tgt" else spec.src_range
 
     log(f"• Single edition ({lang}) — no alignment needed.")
-    text = fetch.load_text(path=path, gid=gid, log=log)
-    divisions = _apply_range(
-        segment.detect_chapters(text, mode=spec.mode,
-                                poem_titles=spec.poem_titles), rng)
+    divisions = fetch.load_divisions(path=path, gid=gid, mode=spec.mode,
+                                     poem_titles=spec.poem_titles, log=log)
+    # Only here, not on the dual-language path: parts are cut by length, and
+    # two editions of different lengths would be cut in different places, so
+    # the sides would stop lining up.
+    divisions = segment.subdivide(divisions, spec.split_long_divisions, log=log)
+    divisions = _apply_range(divisions, rng)
     log(f"• Divisions used: {len(divisions)}")
 
     chapters: list[Chapter] = []
