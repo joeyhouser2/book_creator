@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from book_creator import audio
-from book_creator.model import AudioSpec
+from book_creator.model import AudioSpec, Bead, Chapter
 
 
 # --------------------------------------------------------------------------- #
@@ -267,3 +267,52 @@ def test_stop_signal_halts_synthesis(chapters, tmp_path, tone_engine):
     # than throwing away the GPU time already spent.
     assert res["chapters"] >= 1
     assert tone_engine.calls < 6
+
+
+# --------------------------------------------------------------------------- #
+# Nothing unpronounceable reaches the model
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("text", ["...", "…", "— — —", "***", "  .  ", "()"])
+def test_punctuation_only_text_is_not_speakable(text):
+    """An ellipsis on its own line is ordinary in a novel, and it used to
+    survive every tidying rule and still be truthy. It then reached the model,
+    which tokenized it to nothing and reduced over an empty tensor:
+    "max(): Expected reduction dim 1 to have non-zero size" — nine hours into
+    a run, with no indication which text caused it."""
+    assert audio.speakable(text) == ""
+
+
+@pytest.mark.parametrize("text", ["Gallia est omnis.", "42", "Ἱστορίαι",
+                                  "L'an 40", "a"])
+def test_real_text_is_still_speakable(text):
+    assert audio.speakable(text)
+
+
+def test_a_bead_with_nothing_sayable_is_dropped_from_the_plan():
+    beads = [Bead(src=["..."], tgt=["..."]),
+             Bead(src=["Gallia est omnis."], tgt=["All Gaul is divided."])]
+    chapters = [Chapter(title="I", beads=beads)]
+    plans = audio.plan(chapters, spec=AudioSpec(), src_lang="la", tgt_lang="en")
+    said = [u.text for _, items in plans for u in items]
+    assert "..." not in said
+    assert any("Gallia" in t for t in said)
+
+
+def test_chunk_text_never_emits_an_empty_chunk():
+    """A first word longer than the limit used to flush an empty line."""
+    long_word = "x" * 90
+    for text in (long_word, f"{long_word} {long_word}", f"a {long_word}"):
+        chunks = audio.chunk_text(text, 40)
+        assert all(c.strip() for c in chunks), chunks
+
+
+def test_estimate_names_a_substituted_voice():
+    """Latin is read with an Italian voice by design — but so is a book whose
+    language was left at the default, and that is worth seeing before the
+    GPU spends hours on it."""
+    chapters = [Chapter(title="I", beads=[
+        Bead(src=["Gallia est omnis divisa."], tgt=["All Gaul is divided."])])]
+    est = audio.estimate(chapters, spec=AudioSpec(), src_lang="la", tgt_lang="en")
+    by_lang = {L["lang"]: L for L in est["languages"]}
+    assert by_lang["la"]["substituted"] and by_lang["la"]["voice_lang"] == "it"
+    assert not by_lang["en"]["substituted"]

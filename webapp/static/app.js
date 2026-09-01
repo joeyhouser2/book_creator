@@ -433,6 +433,11 @@ async function doCorpusSearch() {
   }
 }
 
+const LANG_LABEL = {
+  la: "Latin", grc: "Ancient Greek", el: "Greek", en: "English",
+  fr: "French", de: "German", it: "Italian", es: "Spanish",
+};
+
 const RISK_LABEL = { ok: "licence ok", check: "check licence", unknown: "licence unknown" };
 
 function corpusRow(d) {
@@ -1354,8 +1359,18 @@ async function estimateAudio() {
     const data = await postJSON("/api/audio/estimate", buildPayload());
     if (!data.estimate) { out.textContent = data.note; return; }
     const e = data.estimate;
-    out.textContent = `${e.utterances.toLocaleString()} utterances, ` +
-      `${e.characters.toLocaleString()} characters — about ${e.duration} of audio.`;
+    // Name the voice each language will be read with. Latin and Ancient Greek
+    // are read with a living-language voice by design, but so is a book whose
+    // language was simply left at the default — and hours of audio in the
+    // wrong accent is only discoverable by listening to it.
+    const subs = (e.languages || []).filter((l) => l.substituted);
+    const note = subs.map((l) =>
+      ` ${LANG_LABEL[l.lang] || l.lang} has no TTS voice, so it will be read ` +
+      `with the ${LANG_LABEL[l.voice_lang] || l.voice_lang} one — check the ` +
+      `language above is the one you meant.`).join("");
+    out.innerHTML = `${e.utterances.toLocaleString()} utterances, ` +
+      `${e.characters.toLocaleString()} characters — about ${e.duration} of audio.` +
+      (note ? `<br><span class="caution">⚠${escapeHtml(note)}</span>` : "");
   } catch (e) {
     out.textContent = `⚠ ${e.message}`;
   }

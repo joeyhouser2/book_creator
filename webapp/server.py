@@ -639,10 +639,34 @@ def api_audio_estimate():
             tgt_lang=p.get("tgt_lang", "en"))})
 
     if not p.get("corpus_id"):
+        # A monolingual edition built from a single text needs no alignment,
+        # so it can be priced too — and that is exactly the case worth
+        # pricing, because it is the one where the language can quietly be
+        # wrong for the whole run.
+        has_src = bool(p.get("src_id") or p.get("src_path"))
+        has_tgt = bool(p.get("tgt_id") or p.get("tgt_path"))
+        if sides in ("src", "tgt") and (has_src != has_tgt):
+            book = BookSpec(
+                title="", author="Unknown", sides=sides,
+                src_lang=p.get("src_lang") or "la",
+                tgt_lang=p.get("tgt_lang", "en"),
+                src_path=p.get("src_path"), tgt_path=p.get("tgt_path"),
+                src_gutenberg_id=p.get("src_id"),
+                tgt_gutenberg_id=p.get("tgt_id"),
+                mode=p.get("mode", "prose"))
+            try:
+                chapters = pipeline._chapters_from_single_edition(
+                    book, lambda _m: None)
+            except Exception as exc:  # noqa: BLE001 - bad file, or a fetch
+                return jsonify({"error": str(exc)}), 400
+            return jsonify({"estimate": audio.estimate(
+                chapters, spec=spec, src_lang=book.src_lang,
+                tgt_lang=book.tgt_lang)})
         return jsonify({"estimate": None,
-                        "note": "Available for corpus and Perseus works. A "
-                                "Gutenberg pair or local file has to be fetched "
-                                "and aligned first, which is the build itself."})
+                        "note": "Available for corpus and Perseus works, and "
+                                "for a single-language edition of one text. A "
+                                "Gutenberg pair has to be fetched and aligned "
+                                "first, which is the build itself."})
     try:
         load = corpus.load_chapters(
             int(p["corpus_id"]),

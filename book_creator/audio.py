@@ -408,7 +408,10 @@ def chunk_text(text: str, max_chars: int) -> list[str]:
         words, line = piece.split(), ""
         for word in words:
             if len(line) + len(word) + 1 > max_chars:
-                out.append(line)
+                # Guarded: a first word longer than the limit would otherwise
+                # flush an empty line into the output.
+                if line:
+                    out.append(line)
                 line = word
             else:
                 line = f"{line} {word}".strip()
@@ -439,7 +442,14 @@ def speakable(text: str) -> str:
     text = re.sub(r"[<>(){}]+", "", text)           # in-word sigla: keep letters
     text = re.sub(r"[|~^*_`]+", " ", text)          # markup leftovers
     text = re.sub(r"/+", " ", text)                 # line/page break markers
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    # Nothing but punctuation is nothing to say. A segment of "..." survives
+    # every rule above and is still truthy, so it reaches the model, which
+    # tokenizes it to nothing and then reduces over an empty tensor --
+    # "max(): Expected reduction dim 1 to have non-zero size", hours into a
+    # run. An ellipsis on its own line is ordinary in a novel, so this is not
+    # a rare shape.
+    return text if re.search(r"\w", text) else ""
 
 
 # --------------------------------------------------------------------------- #
@@ -512,12 +522,23 @@ def estimate(chapters, *, spec, src_lang: str, tgt_lang: str) -> dict:
     chars = sum(len(u.text) for u in utterances)
     pauses = sum(u.pause_after for u in utterances)
     speech = chars / 14.0
+
+    # Which voice each language will actually be read with. A book whose
+    # language was left at the default gets narrated in the wrong one, and
+    # that is only discoverable now by listening to hours of it -- so the
+    # substitution is priced alongside the runtime, before the GPU starts.
+    langs: list[dict] = []
+    for lang in dict.fromkeys(u.lang for u in utterances):
+        spoken = voice_lang(lang)
+        langs.append({"lang": lang, "voice_lang": spoken,
+                      "substituted": spoken != lang})
     return {
         "chapters": len(plans),
         "utterances": len(utterances),
         "characters": chars,
         "seconds": round(speech + pauses),
         "duration": _hms(speech + pauses),
+        "languages": langs,
     }
 
 
@@ -604,6 +625,13 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
                 else:
                     parts = []
                     for chunk in chunk_text(u.text, engine.max_chars):
+                        # Belt and braces alongside speakable(): a chunk with
+                        # no word characters in it makes a model emit an empty
+                        # tensor, and the failure surfaces as an opaque
+                        # reduction error rather than as "this text was
+                        # unpronounceable".
+                        if not re.search(r"\w", chunk):
+                            continue
                         parts.append(engine.synthesize(
                             chunk, lang=u.lang, voice=u.voice))
                     samples = (np.concatenate(parts) if parts
