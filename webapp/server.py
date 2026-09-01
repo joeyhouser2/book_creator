@@ -872,10 +872,20 @@ def api_build():
     if payload.get("audio_only"):
         payload.setdefault("audio", {})["enabled"] = True
     if not (payload.get("corpus_id") or payload.get("perseus_id")):
-        if not (payload.get("src_id") or payload.get("src_path")):
-            return jsonify({"error": "Choose an original text."}), 400
-        if not (payload.get("tgt_id") or payload.get("tgt_path")):
-            return jsonify({"error": "Choose a translation."}), 400
+        has_src = bool(payload.get("src_id") or payload.get("src_path"))
+        has_tgt = bool(payload.get("tgt_id") or payload.get("tgt_path"))
+        sides = payload.get("sides", "both")
+        if not (has_src or has_tgt):
+            return jsonify({"error": "Choose a text to build from."}), 400
+        # Only a dual-language edition needs both. Asking for a translation to
+        # build a monolingual edition — an English EPUB narrated as an
+        # audiobook, say — is asking for one nobody intends to print.
+        if sides == "both" and not (has_src and has_tgt):
+            missing = "a translation" if has_src else "an original text"
+            return jsonify({"error":
+                f"A dual-language edition needs both sides — choose {missing}, "
+                f"or set the edition to a single language to build from the "
+                f"one text you have."}), 400
 
     job_id = uuid.uuid4().hex[:12]
     spec = _spec_from_payload(payload)

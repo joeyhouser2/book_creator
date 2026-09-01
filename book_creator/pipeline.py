@@ -321,6 +321,63 @@ def _chapters_from_editions(spec: BookSpec, log) -> list[Chapter]:
     return _align_paired(paired, spec, log)
 
 
+def _chapters_from_single_edition(spec: BookSpec, log) -> list[Chapter]:
+    """Segment one edition into beads, with nothing on the other side.
+
+    A monolingual edition of a text you already have in one language has no
+    second edition to align against — asking for one would be asking for a
+    translation nobody intends to print. This is the path for an English EPUB
+    narrated as an audiobook, or an original-language text printed on its own.
+
+    The beads are one segment each, with the other side empty. That is exactly
+    the shape `apply_sides` produces for a dual-language build, and the shape
+    an unmatched division already produces, so the renderers and the narrator
+    need no special case.
+    """
+    # Which side to keep is decided by which edition was actually given, not by
+    # `sides`: a user who drops one file in the Translation slot and one who
+    # drops it in the Original slot both mean "print this". `sides` only has to
+    # agree that the edition present is the one wanted.
+    keep = "tgt" if (spec.tgt_path or spec.tgt_gutenberg_id) else "src"
+    if spec.sides in ("src", "tgt") and spec.sides != keep:
+        other = "Translation" if keep == "tgt" else "Original"
+        raise ValueError(
+            f"Only one edition was given, in the {other} slot, but the edition "
+            f"is set to '{spec.sides}' — which asks to print the side that is "
+            f"missing. Either add the other edition or set the edition to "
+            f"'{keep}'.")
+    lang = spec.tgt_lang if keep == "tgt" else spec.src_lang
+    path = spec.tgt_path if keep == "tgt" else spec.src_path
+    gid = spec.tgt_gutenberg_id if keep == "tgt" else spec.src_gutenberg_id
+    rng = spec.tgt_range if keep == "tgt" else spec.src_range
+
+    log(f"• Single edition ({lang}) — no alignment needed.")
+    text = fetch.load_text(path=path, gid=gid, log=log)
+    divisions = _apply_range(
+        segment.detect_chapters(text, mode=spec.mode,
+                                poem_titles=spec.poem_titles), rng)
+    log(f"• Divisions used: {len(divisions)}")
+
+    chapters: list[Chapter] = []
+    for title, body in divisions:
+        segs = segment.segment(body, spec.mode, lang)
+        if spec.clean:
+            segs = clean.clean_segments(segs)
+        if not segs:
+            continue
+        beads = [Bead(src=[], tgt=[s]) if keep == "tgt" else Bead(src=[s], tgt=[])
+                 for s in segs]
+        chapters.append(Chapter(
+            title=title,
+            src_segments=[] if keep == "tgt" else segs,
+            tgt_segments=segs if keep == "tgt" else [],
+            beads=beads))
+
+    total = sum(len(c.beads) for c in chapters)
+    log(f"• Segmented into {total} bead(s) across {len(chapters)} chapter(s).")
+    return chapters
+
+
 def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
     """Segment and align each already-paired division into beads.
 
@@ -386,14 +443,22 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
     elif spec.perseus.work_id:
         chapters = _chapters_from_perseus(spec, log)
     else:
-        if not spec.translation_pd_confirmed:
+        has_src = bool(spec.src_path or spec.src_gutenberg_id)
+        has_tgt = bool(spec.tgt_path or spec.tgt_gutenberg_id)
+        if not spec.translation_pd_confirmed and has_tgt:
             log(
                 "  ⚠  translation_pd_confirmed is False. A translator holds copyright "
                 "on their translation separately from the public-domain original. "
                 "Verify the translation is public domain (US: published before 1929) "
                 "before publishing."
             )
-        chapters = _chapters_from_editions(spec, log)
+        # One edition given, and a monolingual edition asked for: there is
+        # nothing to align it against, and demanding a second edition would be
+        # demanding a translation nobody intends to print.
+        if has_src != has_tgt and spec.sides in ("src", "tgt"):
+            chapters = _chapters_from_single_edition(spec, log)
+        else:
+            chapters = _chapters_from_editions(spec, log)
 
     chapters = apply_sides(chapters, spec.sides, log)
     if not chapters:

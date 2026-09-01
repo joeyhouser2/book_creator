@@ -318,9 +318,12 @@ def test_jobs_listing_summarizes_a_finished_build(client):
 # Build validation
 # --------------------------------------------------------------------------- #
 def test_build_requires_a_source(client):
+    """With nothing chosen at all the message no longer says "original": a
+    monolingual edition can be built from a text in either slot, so what is
+    missing is a text, not specifically an original."""
     res = client.post("/api/build", json={})
     assert res.status_code == 400
-    assert "original" in res.get_json()["error"].lower()
+    assert "choose a text" in res.get_json()["error"].lower()
 
 
 def test_build_requires_a_translation_for_a_gutenberg_pair(client):
@@ -610,3 +613,40 @@ def test_settings_refuse_a_location_with_no_corpus(client, tmp_path, monkeypatch
     res = client.post("/api/corpus/settings", json={"repo": str(tmp_path / "nope")})
     assert res.status_code == 400
     assert bc_settings.load() == {}, "a rejected setting must not be stored"
+
+
+# --------------------------------------------------------------------------- #
+# Monolingual builds: one text, no translation
+# --------------------------------------------------------------------------- #
+def _no_build(monkeypatch):
+    """Accept the payload but never actually run a build."""
+    monkeypatch.setattr(server, "_run_build", lambda *a, **k: None)
+
+
+@pytest.mark.parametrize("payload", [
+    {"src_path": "input/x.epub", "sides": "src"},
+    {"tgt_path": "input/x.epub", "sides": "tgt"},
+    {"src_id": 1234, "sides": "src"},
+])
+def test_a_single_text_is_enough_for_a_monolingual_edition(client, monkeypatch,
+                                                           payload):
+    """Narrating an English EPUB you already have is not a request for a
+    translation, and the build endpoint used to demand one anyway."""
+    _no_build(monkeypatch)
+    res = client.post("/api/build", json=payload)
+    assert res.status_code == 200, res.get_json()
+
+
+def test_a_dual_language_edition_still_needs_both_sides(client, monkeypatch):
+    _no_build(monkeypatch)
+    res = client.post("/api/build", json={"src_path": "input/x.txt",
+                                          "sides": "both"})
+    assert res.status_code == 400
+    assert "both sides" in res.get_json()["error"]
+
+
+def test_no_text_at_all_is_refused(client, monkeypatch):
+    _no_build(monkeypatch)
+    res = client.post("/api/build", json={"sides": "src"})
+    assert res.status_code == 400
+    assert "Choose a text" in res.get_json()["error"]

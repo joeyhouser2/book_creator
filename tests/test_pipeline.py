@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from book_creator import audio, corpus
+from book_creator import audio, corpus, pipeline
 from book_creator.model import AudioSpec, BookSpec, CorpusSpec, FontSpec
 from book_creator.pipeline import apply_sides, build_book
 
@@ -287,3 +287,57 @@ def test_build_with_narration(corpus_db, small_doc, a_font, tmp_path, tone_engin
                on_log=lambda _m: None)
     assert art["audio"]["book"] and Path(art["audio"]["book"]).exists()
     assert art["audio"]["seconds"] > 0
+
+
+# --------------------------------------------------------------------------- #
+# One edition, printed on its own
+# --------------------------------------------------------------------------- #
+def test_a_single_edition_becomes_one_sided_beads(tmp_path):
+    """No second edition means nothing to align against — the text is just
+    segmented, with the other side of every bead left empty."""
+    src = tmp_path / "en.txt"
+    src.write_text("Gallia est omnis. Divisa in partes tres. Quarum unam.",
+                   encoding="utf-8")
+    spec = BookSpec(title="T", author="A", src_path=str(src), src_lang="en",
+                    sides="src")
+    chapters = pipeline._chapters_from_single_edition(spec, lambda _m: None)
+
+    beads = [b for ch in chapters for b in ch.beads]
+    assert beads, "expected beads from the single edition"
+    assert all(b.src and not b.tgt for b in beads)
+
+
+def test_a_single_edition_can_be_the_translation_side(tmp_path):
+    tgt = tmp_path / "en.txt"
+    tgt.write_text("All Gaul is divided. Into three parts. One of which.",
+                   encoding="utf-8")
+    spec = BookSpec(title="T", author="A", src_lang="la",
+                    tgt_path=str(tgt), tgt_lang="en", sides="tgt")
+    chapters = pipeline._chapters_from_single_edition(spec, lambda _m: None)
+
+    beads = [b for ch in chapters for b in ch.beads]
+    assert beads
+    assert all(b.tgt and not b.src for b in beads)
+
+
+def test_asking_to_print_the_side_that_is_missing_says_so(tmp_path):
+    """Only an Original given, but the edition set to translation-only: the
+    error has to name the contradiction, not fail opening a path of None."""
+    src = tmp_path / "en.txt"
+    src.write_text("Gallia est omnis.", encoding="utf-8")
+    spec = BookSpec(title="T", author="A", src_path=str(src), src_lang="en",
+                    sides="tgt")
+    with pytest.raises(ValueError, match="missing"):
+        pipeline._chapters_from_single_edition(spec, lambda _m: None)
+
+
+def test_build_routes_a_lone_edition_to_the_single_path(tmp_path):
+    """The whole point: build_book must not try to fetch a translation that
+    was never chosen."""
+    src = tmp_path / "en.txt"
+    src.write_text(" ".join(f"Sentence number {i}." for i in range(40)),
+                   encoding="utf-8")
+    spec = BookSpec(title="Solo", author="A", src_path=str(src), src_lang="en",
+                    sides="src", epub=False)
+    out = pipeline.build_book(spec, out_dir=str(tmp_path), verbose=False)
+    assert Path(out).exists()
