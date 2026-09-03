@@ -64,6 +64,8 @@ def load_text(*, path: str | None = None, gid: int | None = None, log=None) -> s
         if p.suffix.lower() == ".epub":
             from . import epub_reader
             return epub_reader.read_epub(p, log=log)
+        if p.suffix.lower() == ".pdf":
+            return _pdf_text(p, log=log)
         return p.read_text(encoding="utf-8", errors="replace")
     if gid is not None:
         return fetch_gutenberg(gid)
@@ -188,6 +190,45 @@ def strip_gutenberg_boilerplate(text: str) -> str:
     if end:
         text = text[: end.start()]
     return text.strip()
+
+
+def _pdf_text(p: Path, *, log=None) -> str:
+    """A PDF's text: its own layer, or the OCR already run on it.
+
+    A scanned PDF has no text layer at all, and silently returning the empty
+    string would send an empty book through every later stage. OCR is not
+    started here -- it can be twenty minutes of work and belongs in a job the
+    user can watch and stop -- so this says what to do instead.
+    """
+    from . import ocr
+
+    info = ocr.inspect_pdf(p)
+    if not info.needs_ocr:
+        import fitz
+
+        doc = fitz.open(str(p))
+        try:
+            text = "\n\n".join(page.get_text().strip() for page in doc)
+        finally:
+            doc.close()
+        if log:
+            log(f"• Read {len(text):,} characters from {p.name} "
+                f"({info.pages} page(s), embedded text layer).")
+        return text
+
+    cached = ocr.cached_for(p)
+    if cached:
+        best = cached[0]
+        text = Path(best["path"]).read_text(encoding="utf-8", errors="replace")
+        if log:
+            log(f"• {p.name} has no text layer; using the OCR run on it "
+                f"(language '{best['lang']}', {best['dpi']} dpi, "
+                f"{len(text):,} characters).")
+        return text
+
+    raise ValueError(
+        f"{p.name} is a scan: {info.pages} page(s) with no text layer. Run "
+        f"OCR on it first (Local files → Run OCR), then build from it.")
 
 
 def load_divisions(*, path: str | None = None, gid: int | None = None,

@@ -650,3 +650,57 @@ def test_no_text_at_all_is_refused(client, monkeypatch):
     res = client.post("/api/build", json={"sides": "src"})
     assert res.status_code == 400
     assert "Choose a text" in res.get_json()["error"]
+
+
+# --------------------------------------------------------------------------- #
+# OCR and source preview
+# --------------------------------------------------------------------------- #
+def test_pdfs_are_offered_as_local_sources(client):
+    """They were not listed at all, so a scan could not even be chosen."""
+    (client.input_dir / "scan.pdf").write_bytes(b"%PDF-1.4 fake")
+    (client.input_dir / "notes.md").write_text("ignore", encoding="utf-8")
+    data = _get(client, "/api/local/files")[1]
+    kinds = {f["kind"] for f in data["files"]}
+    assert "pdf" in kinds and "md" not in kinds
+
+
+def test_ocr_status_reports_availability(client):
+    status = _get(client, "/api/ocr/status")[1]
+    assert "available" in status and "languages" in status
+
+
+def test_ocr_refuses_a_language_it_does_not_have(client, monkeypatch):
+    (client.input_dir / "scan.pdf").write_bytes(b"%PDF-1.4 fake")
+    monkeypatch.setattr(server.ocr, "available", lambda: (True, ""))
+    monkeypatch.setattr(server.ocr, "languages", lambda: ["eng"])
+    res = client.post("/api/ocr/run", json={"path": "scan.pdf", "lang": "klingon"})
+    assert res.status_code == 400
+    assert "klingon" in res.get_json()["error"]
+
+
+def test_ocr_says_so_when_tesseract_is_missing(client, monkeypatch):
+    (client.input_dir / "scan.pdf").write_bytes(b"%PDF-1.4 fake")
+    monkeypatch.setattr(server.ocr, "available",
+                        lambda: (False, "Tesseract is not installed."))
+    res = client.post("/api/ocr/run", json={"path": "scan.pdf"})
+    assert res.status_code == 503
+    assert "Tesseract" in res.get_json()["error"]
+
+
+def test_ocr_paths_are_confined_to_the_input_directory(client):
+    res = client.post("/api/ocr/run", json={"path": "../../etc/passwd"})
+    assert res.status_code == 400
+
+
+def test_source_preview_counts_pages_of_a_text_file(client):
+    (client.input_dir / "book.txt").write_text("x" * 10_000, encoding="utf-8")
+    data = _get(client, "/api/local/pages?path=book.txt")[1]
+    assert data["kind"] == "text" and data["pages"] > 1
+
+
+def test_source_preview_returns_a_screenful(client):
+    (client.input_dir / "book.txt").write_text(
+        "alpha " * 2000, encoding="utf-8")
+    data = _get(client, "/api/local/page/0.txt?path=book.txt")[1]
+    assert data["text"].startswith("alpha")
+    assert 0 < len(data["text"]) <= server._TEXT_PAGE_CHARS

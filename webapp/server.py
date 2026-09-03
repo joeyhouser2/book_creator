@@ -13,8 +13,8 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import yaml
 
 from book_creator import (audio, corpus, corpus_jobs, cover, decorations,
-                          epub_reader, fetch, fonts, perseus, pg_catalog,
-                          segment)
+                          epub_reader, fetch, fonts, ocr, perseus,
+                          pg_catalog, segment)
 from book_creator.model import (AudioSpec, BookSpec, CopyrightSpec, CorpusSpec,
                                 CoverSpec, DecorSpec, FontSpec, PerseusSpec)
 from book_creator import pipeline
@@ -29,7 +29,10 @@ OUTPUT_DIR = "output"
 # Local source texts live here. Everything served by the /api/local endpoints
 # is confined to this directory — see _safe_input_path.
 INPUT_DIR = Path("input")
-LOCAL_SUFFIXES = (".txt", ".epub")
+LOCAL_SUFFIXES = (".txt", ".epub", ".pdf")
+# Characters per screenful when previewing a text source, which has no
+# pages of its own.
+_TEXT_PAGE_CHARS = 2200
 
 # In-memory job registry for the live view, mirrored to SQLite so a restart
 # does not lose finished builds (webapp/jobs.py).
@@ -167,6 +170,130 @@ def api_preview_cover():
                     headers={"Cache-Control": "no-store"})
 
 
+# --------------------------------------------------------------------------- #
+# OCR — reading text off page images
+#
+# A scanned PDF has no text layer, so every later stage would see an empty
+# book; an EPUB from a scanning project often has one of poor quality. Both
+# are fixable here rather than outside the app. OCR is minutes of work on a
+# real book, so it runs as a job like the corpus passes do.
+# --------------------------------------------------------------------------- #
+@app.route("/api/ocr/status")
+def api_ocr_status():
+    """Whether OCR can run, and in which languages."""
+    return jsonify(ocr.status())
+
+
+@app.route("/api/ocr/inspect")
+def api_ocr_inspect():
+    """What a file already carries, and what OCR has been run on it."""
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    out = {"name": p.name, "kind": p.suffix.lower().lstrip("."),
+           "cached": ocr.cached_for(p)}
+    if p.suffix.lower() == ".pdf":
+        try:
+            out["text_layer"] = ocr.inspect_pdf(p).as_dict()
+        except ocr.OcrError as exc:
+            return jsonify({"error": str(exc)}), 400
+    elif p.suffix.lower() == ".epub":
+        try:
+            report = epub_reader.inspect(p)
+            out["text_layer"] = {
+                "pages": report.documents, "characters": report.characters,
+                "images": report.images,
+                "chars_per_page": report.chars_per_document,
+                # An EPUB that reports its own OCR accuracy is telling you the
+                # text is bad even though it exists — worth re-OCRing.
+                "ocr_accuracy": report.ocr_accuracy,
+                "needs_ocr": not report.usable}
+        except epub_reader.EpubError as exc:
+            return jsonify({"error": str(exc)}), 400
+    else:
+        return jsonify({"error": f"OCR handles PDF and EPUB; {p.name} is "
+                                 f"already text."}), 400
+    return jsonify(out)
+
+
+def _run_ocr(job_id: str, path: str, opts: dict) -> None:
+    job = _jobs[job_id]
+
+    def on_log(msg: str) -> None:
+        with _lock:
+            job["log"].append(msg)
+        _store.save(job_id, job)
+
+    def on_progress(done: int, total: int) -> None:
+        with _lock:
+            job["progress"] = {"done": done, "total": total,
+                               "percent": round(100 * done / max(1, total))}
+        _store.save(job_id, job)
+
+    try:
+        dest = ocr.run(path, lang=opts.get("lang") or "eng",
+                       dpi=int(opts.get("dpi") or 300),
+                       psm=int(opts.get("psm") or 3),
+                       force=bool(opts.get("force")),
+                       on_log=on_log, on_progress=on_progress,
+                       should_stop=lambda: job.get("cancel", False))
+        with _lock:
+            job["artifacts"]["ocr_text"] = str(dest)
+            job["status"] = "cancelled" if job.get("cancel") else "done"
+    except Exception as exc:  # noqa: BLE001
+        with _lock:
+            job["status"] = "error"
+            job["error"] = str(exc)
+            job["log"].append(f"✗ {exc}")
+        traceback.print_exc()
+    finally:
+        _store.save(job_id, job, force=True)
+
+
+@app.route("/api/ocr/run", methods=["POST"])
+def api_ocr_run():
+    payload = request.get_json(force=True)
+    try:
+        p = _safe_input_path(payload.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    ok, reason = ocr.available()
+    if not ok:
+        return jsonify({"error": reason}), 503
+
+    lang = payload.get("lang") or "eng"
+    known = ocr.languages()
+    # A combination like "lat+eng" is normal for a text with quotations in it.
+    for part in lang.split("+"):
+        if part not in known:
+            return jsonify({"error": f"No '{part}' language data installed. "
+                                     f"Available: {', '.join(known)}."}), 400
+
+    # One OCR at a time: it is CPU-bound across every core, and two runs just
+    # halve each other's speed.
+    with _lock:
+        running = next((j for j in _jobs.values()
+                        if j.get("kind") == "ocr" and j.get("status") == "running"),
+                       None)
+    if running:
+        return jsonify({"error": f"OCR is already running ({running['title']}). "
+                                 f"Wait for it, or stop it first."}), 409
+
+    job_id = uuid.uuid4().hex[:12]
+    title = f"OCR: {p.name}"
+    _jobs[job_id] = {"status": "running", "log": [], "pages": 0, "title": title,
+                     "kind": "ocr", "pdf_path": None, "cover_path": None,
+                     "error": None, "progress": None, "artifacts": {},
+                     "cancel": False}
+    _store.create(job_id, title)
+    threading.Thread(target=_run_ocr, args=(job_id, str(p), payload),
+                     daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
 @app.route("/api/outline")
 def api_outline():
     """Division outline for a Gutenberg id, so the user can pick a range."""
@@ -234,6 +361,24 @@ def api_local_inspect():
             report = epub_reader.inspect(p).as_dict()
         except epub_reader.EpubError as exc:
             return jsonify({"error": str(exc)}), 400
+    elif p.suffix.lower() == ".pdf":
+        # Reading a PDF as text gives binary noise and a nonsense character
+        # count, which is what this used to report.
+        try:
+            layer = ocr.inspect_pdf(p)
+        except ocr.OcrError as exc:
+            return jsonify({"error": str(exc)}), 400
+        warnings = []
+        if layer.needs_ocr:
+            warnings.append(
+                f"No text layer: {layer.pages} page(s) of images. Run OCR "
+                f"below before building from this.")
+        report = {"path": str(p), "documents": layer.pages,
+                  "images": layer.images, "characters": layer.characters,
+                  "size_mb": round(p.stat().st_size / 1024 ** 2, 1),
+                  "chars_per_document": layer.chars_per_page,
+                  "ocr_accuracy": None, "ocr_pages": 0,
+                  "warnings": warnings, "usable": not layer.needs_ocr}
     else:
         text = p.read_text(encoding="utf-8", errors="replace")
         report = {"path": str(p), "documents": 1, "images": 0,
@@ -267,6 +412,65 @@ def api_local_outline():
 # --------------------------------------------------------------------------- #
 # Perseus (the classical canon, original + human translation)
 # --------------------------------------------------------------------------- #
+@app.route("/api/local/pages")
+def api_local_pages():
+    """How many previewable units a source file has, before any build.
+
+    Seeing the source as it actually is — the scan, the typography, the front
+    matter — is how you tell whether it is the edition you meant, and until
+    now the preview pane could only show a book that had already been built.
+    """
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    suffix = p.suffix.lower()
+    if suffix == ".pdf":
+        return jsonify({"kind": "pdf", "pages": preview.page_count(str(p))})
+    # Text and EPUB have no pages of their own, so the extracted text is cut
+    # into screenfuls purely for reading. Deliberately not rendered as book
+    # pages: that would look like a proof of a build that has not happened.
+    try:
+        text = fetch.load_text(path=str(p))
+    except (epub_reader.EpubError, OSError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"kind": "text",
+                    "pages": max(1, -(-len(text) // _TEXT_PAGE_CHARS)),
+                    "characters": len(text)})
+
+
+@app.route("/api/local/page/<int:page>.png")
+def api_local_page_png(page: int):
+    """One page of a source PDF, as it is on disk."""
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return Response(str(exc), status=400)
+    if p.suffix.lower() != ".pdf":
+        return Response("not a PDF", status=400)
+    try:
+        return Response(preview.render_page(str(p), page), mimetype="image/png")
+    except Exception as exc:  # noqa: BLE001 - fitz raises assorted types
+        return Response(f"could not render: {exc}", status=400)
+
+
+@app.route("/api/local/page/<int:page>.txt")
+def api_local_page_text(page: int):
+    """One screenful of a source text or EPUB, as extracted."""
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        text = fetch.load_text(path=str(p))
+    except (epub_reader.EpubError, OSError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    start = max(0, page) * _TEXT_PAGE_CHARS
+    return jsonify({"text": text[start:start + _TEXT_PAGE_CHARS],
+                    "start": start, "characters": len(text)})
+
+
 @app.route("/api/perseus/status")
 def api_perseus_status():
     return jsonify(perseus.status())

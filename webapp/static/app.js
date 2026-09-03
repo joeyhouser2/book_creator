@@ -16,6 +16,10 @@ const state = {
   passPoll: null,
   passDoc: null,        // which work that pass is for
   passOutcome: null,    // {docId, html} — survives the post-pass reload
+  srcPreview: null,     // {path, name, kind, pages} — the file itself
+  ocrJob: null,         // a running OCR job
+  ocrOutcome: null,     // {path, html} — survives the post-OCR re-inspect
+  ocrPoll: null,
   page: 0,
   pages: 0,
   poll: null,
@@ -1120,12 +1124,158 @@ async function selectLocal(which, f) {
   state[which] = { ...f };
   renderLocalSlot(which);
   if (which === "lsrc" && !$("title").value) {
-    $("title").value = f.name.replace(/\.(txt|epub)$/i, "").replace(/[_-]+/g, " ");
+    $("title").value = f.name.replace(/\.(txt|epub|pdf)$/i, "").replace(/[_-]+/g, " ");
   }
   // Inspect before outlining: a scan with no usable text layer should be
   // reported as such rather than silently producing an empty outline.
   await inspectLocal(which);
   await loadLocalOutline(which);
+  await openSourcePreview(f);
+}
+
+// --------------------------------------------------------------------------- //
+// OCR — reading text off page images
+//
+// A scanned PDF has no text layer at all, so it cannot be built from until it
+// has been read; an EPUB from a scanning project often has one of poor quality
+// and is worth reading again. Both are minutes of work, so it runs as a job.
+// --------------------------------------------------------------------------- //
+let OCR = null;
+
+async function loadOcrStatus() {
+  try { OCR = await getJSON("/api/ocr/status"); }
+  catch { OCR = { available: false, error: "Could not reach the server.", languages: [] }; }
+}
+
+function ocrPanelHtml(f, info) {
+  if (!OCR) return "";
+  const kind = (f.kind || "").toLowerCase();
+  if (kind !== "pdf" && kind !== "epub") return "";
+  if (!OCR.available) {
+    return `<p class="muted small">OCR unavailable — ${escapeHtml(OCR.error || "")}</p>`;
+  }
+  const t = (info && info.text_layer) || {};
+  const cached = (info && info.cached) || [];
+  const needs = !!t.needs_ocr;
+  const poor = t.ocr_accuracy !== null && t.ocr_accuracy !== undefined
+               && t.ocr_accuracy < 90;
+
+  let verdict;
+  if (needs) {
+    verdict = `<span class="caution">⚠ No text layer — ${t.pages || 0} page(s)
+      of images. This has to be read before it can be built from.</span>`;
+  } else if (poor) {
+    verdict = `<span class="caution">⚠ Has text, but the file reports its own
+      OCR as ${t.ocr_accuracy}% accurate. Reading it again may do better.</span>`;
+  } else {
+    verdict = `Has a usable text layer (~${(t.chars_per_page || 0).toLocaleString()}
+      characters per page). OCR is optional here.`;
+  }
+
+  const langs = (OCR.languages || []).map((l) =>
+    `<option value="${escapeHtml(l)}">${escapeHtml(LANG_LABEL[OCR3[l]] || l)}</option>`).join("");
+  const done = cached.map((c) =>
+    `<li>${escapeHtml(c.lang)} at ${escapeHtml(c.dpi)} dpi —
+     ${(c.characters || 0).toLocaleString()} characters</li>`).join("");
+
+  return `
+    <h3>OCR</h3>
+    <p class="muted small">${verdict}</p>
+    ${done ? `<p class="muted small">Already read: <ul class="small">${done}</ul>
+      A build uses the most recent of these automatically.</p>` : ""}
+    <div class="facets">
+      <label>Language <select id="ocrLang">${langs}</select></label>
+      <label>Resolution
+        <select id="ocrDpi">
+          <option value="300">300 dpi — normal</option>
+          <option value="400">400 dpi — small or worn type</option>
+          <option value="200">200 dpi — fast, for a quick look</option>
+        </select></label>
+      <label class="inline-check"><input id="ocrForce" type="checkbox"
+        ${needs ? "" : "checked"}> read every page again
+        <span class="hint">otherwise pages that already have text are kept</span></label>
+    </div>
+    <div class="search-row">
+      <button id="ocrRun">Run OCR</button>
+      <button id="ocrCancel" class="hidden">Stop</button>
+    </div>
+    <div id="ocrProgress">${
+      state.ocrOutcome && state.ocrOutcome.path === f.path
+        ? state.ocrOutcome.html : ""}</div>`;
+}
+
+// Tesseract's codes are its own; map the ones we know to readable names.
+const OCR3 = { eng: "en", lat: "la", grc: "grc", fra: "fr", deu: "de",
+               ita: "it", spa: "es", ell: "el" };
+
+function wireOcrPanel(f) {
+  const run = $("ocrRun");
+  if (!run) return;
+  run.onclick = () => startOcr(f);
+  const cancel = $("ocrCancel");
+  if (cancel) cancel.onclick = () => {
+    if (state.ocrJob) fetch(`/api/cancel/${state.ocrJob}`, { method: "POST" });
+    cancel.disabled = true;
+    cancel.textContent = "Stopping…";
+  };
+}
+
+async function startOcr(f) {
+  const box = $("ocrProgress");
+  state.ocrOutcome = null;
+  box.innerHTML = `<p class="muted">Starting…</p>`;
+  let data;
+  try {
+    data = await postJSON("/api/ocr/run", {
+      path: f.path, lang: $("ocrLang").value,
+      dpi: Number($("ocrDpi").value) || 300,
+      force: $("ocrForce").checked,
+    });
+  } catch (e) {
+    box.innerHTML = `<p>⚠ ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  state.ocrJob = data.job_id;
+  $("ocrRun").disabled = true;
+  $("ocrCancel").classList.remove("hidden");
+  pollOcr(f);
+}
+
+function pollOcr(f) {
+  clearTimeout(state.ocrPoll);
+  const box = $("ocrProgress");
+  const tick = async () => {
+    let d;
+    try { d = await getJSON(`/api/status/${state.ocrJob}`); }
+    catch (e) { box.innerHTML = `<p>⚠ ${escapeHtml(e.message)}</p>`; return; }
+    const p = d.progress || {};
+    const bar = p.total
+      ? `<div class="passbar"><span style="width:${p.percent || 0}%"></span></div>
+         <p class="muted small">page ${(p.done || 0).toLocaleString()} of
+           ${p.total.toLocaleString()} (${p.percent || 0}%)</p>`
+      : `<p class="muted small">Starting…</p>`;
+    const tail = (d.log || []).slice(-4).map(escapeHtml).join("<br>");
+    if (box.isConnected) box.innerHTML = bar + `<pre class="passlog">${tail}</pre>`;
+
+    if (d.status === "running") { state.ocrPoll = setTimeout(tick, 1500); return; }
+    state.ocrJob = null;
+    const done = {
+      done: "✓ Read. A build from this file now uses the OCR text.",
+      cancelled: "■ Stopped. Pages already read are kept; run it again to redo.",
+      error: `⚠ ${escapeHtml(d.error || "failed")}`,
+    }[d.status] || d.status;
+    const outcome = `<p>${done}</p><pre class="passlog">${tail}</pre>`;
+    if (box.isConnected) box.innerHTML = outcome;
+    // Re-inspect so the verdict, the cached list and the outline all update —
+    // which rebuilds this panel, so the outcome is stashed to be re-rendered
+    // rather than disappearing the instant the run finishes.
+    state.ocrOutcome = { path: f.path, html: outcome };
+    const which = state.lsrc && state.lsrc.path === f.path ? "lsrc" : "ltgt";
+    await inspectLocal(which);
+    await loadLocalOutline(which);
+    await openSourcePreview(state[which]);
+  };
+  tick();
 }
 
 async function inspectLocal(which) {
@@ -1151,6 +1301,17 @@ async function inspectLocal(which) {
       ${r.ocr_accuracy !== null && r.ocr_accuracy !== undefined
         ? `<div><span class="k">ocr</span> self-reported ${r.ocr_accuracy}% accurate</div>` : ""}
     </div>${warns}`;
+
+  // OCR is offered for the two formats that can be pictures of a page.
+  const kind = (f.kind || "").toLowerCase();
+  if (kind === "pdf" || kind === "epub") {
+    let info = null;
+    try {
+      info = await getJSON(`/api/ocr/inspect?path=${encodeURIComponent(f.path)}`);
+    } catch { /* the panel degrades to its unavailable state */ }
+    detail.insertAdjacentHTML("beforeend", ocrPanelHtml(f, info));
+    wireOcrPanel(f);
+  }
 }
 
 async function loadLocalOutline(which) {
@@ -1620,7 +1781,55 @@ function resetPreview() {
     $(id).style.display = "none";
 }
 
+// --------------------------------------------------------------------------- //
+// Source preview — the file as it is, before anything is done to it
+// --------------------------------------------------------------------------- //
+async function openSourcePreview(f) {
+  if (!f) { state.srcPreview = null; return; }
+  try {
+    const info = await getJSON(
+      `/api/local/pages?path=${encodeURIComponent(f.path)}`);
+    state.srcPreview = { path: f.path, name: f.name, kind: info.kind,
+                         pages: info.pages || 1 };
+  } catch (e) {
+    state.srcPreview = null;
+    if (!state.job) {
+      $("previewWrap").innerHTML =
+        `<p class="muted">Cannot preview ${escapeHtml(f.name)} — ` +
+        `${escapeHtml(e.message)}</p>`;
+    }
+    return;
+  }
+  if (!state.job) showSourcePage(0);      // a built book keeps the pane
+}
+
+async function showSourcePage(i) {
+  const sp = state.srcPreview;
+  if (!sp) return;
+  state.page = Math.max(0, Math.min(i, sp.pages - 1));
+  $("pageLabel").textContent =
+    `${state.page + 1} / ${sp.pages} · ${sp.kind === "pdf" ? "source pages" : "source text"}`;
+  if (sp.kind === "pdf") {
+    const url = `/api/local/page/${state.page}.png` +
+                `?path=${encodeURIComponent(sp.path)}&t=${Date.now()}`;
+    $("previewWrap").innerHTML =
+      `<img alt="source page ${state.page + 1}" src="${url}">`;
+    return;
+  }
+  try {
+    const d = await getJSON(`/api/local/page/${state.page}.txt` +
+                            `?path=${encodeURIComponent(sp.path)}`);
+    $("previewWrap").innerHTML =
+      `<pre class="srctext">${escapeHtml(d.text || "")}</pre>`;
+  } catch (e) {
+    $("previewWrap").innerHTML = `<p class="muted">⚠ ${escapeHtml(e.message)}</p>`;
+  }
+}
+
 function showPage(i) {
+  // A selected source file is previewed until a build replaces it, so the
+  // pane shows the book you are working from rather than "build something".
+  if (!state.job && state.srcPreview) { showSourcePage(i); return; }
   if (!state.job || state.pages === 0) return;
   state.viewingCover = false;
   $("coverToggle").textContent = "View cover";
@@ -1709,6 +1918,7 @@ selectTab("gutenberg");
 loadFonts();
 loadCoverStyles();
 loadDecorStyles();
+loadOcrStatus();
 loadCorpusStatus();
 loadCorpusSettings();
 loadPassStatus();

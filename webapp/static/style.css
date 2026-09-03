@@ -272,3 +272,21 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 .cover-preview img:not([src]) { display: none; }
+
+
+/* --- Source preview: the local file before anything is done to it --------- */
+.srctext {
+  margin: 0;
+  padding: 1.1rem 1.3rem;
+  background: #fffdf7;
+  border: 1px solid #e3ddcd;
+  border-radius: 3px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #2a2620;
+  max-height: 70vh;
+  overflow-y: auto;
+}
