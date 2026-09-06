@@ -343,6 +343,33 @@ def api_local_files():
     return jsonify({"dir": str(INPUT_DIR.resolve()), "files": files})
 
 
+def _apply_ocr_verdict(p: Path, report: dict) -> None:
+    """Let an OCR run answer the quality question the original text failed.
+
+    The verdict is about the text a build will *use*, and once OCR has been
+    run that is the OCR — so judging the file's own layer keeps calling a
+    scan unusable after the user has already fixed it, and the build refuses
+    work it can now do. The original warning is replaced rather than kept
+    alongside: "find a real ebook" is no longer the advice.
+    """
+    cached = ocr.cached_for(p)
+    if not cached:
+        return
+    best = cached[0]
+    report["ocr_text"] = best["path"]
+    report["characters"] = best["characters"]
+    report["usable"] = True
+    # The file's own accuracy claim describes a text that is no longer being
+    # used; showing it beside "read with OCR" reads as a verdict on the OCR.
+    report["ocr_accuracy"] = None
+    report["ocr_pages"] = 0
+    report["warnings"] = [w for w in report.get("warnings", [])
+                          if not w.startswith(("Unusable", "No text layer"))]
+    report["warnings"].append(
+        f"Read with OCR ({best['lang']}, {best['dpi']} dpi) — a build uses "
+        f"that text, not the one in the file.")
+
+
 @app.route("/api/local/inspect")
 def api_local_inspect():
     """What a local file actually contains, before a build is spent on it.
@@ -361,6 +388,7 @@ def api_local_inspect():
             report = epub_reader.inspect(p).as_dict()
         except epub_reader.EpubError as exc:
             return jsonify({"error": str(exc)}), 400
+        _apply_ocr_verdict(p, report)
     elif p.suffix.lower() == ".pdf":
         # Reading a PDF as text gives binary noise and a nonsense character
         # count, which is what this used to report.
@@ -379,6 +407,7 @@ def api_local_inspect():
                   "chars_per_document": layer.chars_per_page,
                   "ocr_accuracy": None, "ocr_pages": 0,
                   "warnings": warnings, "usable": not layer.needs_ocr}
+        _apply_ocr_verdict(p, report)
     else:
         text = p.read_text(encoding="utf-8", errors="replace")
         report = {"path": str(p), "documents": 1, "images": 0,

@@ -153,3 +153,60 @@ def test_stopping_keeps_what_was_read(tmp_path, monkeypatch):
                        should_stop=stop_after_one)
     assert len(seen) < 4, "it ran every page despite being asked to stop"
     assert text.strip(), "the pages already read should still come back"
+
+
+# --------------------------------------------------------------------------- #
+# OCR replaces the text the file came with
+# --------------------------------------------------------------------------- #
+def _fake_cache(monkeypatch, tmp_path, src: Path, text: str, lang="eng", dpi=300):
+    """Stand in for a completed OCR run on `src`."""
+    monkeypatch.setattr(ocr, "CACHE_DIR", tmp_path / "ocrcache")
+    dest = ocr.cache_path(src, lang, dpi)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(text, encoding="utf-8")
+    return dest
+
+
+def test_ocr_replaces_an_epubs_own_text(tmp_path, monkeypatch):
+    """The case that broke: a scanned EPUB *has* a text layer, just a terrible
+    one, so nothing looked missing and the fresh OCR sat unused in the cache
+    while the build kept using 17%-accurate garbage."""
+    from book_creator import fetch
+
+    epub = tmp_path / "scan.epub"
+    epub.write_bytes(b"not really an epub, and never opened")
+    _fake_cache(monkeypatch, tmp_path, epub, "The clean OCR text of the book.")
+
+    assert fetch.load_text(path=str(epub)) == "The clean OCR text of the book."
+
+
+def test_ocr_replaces_a_pdfs_own_text_too(tmp_path, monkeypatch):
+    from book_creator import fetch
+
+    pdf = _text_pdf(tmp_path / "digital.pdf")
+    _fake_cache(monkeypatch, tmp_path, pdf, "Re-read by OCR on purpose.")
+    # Force-OCRing a PDF that already had text is a deliberate act; the result
+    # is what was asked for.
+    assert fetch.load_text(path=str(pdf)) == "Re-read by OCR on purpose."
+
+
+def test_divisions_come_from_the_ocr_not_the_file(tmp_path, monkeypatch):
+    """The headings in a bad scan are as garbled as its prose, so the file's
+    own structure is no more trustworthy than its text."""
+    from book_creator import fetch
+
+    epub = tmp_path / "scan.epub"
+    epub.write_bytes(b"opaque")
+    _fake_cache(monkeypatch, tmp_path, epub,
+                "CHAPTER I\n\nFirst body.\n\nCHAPTER II\n\nSecond body.")
+    divs = fetch.load_divisions(path=str(epub))
+    assert len(divs) > 1, divs
+
+
+def test_a_file_with_no_ocr_is_untouched(tmp_path, monkeypatch):
+    from book_creator import fetch
+
+    monkeypatch.setattr(ocr, "CACHE_DIR", tmp_path / "empty")
+    txt = tmp_path / "plain.txt"
+    txt.write_text("Straight from the file.", encoding="utf-8")
+    assert fetch.load_text(path=str(txt)) == "Straight from the file."

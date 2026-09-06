@@ -61,6 +61,9 @@ def load_text(*, path: str | None = None, gid: int | None = None, log=None) -> s
     """
     if path:
         p = Path(path)
+        ocred = ocr_override(p, log=log)
+        if ocred is not None:
+            return ocred
         if p.suffix.lower() == ".epub":
             from . import epub_reader
             return epub_reader.read_epub(p, log=log)
@@ -192,6 +195,32 @@ def strip_gutenberg_boilerplate(text: str) -> str:
     return text.strip()
 
 
+def ocr_override(p: Path, *, log=None) -> str | None:
+    """Text from an OCR run on this file, if one has been done.
+
+    An OCR run supersedes whatever the file carried, for PDFs *and* EPUBs.
+    Nobody OCRs a file by accident: it is minutes of deliberate work, so the
+    result is what they meant to build from. That matters most for a scanned
+    EPUB, which unlike a scanned PDF usually *does* have a text layer -- just
+    a terrible one, often below 20% accurate -- so without this the fresh OCR
+    sits in the cache while the build quietly keeps using the garbage.
+    """
+    from . import ocr
+
+    if p.suffix.lower() not in (".pdf", ".epub"):
+        return None
+    cached = ocr.cached_for(p)
+    if not cached:
+        return None
+    best = cached[0]
+    text = Path(best["path"]).read_text(encoding="utf-8", errors="replace")
+    if log:
+        log(f"• Using the OCR run on {p.name} (language '{best['lang']}', "
+            f"{best['dpi']} dpi, {len(text):,} characters) in place of the "
+            f"text in the file.")
+    return text
+
+
 def _pdf_text(p: Path, *, log=None) -> str:
     """A PDF's text: its own layer, or the OCR already run on it.
 
@@ -216,16 +245,6 @@ def _pdf_text(p: Path, *, log=None) -> str:
                 f"({info.pages} page(s), embedded text layer).")
         return text
 
-    cached = ocr.cached_for(p)
-    if cached:
-        best = cached[0]
-        text = Path(best["path"]).read_text(encoding="utf-8", errors="replace")
-        if log:
-            log(f"• {p.name} has no text layer; using the OCR run on it "
-                f"(language '{best['lang']}', {best['dpi']} dpi, "
-                f"{len(text):,} characters).")
-        return text
-
     raise ValueError(
         f"{p.name} is a scan: {info.pages} page(s) with no text layer. Run "
         f"OCR on it first (Local files → Run OCR), then build from it.")
@@ -247,6 +266,16 @@ def load_divisions(*, path: str | None = None, gid: int | None = None,
     document is one blob may still have "CHAPTER I" lines in it.
     """
     from . import segment
+
+    if path:
+        # OCR replaces the file's own text, so it replaces the file's own
+        # structure with it: the headings in a 17%-accurate scan are as
+        # garbled as its prose, and detecting them in the OCR is the honest
+        # thing to do.
+        ocred = ocr_override(Path(path), log=log)
+        if ocred is not None:
+            return segment.detect_chapters(ocred, mode=mode,
+                                           poem_titles=poem_titles)
 
     if path and Path(path).suffix.lower() == ".epub":
         from . import epub_reader

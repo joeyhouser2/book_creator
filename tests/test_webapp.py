@@ -704,3 +704,29 @@ def test_source_preview_returns_a_screenful(client):
     data = _get(client, "/api/local/page/0.txt?path=book.txt")[1]
     assert data["text"].startswith("alpha")
     assert 0 < len(data["text"]) <= server._TEXT_PAGE_CHARS
+
+
+def test_an_ocred_file_is_no_longer_called_unusable(client, monkeypatch):
+    """The verdict is about the text a build will use. Once OCR has run that
+    is the OCR, so judging the file's own layer kept calling a scan unusable
+    after the user had already fixed it — and the build refused work it could
+    now do."""
+    scan = client.input_dir / "scan.epub"
+    scan.write_bytes(b"opaque")
+
+    monkeypatch.setattr(server.epub_reader, "inspect", lambda p: type(
+        "R", (), {"as_dict": lambda self: {
+            "path": str(p), "documents": 200, "characters": 100,
+            "images": 200, "size_mb": 1.0, "chars_per_document": 1,
+            "ocr_accuracy": 17.0, "ocr_pages": 10,
+            "warnings": ["Unusable: the file reports its own OCR as 17% "
+                         "accurate. Find a real ebook rather than a scan."],
+            "usable": False}})())
+    monkeypatch.setattr(server.ocr, "cached_for", lambda p: [
+        {"path": "cache/ocr/scan-abc-eng-300.txt", "name": "scan-abc-eng-300.txt",
+         "lang": "eng", "dpi": "300", "characters": 287141, "modified": 1.0}])
+
+    data = _get(client, "/api/local/inspect?path=scan.epub")[1]
+    assert data["usable"] is True
+    assert not any(w.startswith("Unusable") for w in data["warnings"])
+    assert any("Read with OCR" in w for w in data["warnings"])
