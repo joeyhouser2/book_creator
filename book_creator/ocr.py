@@ -168,6 +168,21 @@ def status() -> dict:
 # Does this file need OCR?
 # --------------------------------------------------------------------------- #
 @dataclass
+class OcrResult:
+    """The text read, and whether the whole file was read.
+
+    Distinguished because a stopped run must never be mistaken for a finished
+    one: its text is a valid prefix of the book, and silently caching it over
+    a complete run replaces the book with its first few chapters.
+    """
+
+    text: str
+    complete: bool
+    done: int
+    total: int
+
+
+@dataclass
 class TextLayer:
     """What a file already offers before OCR is considered."""
 
@@ -252,7 +267,7 @@ def cache_path(path: str | Path, lang: str, dpi: int) -> Path:
 
 def ocr_pdf(path: str | Path, *, lang: str = "eng", dpi: int = 300,
             psm: int = 3, force: bool = False, on_log=None, on_progress=None,
-            should_stop=None) -> str:
+            should_stop=None) -> OcrResult:
     """OCR a PDF, page by page, and return the text.
 
     Pages that already carry a usable text layer are kept as they are unless
@@ -273,9 +288,12 @@ def ocr_pdf(path: str | Path, *, lang: str = "eng", dpi: int = 300,
         log(f"• OCR {p.name}: {total} page(s) at {dpi} dpi, language '{lang}'.")
         out: list[str] = []
         ocred = kept = 0
+        done = 0
+        stopped = False
         for i, page in enumerate(doc, start=1):
             if should_stop and should_stop():
-                log("… stopped; pages done so far are kept.")
+                log("… stopped before the end of the file.")
+                stopped = True
                 break
             existing = page.get_text().strip()
             if existing and len(existing) >= _TEXT_LAYER_FLOOR and not force:
@@ -285,19 +303,21 @@ def ocr_pdf(path: str | Path, *, lang: str = "eng", dpi: int = 300,
                 png = page.get_pixmap(dpi=dpi).tobytes("png")
                 out.append(_run_tesseract(png, lang, exe, psm).strip())
                 ocred += 1
+            done = i
             if on_progress:
                 on_progress(i, total)
         log(f"• OCR done: {ocred} page(s) read from the image"
             + (f", {kept} kept from the existing text layer" if kept else "")
             + ".")
-        return "\n\n".join(t for t in out if t)
+        return OcrResult("\n\n".join(t for t in out if t),
+                         complete=not stopped, done=done, total=total)
     finally:
         doc.close()
 
 
 def ocr_epub(path: str | Path, *, lang: str = "eng", dpi: int = 300,
              psm: int = 3, on_log=None, on_progress=None,
-             should_stop=None) -> str:
+             should_stop=None) -> OcrResult:
     """OCR the page images inside an EPUB.
 
     A scanned EPUB is a wrapper around a folder of page pictures, in the same
@@ -327,9 +347,12 @@ def ocr_epub(path: str | Path, *, lang: str = "eng", dpi: int = 300,
 
     log(f"• OCR {p.name}: {len(images)} image(s) at {dpi} dpi, language '{lang}'.")
     out: list[str] = []
+    done = 0
+    stopped = False
     for i, item in enumerate(images, start=1):
         if should_stop and should_stop():
-            log("… stopped; images done so far are kept.")
+            log("… stopped before the end of the file.")
+            stopped = True
             break
         try:
             text = _run_tesseract(item.get_content(), lang, exe, psm).strip()
@@ -337,10 +360,12 @@ def ocr_epub(path: str | Path, *, lang: str = "eng", dpi: int = 300,
             continue          # one unreadable image should not lose the book
         if text:
             out.append(text)
+        done = i
         if on_progress:
             on_progress(i, len(images))
     log(f"• OCR done: {len(out)} image(s) produced text.")
-    return "\n\n".join(out)
+    return OcrResult("\n\n".join(out), complete=not stopped, done=done,
+                     total=len(images))
 
 
 def run(path: str | Path, *, lang: str = "eng", dpi: int = 300, psm: int = 3,
@@ -362,21 +387,40 @@ def run(path: str | Path, *, lang: str = "eng", dpi: int = 300, psm: int = 3,
         return dest
 
     if p.suffix.lower() == ".pdf":
-        text = ocr_pdf(p, lang=lang, dpi=dpi, psm=psm, force=force,
-                       on_log=on_log, on_progress=on_progress,
-                       should_stop=should_stop)
+        result = ocr_pdf(p, lang=lang, dpi=dpi, psm=psm, force=force,
+                         on_log=on_log, on_progress=on_progress,
+                         should_stop=should_stop)
     else:
-        text = ocr_epub(p, lang=lang, dpi=dpi, psm=psm, on_log=on_log,
-                        on_progress=on_progress, should_stop=should_stop)
+        result = ocr_epub(p, lang=lang, dpi=dpi, psm=psm, on_log=on_log,
+                          on_progress=on_progress, should_stop=should_stop)
 
-    if not text.strip():
+    if not result.text.strip():
         raise OcrError(
             f"OCR of {p.name} produced no text. If the pages are blank or the "
             f"language is wrong ('{lang}'), that is the first thing to check.")
+
+    # A stopped run holds only the first part of the book. Writing it to the
+    # cache would replace a finished read of the whole thing with its opening
+    # chapters -- and nothing downstream could tell, because a prefix of a
+    # book looks exactly like a book. Refuse rather than destroy work that
+    # took twenty minutes.
+    if not result.complete and dest.exists():
+        raise OcrError(
+            f"Stopped after {result.done} of {result.total}, so this is only "
+            f"the start of {p.name}. The complete OCR already cached for it "
+            f"has been left alone — run it again without stopping to replace "
+            f"it.")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(text, encoding="utf-8")
+    if not result.complete:
+        # Nothing to overwrite, so a partial read is better than none, but it
+        # is labelled: a build from it silently ends early otherwise.
+        dest = dest.with_name(dest.stem + "-partial.txt")
+    dest.write_text(result.text, encoding="utf-8")
     if on_log:
-        on_log(f"• OCR text written to {dest} ({len(text):,} characters).")
+        on_log(f"• OCR text written to {dest} ({len(result.text):,} "
+               f"characters)" +
+               ("" if result.complete
+                else f" — PARTIAL: {result.done} of {result.total} read.") + ".")
     return dest
 
 

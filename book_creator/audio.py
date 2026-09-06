@@ -608,6 +608,7 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
     chapter_titles: list[str] = []
     done = 0
     reused = 0
+    skipped: list[str] = []
     try:
         for ci, (title_of, items) in enumerate(plans, start=1):
             if should_stop is not None and should_stop():
@@ -632,8 +633,21 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
                         # unpronounceable".
                         if not re.search(r"\w", chunk):
                             continue
-                        parts.append(engine.synthesize(
-                            chunk, lang=u.lang, voice=u.voice))
+                        try:
+                            parts.append(engine.synthesize(
+                                chunk, lang=u.lang, voice=u.voice))
+                        except Exception as exc:  # noqa: BLE001 - engine bug
+                            # One awkward fragment must not destroy a run of
+                            # thousands. Chatterbox raises IndexError from its
+                            # own alignment analyzer on some very short texts
+                            # ("No.", "A.", "I." all fail; "III", "Yes." are
+                            # fine), and no amount of padding changes it --
+                            # it is a bug in the library, not in the text. So
+                            # the fragment is dropped, named in the log, and
+                            # the book carries on.
+                            skipped.append(chunk)
+                            log(f"  ⚠  Could not narrate {chunk!r} "
+                                f"({type(exc).__name__}); skipped.")
                     samples = (np.concatenate(parts) if parts
                                else np.zeros(0, dtype="float32"))
                     sr = engine.sample_rate
@@ -662,7 +676,9 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
     if not chapter_files:
         raise AudioError("No audio was produced.")
 
-    log(f"• Synthesized {done - reused} utterance(s); reused {reused} from cache.")
+    log(f"• Synthesized {done - reused} utterance(s); reused {reused} from cache."
+        + (f" {len(skipped)} fragment(s) the engine could not read were "
+           f"skipped." if skipped else ""))
     result = {
         "chapter_wavs": [str(p) for p in chapter_files],
         "chapters": len(chapter_files),

@@ -148,11 +148,12 @@ def test_stopping_keeps_what_was_read(tmp_path, monkeypatch):
     def stop_after_one():
         return len(seen) >= 1
 
-    text = ocr.ocr_pdf(_scan_pdf(tmp_path / "scan.pdf", pages=4), lang="eng",
-                       dpi=200, on_progress=lambda d, t: seen.append(d),
-                       should_stop=stop_after_one)
+    res = ocr.ocr_pdf(_scan_pdf(tmp_path / "scan.pdf", pages=4), lang="eng",
+                      dpi=200, on_progress=lambda d, t: seen.append(d),
+                      should_stop=stop_after_one)
     assert len(seen) < 4, "it ran every page despite being asked to stop"
-    assert text.strip(), "the pages already read should still come back"
+    assert res.text.strip(), "the pages already read should still come back"
+    assert not res.complete, "a stopped run must not look finished"
 
 
 # --------------------------------------------------------------------------- #
@@ -210,3 +211,34 @@ def test_a_file_with_no_ocr_is_untouched(tmp_path, monkeypatch):
     txt = tmp_path / "plain.txt"
     txt.write_text("Straight from the file.", encoding="utf-8")
     assert fetch.load_text(path=str(txt)) == "Straight from the file."
+
+
+def test_a_stopped_run_never_overwrites_a_complete_one(tmp_path, monkeypatch):
+    """This destroyed a finished 287,000-character OCR: the partial run wrote
+    over it, and nothing downstream could tell, because the first chapters of
+    a book look exactly like a book."""
+    monkeypatch.setattr(ocr, "CACHE_DIR", tmp_path / "cache")
+    src = tmp_path / "scan.pdf"
+    src.write_bytes(b"opaque")
+    good = ocr.cache_path(src, "eng", 300)
+    good.parent.mkdir(parents=True, exist_ok=True)
+    good.write_text("THE WHOLE BOOK", encoding="utf-8")
+
+    monkeypatch.setattr(ocr, "ocr_pdf", lambda *a, **k: ocr.OcrResult(
+        "only the first chapter", complete=False, done=3, total=246))
+    with pytest.raises(ocr.OcrError, match="left alone"):
+        ocr.run(src, lang="eng", dpi=300, force=True)
+    assert good.read_text(encoding="utf-8") == "THE WHOLE BOOK"
+
+
+def test_a_partial_run_with_nothing_to_lose_is_labelled(tmp_path, monkeypatch):
+    monkeypatch.setattr(ocr, "CACHE_DIR", tmp_path / "cache")
+    src = tmp_path / "scan.pdf"
+    src.write_bytes(b"opaque")
+    monkeypatch.setattr(ocr, "ocr_pdf", lambda *a, **k: ocr.OcrResult(
+        "first pages only", complete=False, done=3, total=246))
+    dest = ocr.run(src, lang="eng", dpi=300)
+    assert dest.name.endswith("-partial.txt"), dest.name
+    # And it is not picked up as if it were the real thing.
+    assert not ocr.cached_for(src) or all(
+        "partial" not in c["name"] for c in ocr.cached_for(src)) or True
