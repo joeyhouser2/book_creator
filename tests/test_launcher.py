@@ -110,3 +110,69 @@ def test_icon_carries_every_size_windows_asks_for():
     with PIL.Image.open(ROOT / "assets" / "book_creator.ico") as im:
         sizes = {s[0] for s in im.info.get("sizes", [])}
     assert {16, 32, 48, 256}.issubset(sizes), sizes
+
+
+# --------------------------------------------------------------------------- #
+# GPU visibility
+# --------------------------------------------------------------------------- #
+def test_inherit_leaves_the_environment_alone(monkeypatch):
+    mod = _run_web()
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    assert mod.unmask_gpus("inherit") == ""
+    assert __import__("os").environ["CUDA_VISIBLE_DEVICES"] == "0"
+
+
+def test_a_masking_env_var_is_overridden_and_reported(monkeypatch):
+    """A shell that exports CUDA_VISIBLE_DEVICES=0 leaves the larger card
+    invisible, and the biggest model that "fits" is then decided by an
+    environment variable rather than by the hardware."""
+    import os
+
+    mod = _run_web()
+    monkeypatch.setattr(mod, "_physical_gpus", lambda: 2)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    note = mod.unmask_gpus("all")
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "0,1"
+    assert "hid 1 of 2" in note
+
+
+def test_pci_ordering_is_pinned(monkeypatch):
+    """So cuda:N means the same card here, in nvidia-smi, and in the
+    corpus-pass subprocesses; CUDA's default order is by speed."""
+    import os
+
+    mod = _run_web()
+    monkeypatch.setattr(mod, "_physical_gpus", lambda: 2)
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    mod.unmask_gpus("all")
+    assert os.environ["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
+
+
+def test_an_explicit_list_is_honoured(monkeypatch):
+    import os
+
+    mod = _run_web()
+    monkeypatch.setattr(mod, "_physical_gpus", lambda: 2)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    mod.unmask_gpus("1")
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "1"
+
+
+def test_no_gpus_means_no_change(monkeypatch):
+    """A CPU-only machine should not have the variable invented for it."""
+    import os
+
+    mod = _run_web()
+    monkeypatch.setattr(mod, "_physical_gpus", lambda: 0)
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    assert mod.unmask_gpus("all") == ""
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+
+def test_unmasking_happens_before_the_server_starts():
+    """CUDA reads the variable once, when a context is first created, so it
+    has to be set before anything touches torch."""
+    lines = (ROOT / "run_web.py").read_text(encoding="utf-8").splitlines()
+    called = [i for i, l in enumerate(lines) if l.strip().startswith("note = unmask_gpus(")]
+    served = [i for i, l in enumerate(lines) if l.strip().startswith("main(host=")]
+    assert called and served and called[0] < served[0]
