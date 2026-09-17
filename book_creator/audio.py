@@ -29,6 +29,7 @@ pronunciation will not come out of any of these models.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -421,6 +422,66 @@ def chunk_text(text: str, max_chars: int) -> list[str]:
     return out
 
 
+# A token counts as a word if it has two or more letters and is mostly letters
+# rather than symbols -- in any script, so Greek and Cyrillic are words too.
+_WORD_LETTERS = re.compile(r"[^\W\d_]")
+_ALNUM = re.compile(r"[^\W_]")
+# The punctuation prose is written with. OCR detaches and re-attaches quote
+# marks freely -- `”’ “No,” said I` -- and a stray quote says nothing either
+# way about whether a line is language, so it is set aside rather than counted
+# against the line. Anything else that is neither letter nor digit (% ¢ © @ ™ °
+# §) is the debris of a map or a plate, and counts double.
+_PROSE_PUNCT = frozenset("\"'`‘’‚‛“”„«"
+                         "»‹›.,;:!?…-–—()[]")
+# Below this share of word-like tokens, a segment is not language. Checked
+# against every segment of an OCRed memoir and ~4,000 sentences of the repo's
+# English, French, Latin and Greek fixtures; see tests/test_audio.py.
+PROSE_MIN = 0.5
+
+
+def prose_like(text: str) -> float:
+    """0..1: how much of this text is made of things a narrator could say.
+
+    Scanned books do not only produce misspellings; they produce *non-text* --
+    a table of contents' page numbers, the labels off a fold-out map, the noise
+    along the gutter. A subaltern's memoir OCRed from plates gave the narrator
+    "15", "1916.", "22,2" and "? i = ; B Monchyg t? g 1 ? 2 : be 9 2 2 eZ22" to
+    read, and it read them. That is the "gibberish" a listener hears, and the
+    model is not the one at fault.
+
+    The opposite mistake is worse, because it is silent: a real line that is
+    refused is simply never read. The same memoir's dialogue OCRs as
+    `”’ “No,” said I` and `“No?` -- quote marks welded on or floating free --
+    and an earlier version of this scored those as junk and dropped them. So
+    prose punctuation is ignored, and so are single letters ("I" and "a" are
+    words; "i" and "E" are page furniture; alone they settle nothing).
+
+    A gate on the *input*: it costs nothing and runs before the GPU does.
+    `speakable` handles the smaller job of tidying text that IS language.
+    """
+    words = other = 0
+    for tok in text.split():
+        core = "".join(c for c in tok if c not in _PROSE_PUNCT)
+        if not core:
+            continue                    # a quote mark on its own
+        letters = len(_WORD_LETTERS.findall(core))
+        if len(core) == 1 and letters == 1:
+            continue                    # "I", "a" -- or "i", "E"
+        if letters >= 2 and letters / len(core) >= 0.6:
+            words += 1
+        elif not _ALNUM.search(core):
+            other += 2                  # %, ¢, ©, @: not even a number
+        else:
+            other += 1                  # 1916, 22,2, eZ22
+    return words / (words + other) if words else 0.0
+
+
+def narratable(text: str) -> str:
+    """`speakable` text, or "" if it is not language worth narrating."""
+    said = speakable(text)
+    return said if prose_like(said) >= PROSE_MIN else ""
+
+
 def speakable(text: str) -> str:
     """Tidy printed text into something worth reading aloud.
 
@@ -465,8 +526,8 @@ class Utterance:
     pause_after: float
 
 
-def plan(chapters, *, spec, src_lang: str,
-         tgt_lang: str) -> list[tuple[str, list[Utterance]]]:
+def plan(chapters, *, spec, src_lang: str, tgt_lang: str,
+         on_skip=None) -> list[tuple[str, list[Utterance]]]:
     """Turn chapters into (title, utterances) pairs, in listening order.
 
     The title travels with its utterances rather than being looked up by index
@@ -489,8 +550,12 @@ def plan(chapters, *, spec, src_lang: str,
         for bead in ch.beads:
             if spec.max_beads and spoken >= spec.max_beads:
                 break
-            src = speakable(bead.src_text)
-            tgt = speakable(bead.tgt_text)
+            src = narratable(bead.src_text)
+            tgt = narratable(bead.tgt_text)
+            if on_skip is not None:
+                for raw, kept in ((bead.src_text, src), (bead.tgt_text, tgt)):
+                    if speakable(raw) and not kept:
+                        on_skip(speakable(raw))
             pair: list[Utterance] = []
             if src:
                 pair.append(Utterance(src, src_lang, spec.src_voice, spec.pause_within))
@@ -517,7 +582,9 @@ def estimate(chapters, *, spec, src_lang: str, tgt_lang: str) -> dict:
     ~14 characters per second is a typical narration rate; it is a ballpark,
     not a promise.
     """
-    plans = plan(chapters, spec=spec, src_lang=src_lang, tgt_lang=tgt_lang)
+    not_prose: list[str] = []
+    plans = plan(chapters, spec=spec, src_lang=src_lang, tgt_lang=tgt_lang,
+                 on_skip=not_prose.append)
     utterances = [u for _, items in plans for u in items]
     chars = sum(len(u.text) for u in utterances)
     pauses = sum(u.pause_after for u in utterances)
@@ -539,6 +606,10 @@ def estimate(chapters, *, spec, src_lang: str, tgt_lang: str) -> dict:
         "seconds": round(speech + pauses),
         "duration": _hms(speech + pauses),
         "languages": langs,
+        # Shown before the GPU starts: on a scanned book this is the difference
+        # between an audiobook and one that reads its own index out loud.
+        "not_prose": len(not_prose),
+        "not_prose_sample": not_prose[:5],
     }
 
 
@@ -570,7 +641,14 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
     if engine.licence.startswith("CPML"):
         log(f"  !  {engine.label} is licensed {engine.licence} -- personal "
             "listening only, do not sell this audio.")
-    plans = plan(chapters, spec=spec, src_lang=src_lang, tgt_lang=tgt_lang)
+    not_prose: list[str] = []
+    plans = plan(chapters, spec=spec, src_lang=src_lang, tgt_lang=tgt_lang,
+                 on_skip=not_prose.append)
+    if not_prose:
+        sample = ", ".join(repr(s[:30]) for s in not_prose[:4])
+        log(f"• {len(not_prose)} segment(s) are not language and will not be "
+            f"narrated ({sample}…). A scan's page numbers, dot leaders and map "
+            "labels are read aloud literally otherwise — see audio.prose_like.")
 
     # Check only the languages actually spoken. A translation-only audiobook
     # reads no Greek, so neither the engine's lack of a Greek voice nor the
@@ -606,6 +684,7 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
     chapter_files: list[Path] = []
     chapter_lengths: list[float] = []
     chapter_titles: list[str] = []
+    manifest_chapters: list[dict] = []
     done = 0
     reused = 0
     skipped: list[str] = []
@@ -615,6 +694,8 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
                 log("• Stopped before chapter %d." % ci)
                 break
             pieces: list = []
+            spoken_rows: list[dict] = []
+            offset = 0.0
             for u in items:
                 if should_stop is not None and should_stop():
                     break
@@ -651,9 +732,27 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
                     samples = (np.concatenate(parts) if parts
                                else np.zeros(0, dtype="float32"))
                     sr = engine.sample_rate
-                    _write_wav(cached, samples, sr)
-                pieces.append(_resample(samples, sr))
-                pieces.append(_silence(u.pause_after))
+                    # Only cache audio there is audio in. Caching an empty
+                    # result makes the blank permanent: every later run of this
+                    # book finds the entry, reuses the silence, and the missing
+                    # sentence can never come back. Leaving it uncached costs
+                    # one retry and can fix itself.
+                    if samples.size:
+                        _write_wav(cached, samples, sr)
+                voiced = _resample(samples, sr)
+                gap = _silence(u.pause_after)
+                pieces.append(voiced)
+                pieces.append(gap)
+                # Where this utterance ended up, for narration_check: a report
+                # can only say "chapter 7, 12:31, this sentence" if something
+                # wrote down which seconds belong to which text.
+                spoken_rows.append({
+                    "key": key, "text": u.text, "lang": u.lang,
+                    "voice": u.voice, "start": round(offset, 3),
+                    "end": round(offset + voiced.size / TARGET_SR, 3),
+                    "silent": not voiced.size,
+                })
+                offset += (voiced.size + gap.size) / TARGET_SR
                 done += 1
                 if on_progress and done % 5 == 0:
                     on_progress(done, total)
@@ -666,6 +765,11 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
             _write_wav(path, track)
             chapter_files.append(path)
             chapter_titles.append(title_of)
+            manifest_chapters.append({
+                "index": ci, "title": title_of,
+                "file": path.name, "seconds": round(track.size / TARGET_SR, 3),
+                "utterances": spoken_rows,
+            })
             log(f"  · chapter {ci}/{len(plans)}: {_hms(track.size / TARGET_SR)}")
 
         if on_progress:
@@ -675,6 +779,13 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
 
     if not chapter_files:
         raise AudioError("No audio was produced.")
+
+    _write_manifest(audio_dir, {
+        "slug": slug, "title": title, "author": author,
+        "engine": spec.engine, "sample_rate": TARGET_SR,
+        "src_lang": src_lang, "tgt_lang": tgt_lang,
+        "skipped": skipped, "chapters": manifest_chapters,
+    }, log=log)
 
     log(f"• Synthesized {done - reused} utterance(s); reused {reused} from cache."
         + (f" {len(skipped)} fragment(s) the engine could not read were "
@@ -703,6 +814,21 @@ def build_audiobook(chapters, *, spec, out_dir: str, slug: str, title: str,
         result["format"] = spec.format
         log(f"✓ Audiobook: {book} ({result['duration']})")
     return result
+
+
+def _write_manifest(audio_dir: Path, data: dict, *, log=print) -> None:
+    """Record which seconds of which chapter say which sentence.
+
+    Written next to the chapter WAVs and read by narration_check, which cannot
+    otherwise tell a deliberate pause from a sentence the engine dropped, or a
+    faithful reading from a hallucinated one. A narration is hours long and
+    nobody listens to all of it, so the book has to be able to describe itself.
+    """
+    try:
+        (audio_dir / "manifest.json").write_text(
+            json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError as exc:      # a finished audiobook outranks its own index
+        log(f"  !  Could not write the narration manifest: {exc}")
 
 
 def _encode_book(ffmpeg: str, wavs: list[Path], lengths: list[float],

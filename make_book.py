@@ -289,6 +289,14 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--audio-max-beads", type=int,
                    help="Narrate only the first N beads — a quick voice test before "
                         "committing hours of GPU time.")
+    a.add_argument("--audio-check", choices=["off", "signal", "listen"],
+                   default="signal",
+                   help="Check the finished narration for blanks and gibberish: "
+                        "'signal' is free and finds silence where a sentence "
+                        "should be, 'listen' transcribes the audio back and "
+                        "compares it to the text (needs faster-whisper). "
+                        "Default: %(default)s. See check_audio.py to run it "
+                        "again later.")
     a.add_argument("--audio-only", action="store_true",
                    help="Build ONLY the audiobook: no PDF, cover or EPUB. For "
                         "adding narration to a book you already printed — "
@@ -349,6 +357,7 @@ def main(argv: list[str] | None = None) -> int:
         tgt_voice=args.audio_tgt_voice or args.audio_voice,
         announce_chapters=not args.no_announce_chapters,
         format=args.audio_format, max_beads=args.audio_max_beads,
+        check=args.audio_check,
     )
 
     if args.config:

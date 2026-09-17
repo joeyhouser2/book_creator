@@ -316,3 +316,141 @@ def test_estimate_names_a_substituted_voice():
     by_lang = {L["lang"]: L for L in est["languages"]}
     assert by_lang["la"]["substituted"] and by_lang["la"]["voice_lang"] == "it"
     assert not by_lang["en"]["substituted"]
+
+
+# --------------------------------------------------------------------------- #
+# The narration manifest, and not caching a failure
+# --------------------------------------------------------------------------- #
+def test_build_writes_a_manifest_of_what_was_said_when(chapters, tmp_path,
+                                                       tone_engine):
+    import json
+
+    _build(chapters, tmp_path, tone_engine)
+    data = json.loads((tmp_path / "bk-audio" / "manifest.json")
+                      .read_text(encoding="utf-8"))
+    assert data["engine"] == "tone"
+    assert [ch["file"] for ch in data["chapters"]] == ["ch001.wav", "ch002.wav"]
+
+    first = data["chapters"][0]["utterances"]
+    assert [u["lang"] for u in first[:3]] == ["en", "la", "en"]
+    # Spans have to be monotonic and inside the chapter, or a finding would
+    # point at the wrong ten seconds of a six-hour book.
+    assert all(u["start"] <= u["end"] for u in first)
+    assert all(a["end"] <= b["start"] for a, b in zip(first, first[1:]))
+    assert first[-1]["end"] <= data["chapters"][0]["seconds"]
+    assert all(u["key"] for u in first)
+
+
+def test_a_failed_utterance_is_not_cached_as_silence(chapters, tmp_path,
+                                                     tone_engine):
+    """An empty result must not become permanent.
+
+    Caching it meant every later run of the book found the entry, reused the
+    silence, and the missing sentence could never come back -- the build was
+    then unable to fix itself even once the engine's bad day was over.
+    """
+    def _refuse(text, *, lang, voice=None):
+        raise IndexError("engine cannot read this")
+
+    tone_engine.synthesize = _refuse
+    res = _build(chapters, tmp_path, tone_engine, max_beads=1,
+                 announce_chapters=False)
+    assert res["chapters"] >= 1
+    assert list((tmp_path / "cache" / "tone").glob("*.wav")) == []
+
+
+def test_a_silent_utterance_is_marked_in_the_manifest(chapters, tmp_path,
+                                                      tone_engine):
+    import json
+
+    calls = {"n": 0}
+    real = tone_engine.synthesize
+
+    def _fail_first(text, *, lang, voice=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise IndexError("engine cannot read this")
+        return real(text, lang=lang, voice=voice)
+
+    tone_engine.synthesize = _fail_first
+    _build(chapters, tmp_path, tone_engine)
+    data = json.loads((tmp_path / "bk-audio" / "manifest.json")
+                      .read_text(encoding="utf-8"))
+    silent = [u for ch in data["chapters"] for u in ch["utterances"]
+              if u["silent"]]
+    assert len(silent) == 1, "the dropped fragment is recorded, not hidden"
+    assert silent[0]["start"] == silent[0]["end"]
+
+
+# --------------------------------------------------------------------------- #
+# Only language reaches the narrator
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("junk", [
+    "15", "1916.", "22,2", "E.", "i",           # a scan's page numbers
+    "PAGE 113 129 186",                         # an index line
+    "¢ i = ; B Monchyg t¢ g 1 © 2 : be 9 2 2 eZ22",
+    # A fold-out map label, from the same memoir: real place names, but
+    # buried in the symbols a map OCRs into.
+    "A Poelcanelle % % % %, ghemarcg oN I, % B nche S ° ¢ g Lake",
+    "| | 1 | |",
+])
+def test_a_scans_non_text_is_not_narrated(junk):
+    """OCR does not only misspell; it produces things that are not language.
+
+    A memoir scanned from plates handed the narrator its contents page and the
+    labels off a fold-out map, and the narrator read them: minutes of a chapter
+    spent enumerating page numbers. Nothing was wrong with the narration — the
+    text should never have reached it.
+    """
+    assert audio.narratable(junk) == ""
+
+
+@pytest.mark.parametrize("real", [
+    # Dialogue as the memoir's OCR actually delivers it: quote marks welded on
+    # or floating free. An earlier version of the gate scored every one of
+    # these as junk and dropped it -- silently, which is the worst way a
+    # sentence can go missing from an audiobook.
+    "“No?", "“Aw!", "Ha, Ha, Ha!",
+    "”’ “No,” said I, a little disgusted.",
+    "‘““ Come on!’ I shouted.",
+    "”’ “ Relieved !", "”’ asked I.",
+    "September 1916.", "3 officers, 45 other ranks.",
+    "Yes.", "No, sir.", "It was cold.", "Arma virumque cano.",
+    "I sing of arms and the man.", "L'an 40 arriva.", "Où est-il ?",
+    "Ἱστορίαι δὲ αἱ Ἡροδότου.",                 # the gate must be script-blind
+    "«Пойдём», сказал он.",
+])
+def test_real_language_still_reaches_the_narrator(real):
+    assert audio.narratable(real)
+
+
+def test_the_gate_clears_every_sentence_of_a_real_book():
+    """A false drop is silent: the sentence simply never gets read. Checked
+    against the repo's own fixtures rather than invented examples."""
+    import re
+
+    for name in ("caesar_b1_la.txt", "pere_goriot_en.txt",
+                 "eugenie_grandet_fr.txt"):
+        p = Path("input") / name
+        if not p.exists():
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text)
+                     if len(s.strip()) > 20][:300]
+        dropped = [s for s in sentences if not audio.narratable(s)]
+        assert not dropped, f"{name}: {dropped[:3]}"
+
+
+def test_the_plan_reports_what_it_refused(chapters):
+    chapters[0].beads.insert(0, Bead(src=["15"], tgt=["15"]))
+    refused = []
+    audio.plan(chapters, spec=_spec(), src_lang="la", tgt_lang="en",
+               on_skip=refused.append)
+    assert refused == ["15", "15"]
+
+
+def test_estimate_prices_the_refusal_before_the_gpu_starts(chapters):
+    chapters[0].beads.insert(0, Bead(src=["1916."], tgt=["22,2"]))
+    est = audio.estimate(chapters, spec=AudioSpec(), src_lang="la", tgt_lang="en")
+    assert est["not_prose"] == 2
+    assert est["not_prose_sample"]

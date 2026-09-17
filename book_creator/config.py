@@ -136,6 +136,7 @@ def _parse_audio(raw) -> AudioSpec:
         announce_chapters=bool(raw.get("announce_chapters", True)),
         format=raw.get("format", "m4b"),
         max_beads=raw.get("max_beads"),
+        check=str(raw.get("check", "signal")).lower(),
     )
 
 

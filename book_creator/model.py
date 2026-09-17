@@ -213,6 +213,13 @@ class AudioSpec:
     # Cap beads for a quick listen-test of the voice before committing hours
     # of GPU time. None narrates the whole book.
     max_beads: int | None = None
+    # Check the finished narration rather than trusting it: nobody listens to
+    # six hours of audio, and a TTS model fails by going quiet or by babbling
+    # rather than by raising. "signal" costs seconds per hour of audio and
+    # finds the blanks; "listen" transcribes the narration back and compares it
+    # to the text, which also finds gibberish, and needs faster-whisper
+    # installed. See book_creator/narration_check.py.
+    check: str = "signal"       # off | signal | listen
     # Which side is read first; set from BookSpec.first at build time.
     first: str = "src"
 

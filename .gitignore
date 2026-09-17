@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 venv/
 .venv-tts/
+.venv-asr/
 .DS_Store
 
 # Everything under output/ is a build artifact — PDFs, EPUBs, covers, review

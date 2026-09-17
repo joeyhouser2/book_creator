@@ -34,3 +34,26 @@ chatterbox-tts>=0.1.7
 # on PATH is used first; this is the fallback so nothing has to be installed
 # by hand.
 imageio-ffmpeg>=0.5
+
+# ---------------------------------------------------------------------------
+# Checking the narration afterwards (book_creator/narration_check.py).
+#
+# The blank-finding pass needs nothing but numpy and runs over an hour of audio
+# in seconds. The listening pass transcribes the narration and compares it to
+# the text, which is what catches a model that read gibberish, and that needs
+# faster-whisper:
+#
+#     python -m venv .venv-asr
+#     .venv-asr\Scripts\activate
+#     pip install faster-whisper
+#     python check_audio.py output/<slug>-audio --asr
+#
+# faster-whisper runs on CTranslate2 rather than torch, so unlike the TTS
+# engines it cannot pull a different torch in behind your back -- it is safe in
+# the main environment too. Its own venv is still tidier, and it means the
+# check can run while a narration has the TTS environment busy.
+#
+# GPU is optional: CTranslate2 needs cuDNN 9 on PATH for CUDA, and falls back
+# to int8 on the CPU when it is missing, which is perfectly usable for a
+# check run overnight.
+# faster-whisper>=1.0

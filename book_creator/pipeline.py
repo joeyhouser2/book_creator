@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -553,6 +554,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
                 should_stop=should_stop,
             )
             out_path = out_path or (out["audio"].get("book") or "")
+            _check_narration(out, spec, slug, out_dir, log)
         except audio.AudioError as exc:
             # Never lose a finished book to a TTS problem — the PDF (when there
             # is one) is already written, so report and carry on.
@@ -561,6 +563,64 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
                 raise
 
     return out_path
+
+
+def _check_narration(out: dict, spec: BookSpec, slug: str, out_dir: str,
+                     log) -> None:
+    """Listen back to what was just narrated and report what isn't a reading.
+
+    Advisory, like the text reviewer: a flagged narration is still written and
+    still playable. What it buys is knowing *where* to listen -- the failures
+    worth catching (a sentence the engine dropped, a stretch the model babbled)
+    are silent to every other stage of the build, and finding them by ear means
+    sitting through hours of audio.
+    """
+    mode = (spec.audio.check or "off").lower()
+    if mode == "off":
+        return
+    from . import narration_check
+
+    audio_dir = Path(out_dir) / f"{slug}-audio"
+    path = Path(out_dir) / f"{slug}-narration-check.md"
+    listen = mode == "listen"
+    elsewhere = None
+    if listen and not narration_check.Recognizer.available()[0]:
+        # The narrator's virtualenv cannot also hold the recognizer; see
+        # narration_check.recognizer_interpreter.
+        elsewhere = narration_check.recognizer_interpreter()
+        if elsewhere is None:
+            log("  ⚠  Listening pass unavailable (no faster-whisper here or in "
+                "a .venv-asr beside it — see requirements-audio.txt); "
+                "checking for blanks only.")
+            listen = False
+    try:
+        if elsewhere is not None:
+            log(f"• Listening back to the narration with "
+                f"{elsewhere.parent.parent.name}…")
+            report = narration_check.check_in(elsewhere, audio_dir, path, log=log)
+        else:
+            # Forwarded rather than swallowed: the listening pass can be an
+            # hour on a long book, and a progress line per chapter is the
+            # difference between "working" and "hung" in the UI log.
+            report = narration_check.check(audio_dir, asr=listen, log=log)
+    except Exception as exc:  # noqa: BLE001 - advisory; never lose a finished book
+        log(f"  ⚠  Narration check skipped: {exc}")
+        return
+
+    path.write_text(narration_check.format_report(report), encoding="utf-8")
+    # The same findings as data, for the UI to list under the audio player with
+    # a seek button on each one. A six-hour book is not searchable by reading a
+    # timestamp off a page and dragging a scrubber.
+    path.with_suffix(".json").write_text(
+        json.dumps(report.to_dict(), ensure_ascii=False, indent=1),
+        encoding="utf-8")
+    out["narration_check"] = str(path)
+    if report.findings:
+        kinds = ", ".join(sorted({f.kind for f in report.findings}))
+        log(f"  ⚠  Narration check flagged {len(report.findings)} spot(s) "
+            f"({kinds}) → {path}")
+    else:
+        log("• Narration check: no blanks or distortion in the finished audio.")
 
 
 def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
