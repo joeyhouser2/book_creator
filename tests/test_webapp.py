@@ -730,3 +730,106 @@ def test_an_ocred_file_is_no_longer_called_unusable(client, monkeypatch):
     assert data["usable"] is True
     assert not any(w.startswith("Unusable") for w in data["warnings"])
     assert any("Read with OCR" in w for w in data["warnings"])
+
+
+# --------------------------------------------------------------------------- #
+# Narration check findings reach the player
+# --------------------------------------------------------------------------- #
+def test_narration_check_findings_are_served_for_a_job(client, tmp_path,
+                                                       monkeypatch):
+    import json as _json
+
+    from webapp import server
+
+    report = tmp_path / "bk-narration-check.md"
+    report.write_text("# report", encoding="utf-8")
+    report.with_suffix(".json").write_text(_json.dumps({
+        "asr": True, "notes": ["a note"],
+        "findings": [{"kind": "blank", "chapter": 3, "start": 12.0,
+                      "end": 20.0, "book_start": 4212.0, "detail": "8.0s",
+                      "text": "", "heard": "", "score": None, "key": ""}],
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(server, "_get_job", lambda _id: {
+        "artifacts": {"narration_check": str(report)}})
+    body = client.get("/api/audio/somejob/check.json").get_json()
+    assert body["total"] == 1
+    # The offset is into the assembled book, not into the chapter -- a player
+    # seeking to 12s would land in chapter one of a six-hour file.
+    assert body["findings"][0]["book_start"] == 4212.0
+    assert body["notes"] == ["a note"]
+
+
+def test_a_job_with_no_check_returns_an_empty_list(client, monkeypatch):
+    from webapp import server
+
+    monkeypatch.setattr(server, "_get_job", lambda _id: {"artifacts": {}})
+    assert client.get("/api/audio/x/check.json").get_json()["findings"] == []
+
+
+# --------------------------------------------------------------------------- #
+# The browser tab, and replacing a stale server
+# --------------------------------------------------------------------------- #
+def test_the_tab_gets_the_desktop_icon(client):
+    r = client.get("/favicon.ico")
+    assert r.status_code == 200
+    assert r.mimetype == "image/vnd.microsoft.icon"
+    assert r.data[:4] == b"\x00\x00\x01\x00"          # an ICO header
+    assert b'rel="icon"' in client.get("/").data
+
+
+def test_version_reports_the_code_the_server_started_with(client):
+    body = client.get("/api/version").get_json()
+    assert len(body["version"]) == 12
+    assert body["busy"] == []
+
+
+def test_a_busy_server_refuses_to_shut_down(client, monkeypatch):
+    """A narration is hours of GPU; picking up a UI change must not kill it."""
+    from webapp import server
+
+    monkeypatch.setitem(server._jobs, "job1",
+                        {"status": "running", "title": "subalterns"})
+    exited = []
+    monkeypatch.setattr(server.os, "_exit", exited.append)
+    r = client.post("/api/shutdown", environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    assert r.status_code == 409
+    assert r.get_json()["busy"] == ["subalterns"]
+    assert exited == []
+
+
+def test_shutdown_is_loopback_only(client, monkeypatch):
+    from webapp import server
+
+    monkeypatch.setattr(server.os, "_exit", lambda code: None)
+    r = client.post("/api/shutdown", environ_base={"REMOTE_ADDR": "192.168.1.9"})
+    assert r.status_code == 403
+
+
+def test_an_idle_server_agrees_to_shut_down(client, monkeypatch):
+    from webapp import server
+
+    exited = []
+    monkeypatch.setattr(server.os, "_exit", exited.append)
+    monkeypatch.setattr(server.threading, "Thread",
+                        lambda target, daemon: type("T", (), {
+                            "start": lambda self: target()})())
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    r = client.post("/api/shutdown", environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    assert r.get_json() == {"ok": True}
+    assert exited == [0]
+
+
+def test_the_code_version_moves_when_a_served_file_changes(tmp_path):
+    from webapp.version import code_version
+
+    (tmp_path / "webapp").mkdir()
+    (tmp_path / "book_creator").mkdir()
+    (tmp_path / "run_web.py").write_text("x")
+    src = tmp_path / "webapp" / "app.js"
+    src.write_text("one")
+    before = code_version(tmp_path)
+    (tmp_path / "README.md").write_text("docs do not restart the server")
+    assert code_version(tmp_path) == before
+    src.write_text("two, and longer")
+    assert code_version(tmp_path) != before

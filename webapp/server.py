@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 import traceback
@@ -22,6 +23,7 @@ from book_creator import settings as corpus_settings
 from book_creator.pipeline import apply_sides, build_book
 
 from . import gutendex, jobs as jobstore, preview
+from .version import code_version
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
@@ -47,6 +49,60 @@ _store = jobstore.JobStore()
 @app.route("/")
 def index():
     return send_from_directory(app.template_folder, "index.html")
+
+
+# Taken once, at startup: the point is to know which code this process is
+# running, not which code is on disk now.
+STARTED_VERSION = code_version()
+
+
+def _busy() -> list[str]:
+    """Titles of whatever is still running -- builds, narrations, OCR."""
+    return [j.get("title") or j.get("kind") or "job"
+            for j in list(_jobs.values()) if j.get("status") == "running"]
+
+
+@app.route("/api/version")
+def api_version():
+    """Which code this server runs, and whether it is safe to replace."""
+    return jsonify({"version": STARTED_VERSION, "busy": _busy()})
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def api_shutdown():
+    """Let the launcher replace a stale server -- never mid-build.
+
+    A narration is hours of GPU, and killing the process that owns it to pick
+    up a UI tweak would be a terrible trade; the launcher reports the stale
+    server instead and leaves it running. Loopback only.
+    """
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        return Response("forbidden", status=403)
+    busy = _busy()
+    if busy:
+        return jsonify({"ok": False, "busy": busy}), 409
+
+    def _exit() -> None:
+        import time
+        time.sleep(0.3)             # let the response reach the launcher first
+        os._exit(0)
+    threading.Thread(target=_exit, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """The desktop icon, so the browser tab carries the same laurel.
+
+    Served from assets/ rather than copied into static/: make_icon.py redraws
+    that one file, and a second copy would quietly go stale the first time it
+    did. Browsers ask for /favicon.ico whether or not the page names it.
+    """
+    icon = Path(__file__).resolve().parent.parent / "assets" / "book_creator.ico"
+    if not icon.exists():
+        return Response(status=404)
+    return send_from_directory(icon.parent, icon.name,
+                               mimetype="image/vnd.microsoft.icon")
 
 
 # --------------------------------------------------------------------------- #
@@ -935,6 +991,31 @@ def api_audio_file(job_id: str, ext: str):
                                as_attachment=request.args.get("dl") == "1")
 
 
+@app.route("/api/audio/<job_id>/check.json")
+def api_narration_check(job_id: str):
+    """What the narration check found, for the player to list and seek to.
+
+    Served from the report the build wrote rather than re-derived: the check
+    can take an hour of GPU on a long book, and the answer does not change
+    until the audio does.
+    """
+    job = _get_job(job_id)
+    path = (job or {}).get("artifacts", {}).get("narration_check")
+    data = Path(path).with_suffix(".json") if path else None
+    if not data or not data.exists():
+        return jsonify({"findings": []})
+    try:
+        report = json.loads(data.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return jsonify({"findings": []})
+    # A badly broken narration could flag hundreds of spots; the point is to
+    # show where to listen, and a list longer than this is telling you to
+    # re-narrate rather than to click through it.
+    findings = report.get("findings", [])
+    return jsonify({"findings": findings[:60], "total": len(findings),
+                    "notes": report.get("notes", []), "asr": report.get("asr")})
+
+
 @app.route("/api/catalog/status")
 def api_catalog_status():
     """Whether the offline Gutenberg catalog is indexed, and how stale."""
@@ -990,6 +1071,7 @@ def _audio_from(a) -> AudioSpec:
         announce_chapters=bool(a.get("announce_chapters", True)),
         format=a.get("format", "m4b"),
         max_beads=int(a["max_beads"]) if a.get("max_beads") else None,
+        check=a.get("check", "signal"),
     )
 
 
@@ -1220,6 +1302,7 @@ def api_status(job_id: str):
             "has_pdf": bool(art.get("pdf") or job.get("pdf_path")),
             "progress": job.get("progress"),
             "audio": art.get("audio"),
+            "narration_check": bool(art.get("narration_check")),
             "epub": bool(art.get("epub")),
             "error": job["error"],
         })

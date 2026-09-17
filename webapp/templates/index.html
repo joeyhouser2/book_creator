@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>book_creator</title>
+  <link rel="icon" href="/favicon.ico" sizes="16x16 24x24 32x32 48x48 64x64">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -394,6 +395,16 @@
           </label>
           <label>Test run — first N beads
             <input id="auMaxBeads" type="number" placeholder="all" min="1"></label>
+          <label>Check the narration
+            <select id="auCheck">
+              <option value="signal">Find blanks (free)</option>
+              <option value="listen">Listen back to it (slow)</option>
+              <option value="off">Don't check</option>
+            </select>
+            <small class="muted">Nobody hears six hours of audio before it
+              ships; this finds the silence where a sentence should be, and —
+              listening back — the stretches the model babbled.</small>
+          </label>
         </div>
         <label class="confirm"><input id="auAnnounce" type="checkbox" checked>
           Read each chapter title aloud</label>
@@ -439,6 +450,11 @@
         <div class="preview-nav">
           <span id="audioLabel" class="muted"></span>
           <a id="audioDownload" class="dl" href="#">Download</a>
+        </div>
+        <div id="checkWrap" class="narration-check" style="display:none">
+          <h4 id="checkSummary"></h4>
+          <p id="checkNote" class="muted small"></p>
+          <ul id="checkList"></ul>
         </div>
       </div>
 

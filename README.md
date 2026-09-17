@@ -102,6 +102,15 @@ language alone — see [Monolingual editions](#monolingual-editions)), and the
 collapsed **Audiobook** panel, which loads no model and synthesizes nothing
 unless you tick it.
 
+**The desktop icon always opens the current code.** Double-clicking it while
+the server is already running used to just reopen the browser on whatever code
+that server started with, so a fix you had just pulled looked as if it never
+landed. The launcher now compares the running server's code fingerprint
+(`webapp/version.py`) with what is on disk and, if they differ, stops the old
+server and starts a fresh one — unless a build, narration or OCR run is in
+progress, in which case it leaves it running and says so. The browser tab
+carries the same laurel icon as the desktop shortcut.
+
 Builds are recorded in `cache/jobs.db`, so **Recent builds** (under the
 preview) survives restarting the server: reopen a finished book to page
 through it or download it again. A job still marked running when the process
@@ -458,6 +467,7 @@ reference clip at all.
 | `--audio-voice` | `audio.voice` | reference WAV to clone; omit for the engine's built-in voice. See [Narrator voices](#narrator-voices) |
 | `--audio-format` | `audio.format` | `m4b` (chapter markers) or `mp3` |
 | `--audio-max-beads` | `audio.max_beads` | narrate only the first N beads — a voice test before committing hours of GPU time |
+| `--audio-check` | `audio.check` | check the finished narration: `signal` (default, free), `listen`, or `off`. See [Checking the narration](#checking-the-narration-blanks-and-gibberish) |
 | `--no-announce-chapters` | `audio.announce_chapters` | don't read chapter titles aloud |
 
 Every utterance is cached under `cache/tts/` keyed by engine + language + voice
@@ -469,6 +479,133 @@ says so; a TTS failure never loses the finished PDF.
 If `CUDA_VISIBLE_DEVICES` is masking cards, the CLI and the UI both say so
 outright — otherwise the biggest model you can run is decided by a stale
 environment variable rather than by your hardware.
+
+### Only language reaches the narrator
+
+OCR does not only misspell — it produces things that are not language at all,
+and a TTS model reads them literally. A memoir scanned from plates handed the
+narrator its contents page and the labels off a fold-out map:
+
+```
+'15'   '1916.'   '22,2'   'E.'   '0 Mory :'   'ce oe ee ee ee'
+'¢ i = ; B Monchyg t¢ g 1 © 2 : be 9 2 2 eZ22'
+```
+
+The narration of those was *correct*. The listener still hears a minute of
+enumerated page numbers and a mangled map, and calls it gibberish — rightly.
+
+So the planner scores every segment on the share of its tokens that look like
+words in any script (`audio.prose_like`) and refuses anything under 0.5.
+
+The opposite mistake is worse, because it is silent: a real line that is refused
+is simply never read. The same memoir's OCR welds quote marks on and floats them
+free — `”’ “No,” said I, a little disgusted.`, `“No?`, `‘““ Come on!’ I shouted.`
+— and the first version of this gate scored ten such lines as junk and dropped
+them. So prose punctuation is now set aside rather than counted against a line,
+single letters are neutral (*I* and *a* are words; *i* and *E* are page
+furniture), and stray symbols (`% ¢ © @ ™ °`) count double, because they, not
+the numbers, are what mark a map label. Checked against every segment of that
+book and ~4,000 sentences of the repo's English, French, Latin and Greek: on the
+book it refuses 23 segments, all page numbers, initials or map debris, bar one
+(`§ 4 At 9 p.m.`, which the section mark tips under). The build names what it
+refused, and `estimate()` reports it before the GPU starts.
+
+A mixed caption — real words among the debris — still gets through: `Claphar a
+¢ 7% 9 “e ws 2 of The q ‘ Ynres … The British Line in June, 1917` scores 0.62.
+Token shape cannot separate that from language, and it is left to the ear.
+
+This is a gate on the *input*. The check below is about the output.
+
+### Checking the narration (blanks and gibberish)
+
+A six-hour narration is not something anyone listens to before shipping it, and
+TTS does not fail by raising — it fails by going quiet or by babbling. Two
+failures turn up in practice:
+
+* **Blanks.** A fragment the engine refused is logged and skipped, leaving
+  silence where a sentence should be. The book plays on, a paragraph short.
+* **Gibberish.** The model loops a syllable, mumbles, or reads something that
+  is not the text.
+
+`book_creator/narration_check.py` goes looking for both, and runs by default at
+the end of every narration:
+
+```bash
+python check_audio.py output/subalterns-audio            # free, seconds per hour
+python check_audio.py output/subalterns-audio --asr      # transcribe it back
+python check_audio.py output/subalterns-audio --asr --quarantine
+```
+
+| pass | what it does | cost |
+|---|---|---|
+| `signal` (default) | frame RMS over each chapter; any stretch more than 20 dB under the book's own speech, for longer than the longest pause the planner inserts, is a blank | a few seconds per hour of audio, no model |
+| `listen` (`--asr`) | Whisper transcribes the narration and it is compared to the text that was meant to be read, word for word; repetition and low decode confidence catch loops and mumbling even where there is no text to compare against | roughly realtime÷30 on a GPU, needs `faster-whisper` |
+
+The report names chapter and timestamp — `0:11:13–0:11:21` — so you go and
+listen to the eight seconds in question instead of the six hours. It lands in
+`output/<slug>-narration-check.md`, with the findings also in `.json`.
+
+**In the web UI** the same findings appear under the audio player, each with a
+timestamp you click to seek the player straight to it — a six-hour book is not
+searchable by reading a number off a report and dragging a scrubber.
+
+**Fixing what it finds.** Narrations now write a `manifest.json` next to the
+chapter WAVs recording which seconds say which sentence. With that, findings
+carry the TTS cache key, and `--quarantine` moves exactly those clips out of
+`cache/tts/`; re-running the same build then re-narrates only them and reuses
+the hours that were fine. (Narrations built before the manifest existed are
+still checked — the report just cannot name the missing text.)
+
+The listening pass wants `faster-whisper`, which runs on CTranslate2 rather
+than torch and so cannot swap a CUDA build out from under the TTS engines:
+
+```bash
+python -m venv .venv-asr
+.venv-asr\Scripts\activate
+pip install faster-whisper
+.venv-asr\Scripts\python check_audio.py output/<slug>-audio --asr
+```
+
+**From the web UI** — which runs in `.venv-tts`, where faster-whisper cannot
+go — picking *Listen back to it* makes the build hand the check to `.venv-asr`
+once narration finishes, streaming its progress into the build log. With no
+recognizer anywhere, it says so and checks for blanks only.
+
+CTranslate2 does not ship cuBLAS/cuDNN, so on Windows the check borrows the
+copies already inside whichever `.venv*` has torch (or `BOOK_CREATOR_CUDA_DLL_DIR`,
+or the `nvidia-*-cu12` wheels). If none is usable it says so and transcribes on
+the CPU, which is slower and finds exactly the same things.
+
+Latin and Greek are read with Italian and Greek voices, so an Italian
+recognizer hears *caelum* as "chelum". The comparison folds both sides through
+those equivalences before scoring — otherwise every Latin line in the book
+would be reported as a misreading.
+
+### Sounds in the text
+
+Books make noises. *A Subaltern's War* has "Whirra, Whirra, Whirra", "Phut,
+Phut, Phut", "Whoo—Whoo—Whoo—CRASH", "Huh, huh, huh", "Crack, crack, crack";
+elsewhere it's a refrain, a stammer, a drumbeat, a chant. Every one of them is
+read correctly and every one of them looks exactly like a model that got stuck,
+because whisper's loop statistics describe the *transcript* and have no idea
+what was on the page. The first run of the listening pass over that book
+flagged three, and all three were false positives.
+
+Two things keep them out of the report:
+
+* **How far the repetition goes.** Written onomatopoeia runs to three or four;
+  a model off the rails does not stop. So the check counts the longest run of
+  one word rather than the proportion of repeats, and wants five before it
+  says anything. That alone clears "going on on the right" and
+  "Whirra, Whirra, Whirra, Phut, Phut, Phut".
+* **The text itself, where a manifest exists.** If the transcript matches what
+  the book asked for, the reading is right however odd the statistics look —
+  the text gets the last word. This is exact rather than heuristic, and it is
+  the main reason the `listen` pass is worth much more on a narration built
+  since the manifest existed.
+
+A narration checked without a manifest says so in the report, and its
+`loop`/`mumble` findings should be treated as "worth an ear", not as defects.
 
 ## Librarian agent (natural-language search)
 
@@ -807,6 +944,7 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 | `epub_reader.py` | unpack a local EPUB into plain text, and report scan/OCR quality first |
 | `download_voices.py` | fetch public-domain narrator samples from LibriVox into voices/ |
 | `audio.py` | pluggable GPU TTS engines + interleaved bilingual audiobook assembly |
+| `narration_check.py` | listen back to a finished narration: find blanks, loops and misreadings |
 | `segment.py` | detect chapters; split into sentences (prose) or lines (verse) |
 | `fonts.py` | auto-discover font families in fonts/, register, expose catalog |
 | `align.py` | shared alignment DP + Gale-Church backend |

@@ -128,6 +128,71 @@ def _open_when_ready(url: str, host: str, port: int, timeout: float = 40.0) -> N
           f"yourself once it does.")
 
 
+def _replace_stale(url: str, host: str, port: int) -> bool:
+    """Stop an out-of-date server so this launch can start a current one.
+
+    Returns True if the port is now free. A server running a build is left
+    alone -- a narration is hours of GPU -- and so is anything on the port
+    that does not answer as book_creator.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    from webapp.version import code_version
+
+    def call(path: str, data: bytes | None = None) -> dict:
+        req = urllib.request.Request(url + path, data=data, method="POST" if data
+                                     is not None else "GET")
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:       # 409 carries a body
+            return json.loads(exc.read().decode("utf-8") or "{}")
+
+    try:
+        running = call("/api/version")
+    except (OSError, ValueError):
+        # No version endpoint. Either not book_creator at all, or one started
+        # before this check existed -- which cannot be asked to step aside, and
+        # cannot be killed blind either, since it may be hours into a build.
+        try:
+            with urllib.request.urlopen(url + "/", timeout=5) as resp:
+                ours = b"book_creator" in resp.read(4096)
+        except OSError:
+            ours = False
+        if ours:
+            print(f"book_creator at {url} was started before this launcher "
+                  "could update it, so it is still running older code. Close "
+                  "its server window (once any build in it has finished) and "
+                  "start the app again; from then on this happens by itself.")
+        else:
+            print(f"Something else is already using {url} — opening it anyway.")
+        return False
+    if running.get("version") == code_version():
+        print(f"book_creator is already running at {url} — opening it.")
+        return False
+    if running.get("busy"):
+        print(f"book_creator at {url} is running older code, but it is busy "
+              f"({', '.join(running['busy'])}), so it has been left alone. "
+              "Close its window once that finishes and start the app again "
+              "to pick up the changes.")
+        return False
+
+    print("book_creator is running older code — restarting it.")
+    try:
+        call("/api/shutdown", b"{}")
+    except (OSError, ValueError):
+        pass                            # it may drop the connection as it exits
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        if not _in_use(host, port):
+            return True
+        time.sleep(0.25)
+    print("  !  The old server did not exit; opening it as it is.")
+    return False
+
+
 def _utf8_console() -> None:
     """Make stdout printable before anything prints to it.
 
@@ -166,9 +231,10 @@ if __name__ == "__main__":
 
     url = f"http://{args.host}:{args.port}"
     # Double-clicking the icon a second time should show you the app, not a
-    # crash about the address being in use.
-    if _in_use(args.host, args.port):
-        print(f"book_creator is already running at {url} — opening it.")
+    # crash about the address being in use -- but the app as it is now, not
+    # as it was when that server started.
+    if _in_use(args.host, args.port) and not _replace_stale(url, args.host,
+                                                             args.port):
         if args.open:
             webbrowser.open(url)
         raise SystemExit(0)

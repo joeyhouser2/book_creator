@@ -205,6 +205,19 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .audio-wrap { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
 .audio-wrap audio { width: 100%; margin-bottom: 8px; }
 
+/* Narration check: where in the book to go and listen. */
+.narration-check { margin-top: 10px; border-top: 1px dashed var(--line);
+  padding-top: 10px; }
+.narration-check h4 { margin: 0 0 4px; font-size: 14px; }
+.narration-check ul { list-style: none; margin: 6px 0 0; padding: 0;
+  max-height: 260px; overflow-y: auto; }
+.narration-check li { padding: 5px 0; border-bottom: 1px solid var(--line);
+  font-size: 13px; }
+.narration-check li:last-child { border-bottom: none; }
+.narration-check button.link { background: none; border: none; padding: 0;
+  margin-right: 6px; font: inherit; font-variant-numeric: tabular-nums;
+  color: var(--accent-dk); cursor: pointer; text-decoration: underline; }
+
 @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
 
 /* --- Corpus passes: translating / victorianizing a work in place ---------- */

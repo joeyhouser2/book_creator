@@ -17,6 +17,7 @@ const state = {
   passDoc: null,        // which work that pass is for
   passOutcome: null,    // {docId, html} — survives the post-pass reload
   srcPreview: null,     // {path, name, kind, pages} — the file itself
+  checkedJob: null,     // job whose narration-check findings are already shown
   ocrJob: null,         // a running OCR job
   ocrOutcome: null,     // {path, html} — survives the post-OCR re-inspect
   ocrPoll: null,
@@ -1558,6 +1559,7 @@ function audioPayload() {
     announce_chapters: $("auAnnounce").checked,
     format: $("auFormat").value,
     max_beads: $("auMaxBeads").value ? parseInt($("auMaxBeads").value, 10) : null,
+    check: $("auCheck").value,
   };
 }
 
@@ -1758,6 +1760,75 @@ function showAudio(audio) {
   $("audioDownload").href = `/api/audio/${state.job}.${ext}?dl=1`;
   $("audioLabel").textContent =
     `${audio.duration} · ${audio.chapters} chapter(s) · ${audio.engine}`;
+  showNarrationCheck();
+}
+
+// What the narration check found. Every finding is a place in the book worth
+// listening to, so each one seeks the player there rather than making you read
+// a timestamp off a report and drag a scrubber across six hours.
+const CHECK_LABEL = {
+  blank: "Silence where a sentence belongs",
+  loop: "The model looped",
+  mumble: "Not recognizable as speech",
+  mismatch: "Does not say what the text says",
+  clipping: "Distorted",
+};
+
+async function showNarrationCheck() {
+  const wrap = $("checkWrap");
+  if (!state.job) { wrap.style.display = "none"; return; }
+  // showAudio runs on every poll tick, and the findings do not change while a
+  // build is finishing. Rebuilding the list twice a second would also throw
+  // away wherever the reader had scrolled to in it.
+  if (state.checkedJob === state.job) return;
+  state.checkedJob = state.job;
+  wrap.style.display = "none";
+  let data;
+  try {
+    data = await (await fetch(`/api/audio/${state.job}/check.json`)).json();
+  } catch { state.checkedJob = null; return; }
+  const found = data.findings || [];
+  if (!found.length) return;
+
+  wrap.style.display = "block";
+  const shown = found.length < (data.total || found.length)
+    ? ` (showing the first ${found.length})` : "";
+  $("checkSummary").textContent =
+    `Narration check: ${data.total || found.length} spot(s) worth a listen${shown}`;
+  $("checkNote").textContent = (data.notes || []).join(" ");
+
+  const list = $("checkList");
+  list.innerHTML = "";
+  for (const f of found) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "link";
+    btn.textContent = hms(f.book_start || 0);
+    btn.onclick = () => {
+      const player = $("audioPlayer");
+      player.currentTime = f.book_start || 0;
+      player.play().catch(() => { /* the browser wants a gesture; it had one */ });
+    };
+    li.appendChild(btn);
+    li.appendChild(document.createTextNode(
+      ` ch ${f.chapter} · ${CHECK_LABEL[f.kind] || f.kind} — ${f.detail}`));
+    if (f.text || f.heard) {
+      const q = document.createElement("div");
+      q.className = "muted small";
+      q.textContent = [f.text ? `text: “${f.text}”` : "",
+                       f.heard ? `heard: “${f.heard}”` : ""]
+        .filter(Boolean).join("  ·  ");
+      li.appendChild(q);
+    }
+    list.appendChild(li);
+  }
+}
+
+function hms(seconds) {
+  const s = Math.floor(seconds);
+  const mm = String(Math.floor(s / 60) % 60).padStart(2, "0");
+  return `${Math.floor(s / 3600)}:${mm}:${String(s % 60).padStart(2, "0")}`;
 }
 
 async function cancelBuild() {
@@ -1772,6 +1843,7 @@ async function cancelBuild() {
 // --------------------------------------------------------------------------- //
 function resetPreview() {
   state.pages = 0;
+  state.checkedJob = null;
   state.viewingCover = false;
   $("previewWrap").innerHTML = `<p class="muted">Building…</p>`;
   $("pageLabel").textContent = "— / —";
