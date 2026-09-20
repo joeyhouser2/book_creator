@@ -928,6 +928,13 @@ def voice_catalog(voices_dir: str | Path = VOICES_DIR) -> list[dict]:
     d = Path(voices_dir)
     if not d.is_dir():
         return []
+    # Written by download_voices.py; absent for a clip someone dropped in by
+    # hand, which is why every field below still has a filename fallback.
+    credits: dict = {}
+    try:
+        credits = json.loads((d / "credits.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        pass
     out = []
     for p in sorted(d.glob("*.wav")):
         parts = p.stem.split("-")
@@ -942,13 +949,21 @@ def voice_catalog(voices_dir: str | Path = VOICES_DIR) -> list[dict]:
 
         name = _LANG_NAMES.get(lang, lang or "?")
         accent = _REGION_NAMES.get(region, "")
-        label = f"{name}{f' ({accent})' if accent else ''} · {who}"
+        credit = credits.get(p.stem, {})
+        reader = credit.get("reader", "") or who.title()
+        label = f"{name}{f' ({accent})' if accent else ''} · {reader}"
         out.append({
             "id": p.stem,
             "path": str(p),
             "lang": lang,
             "accent": accent,
             "label": label,
+            "reader": reader,
+            # What they were reading when this was sampled, which is the only
+            # honest way to judge a narrator before hearing them.
+            "note": credit.get("note", ""),
+            "source": credit.get("source", ""),
+            "licence": credit.get("licence", ""),
             "size_kb": round(p.stat().st_size / 1024),
         })
     return out

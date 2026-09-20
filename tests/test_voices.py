@@ -44,7 +44,7 @@ def test_catalog_parses_lang_from_the_filename(tmp_path):
     assert set(got) == {"la-caesar", "grc-thucydides"}
     assert got["la-caesar"]["lang"] == "la"
     assert got["grc-thucydides"]["lang"] == "grc"
-    assert "caesar" in got["la-caesar"]["label"]
+    assert "caesar" in got["la-caesar"]["label"].lower()
     assert got["la-caesar"]["size_kb"] > 0
 
 
@@ -59,7 +59,7 @@ def test_catalog_reads_the_accent_marker(tmp_path):
     assert got["en-us-klett"]["accent"] == "American"
     # The label is what the picker shows, so accent has to be legible there.
     assert "British" in got["en-gb-savage"]["label"]
-    assert "savage" in got["en-gb-savage"]["label"]
+    assert "savage" in got["en-gb-savage"]["label"].lower()
     assert "gb" not in got["en-gb-savage"]["label"]
 
 
@@ -68,7 +68,7 @@ def test_catalog_does_not_mistake_a_name_for_a_region(tmp_path):
     _write_wav(d / "la-caesar.wav")
     (entry,) = audio.voice_catalog(d)
     assert entry["accent"] == ""
-    assert entry["label"] == "Latin · caesar"
+    assert entry["label"] == "Latin · Caesar"
 
 
 def test_catalog_tolerates_an_unconventional_name(tmp_path):
@@ -205,3 +205,57 @@ def test_voice_is_part_of_the_cache_key(tmp_path):
     # Changing narrator must invalidate the cache, or a re-run would splice
     # two different voices into one book.
     assert _cache_key("tone", a) != _cache_key("tone", b)
+
+
+# --------------------------------------------------------------------------- #
+# Hearing a narrator before choosing one
+# --------------------------------------------------------------------------- #
+def test_the_catalog_names_the_reader_not_the_filename(tmp_path):
+    """"en-gb-addison" says nothing about whose voice it is; the credits
+    written by download_voices.py do."""
+    import json
+
+    from book_creator import audio
+
+    (tmp_path / "en-gb-addison.wav").write_bytes(b"RIFF" + b"\0" * 2000)
+    (tmp_path / "credits.json").write_text(json.dumps({
+        "en-gb-addison": {"reader": "Tony Addison", "accent": "British",
+                          "note": "English (British, male) — Collins, The Moonstone",
+                          "source": "https://archive.org/download/x/y.mp3",
+                          "licence": "Public domain (LibriVox)"}}),
+        encoding="utf-8")
+    v = audio.voice_catalog(tmp_path)[0]
+    assert v["label"] == "English (British) · Tony Addison"
+    assert "Moonstone" in v["note"]
+    assert v["licence"] == "Public domain (LibriVox)"
+
+
+def test_a_hand_dropped_clip_still_lists_without_credits(tmp_path):
+    from book_creator import audio
+
+    (tmp_path / "en-gb-lockhart.wav").write_bytes(b"RIFF" + b"\0" * 2000)
+    v = audio.voice_catalog(tmp_path)[0]
+    assert v["label"] == "English (British) · Lockhart"
+    assert v["note"] == "" and v["licence"] == ""
+
+
+def test_the_sample_can_be_played_by_id_only(monkeypatch):
+    """The route takes a catalogue id, never a path, so it cannot be talked
+    into serving something else off the machine."""
+    from webapp import server
+
+    monkeypatch.setattr(server.audio, "voice_catalog",
+                        lambda *a, **k: [{"id": "en-gb-evers",
+                                          "path": "voices/en-gb-evers.wav"}])
+    client = server.app.test_client()
+    assert client.get("/api/voice/nope.wav").status_code == 404
+    assert client.get("/api/voice/..%2f..%2frun_web.wav").status_code == 404
+
+
+def test_every_curated_voice_id_matches_its_language_prefix():
+    """voice_catalog reads the language out of the filename, so a curated id
+    that does not start with its language code would be catalogued wrong."""
+    import download_voices
+
+    for v in download_voices.VOICES:
+        assert v.id.split("-")[0] == v.lang, v.id

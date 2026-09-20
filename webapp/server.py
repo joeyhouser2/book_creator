@@ -900,6 +900,21 @@ def api_audio_engines():
                     "voices": audio.voice_catalog(), **info})
 
 
+@app.route("/api/voice/<voice_id>.wav")
+def api_voice_sample(voice_id: str):
+    """The reference clip itself, so a narrator can be heard before use.
+
+    Served by catalogue id rather than by path: the id has to match something
+    voice_catalog() already found in voices/, which is what keeps this from
+    being a way to read arbitrary files off the machine.
+    """
+    match = next((v for v in audio.voice_catalog() if v["id"] == voice_id), None)
+    if not match:
+        return Response("no such voice", status=404)
+    p = Path(match["path"]).resolve()
+    return send_from_directory(p.parent, p.name, mimetype="audio/wav")
+
+
 @app.route("/api/audio/estimate", methods=["POST"])
 def api_audio_estimate():
     """How long a narration would run, before committing the GPU to it.

@@ -378,7 +378,12 @@
             <select id="auDevice"></select>
           </label>
           <label class="wide">Narrator voice
-            <select id="auVoice"></select>
+            <div class="voice-pick">
+              <select id="auVoice"></select>
+              <button type="button" id="auVoicePlay" class="voice-play"
+                      title="Hear this narrator">▶ Hear</button>
+            </div>
+            <audio id="auVoiceAudio" preload="none"></audio>
             <input id="auVoiceCustom" type="text" style="display:none"
                    placeholder="path to a 6–30s WAV, or a voice name">
             <small id="auVoiceNote" class="muted"></small>

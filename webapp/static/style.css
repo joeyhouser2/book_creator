@@ -303,3 +303,12 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   max-height: 70vh;
   overflow-y: auto;
 }
+
+/* Narrator picker: the select with a "hear it" button beside it. */
+.voice-pick { display: flex; gap: 6px; align-items: center; }
+.voice-pick select { flex: 1 1 auto; min-width: 0; }
+.voice-play { flex: 0 0 auto; padding: 5px 10px; font-size: 13px;
+  border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  cursor: pointer; white-space: nowrap; }
+.voice-play:disabled { opacity: .45; cursor: default; }
+#auVoiceAudio { display: none; }

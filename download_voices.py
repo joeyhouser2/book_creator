@@ -104,6 +104,34 @@ VOICES: list[Voice] = [
           "cantervilleghost_1-3_wilde_64kb.mp3",
           "English (British, male) — Wilde, The Canterville Ghost",
           reader="David Barnes", accent="British"),
+    # More British men than anything else, because that is the register most
+    # of these books want and the curated set had exactly one. All solo, all
+    # sampled from mid-prose, all checked for noise floor and intelligibility
+    # before being pinned (see the note below on accent).
+    Voice("en-gb-geeson", "en", "first_love_mg_librivox",
+          "firstlove_01_turgenev_64kb.mp3",
+          "English (British, male) — Turgenev, First Love",
+          reader="Martin Geeson", accent="British"),
+    Voice("en-gb-yearsley", "en", "advofsherlockholmes_2010_librivox",
+          "sherlockholmes_01_doyle_64kb.mp3",
+          "English (British, male) — Conan Doyle, Sherlock Holmes",
+          reader="Peter Yearsley", accent="British"),
+    Voice("en-gb-praetzellis", "en", "treasure_island_ap_librivox",
+          "treasure_island_01-02_stevenson_64kb.mp3",
+          "English (British, male) — Stevenson, Treasure Island",
+          reader="Adrian Praetzellis", accent="British"),
+    Voice("en-gb-addison", "en", "moonstone_1610_librivox",
+          "moonstone_01_collins_64kb.mp3",
+          "English (British, male) — Collins, The Moonstone",
+          reader="Tony Addison", accent="British"),
+    Voice("en-gb-evers", "en", "buried_alive_1306_librivox",
+          "buriedalive_01_bennett_64kb.mp3",
+          "English (British, male) — Bennett, Buried Alive",
+          reader="Simon Evers", accent="British"),
+    Voice("en-gb-benson", "en", "child_christopher_1803_librivox",
+          "childchristopher_01_morris_64kb.mp3",
+          "English (British, male) — Morris, Child Christopher",
+          reader="Phil Benson", accent="British"),
     Voice("en-us-klett", "en", "prideandprejudice_1005_librivox",
           "prideandprejudice_01_austen_64kb.mp3",
           "English (American, female) — Austen, Pride and Prejudice",
@@ -113,6 +141,31 @@ VOICES: list[Voice] = [
           "English (American, male) — Melville, Moby Dick",
           reader="Stewart Wills", accent="American"),
 ]
+
+
+# Written beside the clips so the app can name the reader and the recording a
+# voice was sampled from. A cloned voice is someone's, and the one thing that
+# makes these safe to publish is *which* recording they came from -- that fact
+# should travel with the WAV rather than living only in this file.
+CREDITS = VOICES_DIR / "credits.json"
+
+
+def write_credits(voices: list["Voice"] = None) -> None:
+    """Record reader, work and archive.org source for every clip on disk."""
+    import json
+
+    voices = VOICES if voices is None else voices
+    out = {}
+    for v in voices:
+        if not (VOICES_DIR / f"{v.id}.wav").exists():
+            continue
+        out[v.id] = {"reader": v.reader, "note": v.note, "accent": v.accent,
+                     "source": DOWNLOAD.format(identifier=v.identifier,
+                                               file=v.file),
+                     "licence": "Public domain (LibriVox)"}
+    if out:
+        CREDITS.write_text(json.dumps(out, indent=1, ensure_ascii=False),
+                           encoding="utf-8")
 
 
 def ffmpeg_exe() -> str | None:

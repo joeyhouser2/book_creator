@@ -428,10 +428,28 @@ python make_book.py --corpus-id 79 --audio --audio-voice voices/la-caesar.wav
 | `la-caesar`, `la-aesop` | **Latin**, read by a human |
 | `grc-thucydides` | **Ancient Greek**, read by a human |
 | `it-pirandello`, `fr-hugo`, `es-dickens` | Italian, French, Spanish |
-| `en-gb-savage`, `en-gb-golding` (f), `en-gb-barnes` (m) | **British** English |
+| `en-gb-savage`, `en-gb-golding` (f) | **British** English, female |
+| `en-gb-barnes`, `en-gb-geeson`, `en-gb-yearsley`, `en-gb-praetzellis`, `en-gb-addison`, `en-gb-evers`, `en-gb-benson` (m) | **British** English, male |
 | `en-us-klett` (f), `en-us-wills` (m) | American English |
 
 The Latin and Greek ones matter most, for the reason in the next section.
+
+**Hear one before you use it.** The Audiobook panel names the reader rather
+than the filename ("English (British) · Tony Addison"), says what they were
+reading when the clip was sampled, and has a *Hear* button that plays the
+twenty seconds. Accent is the thing no catalogue entry can settle — these are
+labelled from who the LibriVox reader is, not from listening — so the button
+exists to let your own ear decide. `voices/credits.json`, written by
+`download_voices.py`, carries the reader, the work and the archive.org URL for
+each clip, so where a voice came from travels with it.
+
+**Someone else's voice is not yours to clone.** A professional narrator's
+recordings are copyrighted and their voice is their livelihood; sampling one
+because you admire their work is not something this tool will help with, for
+personal listening or otherwise. The curated set is LibriVox precisely because
+those readers have released their recordings. If a narrator licenses their
+voice to you, drop the WAV in `voices/` and it appears in the picker like any
+other.
 
 Accent is taken from **who the credited LibriVox reader is**, not from
 listening to the file, so treat it as a strong hint and spot-check by playing

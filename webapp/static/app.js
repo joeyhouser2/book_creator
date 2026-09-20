@@ -1462,7 +1462,9 @@ async function loadAudio() {
   for (const v of VOICES) {
     const o = document.createElement("option");
     o.value = v.path;
-    o.textContent = `${v.label} (${v.size_kb} KB)`;
+    // The reader's name, not the filename: "English (British) · Tony Addison"
+    // tells you who you are about to clone, which the stem never did.
+    o.textContent = v.label;
     vSel.appendChild(o);
   }
   const custom = document.createElement("option");
@@ -1491,11 +1493,20 @@ function updateVoiceNote() {
   // Reading Latin in a voice cloned from someone actually reading Latin beats
   // the Italian-voice approximation, so say when the two match.
   const picked = VOICES.find((x) => x.path === v);
+  $("auVoicePlay").disabled = !picked;
   const src = $("srcLang").value;
-  note.textContent = picked && picked.lang === src
+  const fit = picked && picked.lang === src
     ? `Cloned from a real ${LANG_NAMES[src] || src} reader — closer than the ` +
       `substitute voice ${LANG_NAMES[src] || src} would otherwise get.`
     : "One narrator reads both languages.";
+  // What the clip actually is, and where it came from. A cloned voice is
+  // someone's, and the reason these are safe to publish is the recording
+  // behind them — so the picker says which one, rather than burying it in
+  // download_voices.py.
+  note.textContent = picked && picked.note ? `${picked.note}. ${fit}` : fit;
+  if (picked && picked.licence) {
+    note.textContent += ` ${picked.licence}.`;
+  }
 }
 
 const LANG_NAMES = {
@@ -1963,6 +1974,27 @@ $("coverToggle").onclick = toggleCover;
 $("auEstimateBtn").onclick = estimateAudio;
 $("auEngine").addEventListener("change", updateEngineNote);
 $("auVoice").addEventListener("change", updateVoiceNote);
+
+// Hearing twenty seconds of a narrator settles in one click what no label can
+// describe -- accent above all, which the catalogue only ever claims second
+// hand, from who the LibriVox reader is rather than from the recording.
+$("auVoicePlay").addEventListener("click", () => {
+  const player = $("auVoiceAudio");
+  const picked = VOICES.find((v) => v.path === $("auVoice").value);
+  if (!picked) return;
+  if (!player.paused && player.dataset.voice === picked.id) {
+    player.pause();
+    $("auVoicePlay").textContent = "▶ Hear";
+    return;
+  }
+  player.src = `/api/voice/${encodeURIComponent(picked.id)}.wav`;
+  player.dataset.voice = picked.id;
+  $("auVoicePlay").textContent = "■ Stop";
+  player.play().catch(() => { $("auVoicePlay").textContent = "▶ Hear"; });
+});
+$("auVoiceAudio").addEventListener("ended", () => {
+  $("auVoicePlay").textContent = "▶ Hear";
+});
 $("auOnly").addEventListener("change", () => {
   // Audio-only without narration would produce nothing at all.
   if ($("auOnly").checked) $("auEnabled").checked = true;
