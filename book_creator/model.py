@@ -14,6 +14,15 @@ class Bead:
 
     src: list[str] = field(default_factory=list)
     tgt: list[str] = field(default_factory=list)
+    # Print the source segments one per line instead of running them together.
+    # Off by default: a prose bead's segments are sentences and belong in one
+    # paragraph. A bead that holds several lines of verse -- a stanza, or five
+    # numbered lines of a poem with no stanzas -- needs its line breaks kept.
+    lines: bool = False
+    # A heading that belongs inside the text rather than above a chapter: a
+    # medieval rubric, set between two lines of verse. Printed centred and in
+    # italic so it reads as a heading, not as two more lines of the poem.
+    heading: bool = False
 
     @property
     def src_text(self) -> str:

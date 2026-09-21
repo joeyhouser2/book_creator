@@ -203,3 +203,49 @@ def test_art_is_drawn_inside_the_band_that_was_reserved(style, tmp_path):
     assert xs.max() / scale <= geom["right"] + band + 1
     assert ys.min() / scale >= (h - geom["top"]) - band - 1
     assert ys.max() / scale <= (h - geom["bottom"]) + band + 1
+
+
+# --------------------------------------------------------------------------- #
+# Every font embedded -- KDP rejects a file with any that is not
+# --------------------------------------------------------------------------- #
+def _unembedded(path) -> set[str]:
+    import fitz
+    doc = fitz.open(path)
+    return {f[3] for i in range(doc.page_count) for f in doc[i].get_fonts()
+            if f[1] in ("n/a", "")}
+
+
+def _has_real_font() -> bool:
+    from book_creator import fonts
+    return not fonts.register("Cardo")[0].startswith("Times")
+
+
+@pytest.mark.skipif(not _has_real_font(), reason="needs an installed font to embed")
+def test_an_interior_with_contents_embeds_every_font(tmp_path):
+    """Three things put unembedded base fonts into every book this tool made:
+    the folios were drawn in Times-Roman, ReportLab opens each page in
+    Helvetica, and the contents table sets each cell's font to Helvetica
+    before drawing it. Any one of them is enough for KDP to reject the file."""
+    from book_creator import render_pdf
+    from book_creator.model import Bead, Chapter, FontSpec
+
+    chapters = [Chapter(title=f"Book {i}",
+                        beads=[Bead(src=["Arma virumque cano."], tgt=["Arms."])])
+                for i in range(1, 4)]
+    out = tmp_path / "interior.pdf"
+    render_pdf.render(chapters, out_path=str(out), title="T", author="A",
+                      src_lang="la", tgt_lang="en", trim=(6.0, 9.0),
+                      include_toc=True, font_spec=FontSpec("Cardo"))
+    assert _unembedded(out) == set()
+
+
+@pytest.mark.skipif(not _has_real_font(), reason="needs an installed font to embed")
+def test_a_cover_embeds_every_font(tmp_path):
+    from book_creator import cover
+    from book_creator.model import FontSpec
+
+    out = tmp_path / "cover.pdf"
+    cover.render_cover(str(out), title="T", author="A", src_lang="la",
+                       tgt_lang="en", trim=(6.0, 9.0), pages=120,
+                       font_spec=FontSpec("Cardo"))
+    assert _unembedded(out) == set()

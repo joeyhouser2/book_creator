@@ -35,3 +35,6 @@ input/eugenie_grandet_*.txt
 # Local settings written by the web UI (machine-specific paths:
 # where the latin corpus lives, which database file to read).
 config/settings.json
+
+# Office suites leave a lock beside any file they have open.
+.~lock.*#

@@ -20,6 +20,7 @@ from reportlab.platypus import (
     Spacer,
 )
 from reportlab.platypus.tableofcontents import TableOfContents
+from reportlab.platypus import TableStyle
 from reportlab.lib.styles import ParagraphStyle
 
 from . import decorations, fonts
@@ -28,6 +29,7 @@ from .model import Bead, Chapter, CopyrightSpec, DecorSpec, FontSpec
 _LANG_NAMES = {
     "la": "Latin", "fr": "French", "grc": "Ancient Greek", "el": "Greek",
     "de": "German", "it": "Italian", "es": "Spanish", "en": "English",
+    "xno": "Anglo-Norman",
 }
 
 
@@ -73,9 +75,17 @@ def _gutter_for_page_count(pages: int) -> float:
 class _BookDoc(BaseDocTemplate):
     """Two mirrored page templates (recto/verso) for correct gutter placement."""
 
-    def __init__(self, filename, trim, gutter, title, decor: DecorSpec, **kw):
+    def __init__(self, filename, trim, gutter, title, decor: DecorSpec,
+                 page_font: str = "Times-Roman", **kw):
         w, h = trim[0] * inch, trim[1] * inch
         self.book_title = title
+        # The book's own embedded font, for page numbers and as the canvas's
+        # opening font. KDP rejects an interior with any unembedded font, and
+        # ReportLab otherwise writes Helvetica into every page as its default
+        # and drew the folios in Times-Roman -- neither embedded, in every
+        # book this tool has made.
+        self._page_font = page_font
+        kw.setdefault("initialFontName", page_font)
         self.decor = decor or DecorSpec()
         # First body page. Pages before it (title, copyright, contents) get no
         # margin art and no page number. Set by afterFlowable (or directly when
@@ -161,7 +171,7 @@ class _BookDoc(BaseDocTemplate):
             self.decor.corner_image,
         )
         canvas.saveState()
-        canvas.setFont("Times-Roman", 9)
+        canvas.setFont(self._page_font, 9)
         canvas.drawCentredString(self._page_w / 2.0, 0.35 * inch, str(doc.page))
         canvas.restoreState()
 
@@ -216,10 +226,15 @@ def _styles(fonts: tuple[str, str, str], first: str, opener_font: str | None = N
         textColor=HexColor("#555555"), alignment=TA_CENTER,
         spaceBefore=4, spaceAfter=14,
     )
+    rubric = ParagraphStyle(
+        "rubric", fontName=italic, fontSize=10.5, leading=14,
+        textColor=src_color, alignment=TA_CENTER,
+        spaceBefore=10, spaceAfter=8, leftIndent=18, rightIndent=18,
+    )
     return {"src": src, "tgt": tgt, "src_open": src_open, "tgt_open": tgt_open,
             "head": head, "title": title, "sub": sub,
             "cr": cr, "tochead": toc_head, "toc0": toc0,
-            "music_caption": music_caption}
+            "music_caption": music_caption, "rubric": rubric}
 
 
 def copyright_text(cr: CopyrightSpec, *, title: str, author: str,
@@ -343,7 +358,8 @@ def render(
     titled = [ch for ch in chapters if ch.title]
     want_toc = include_toc and len(titled) >= 2
 
-    doc = _BookDoc(out_path, trim, gutter, title, decor, author=author)
+    doc = _BookDoc(out_path, trim, gutter, title, decor, author=author,
+                   page_font=font[0])
 
     story = []
     # --- Title page (recto) ---
@@ -370,6 +386,12 @@ def render(
         toc = TableOfContents()
         toc.dotsMinLevel = 0
         toc.levelStyles = [st["toc0"]]
+        # The contents is laid out as a table, and a table sets each cell's
+        # font before drawing it -- Helvetica, unless told otherwise -- even
+        # when every cell holds a paragraph in the book's own font. That one
+        # call put an unembedded Helvetica into every page's resources.
+        toc.tableStyle = TableStyle(list(toc.tableStyle.getCommands())
+                                    + [("FONT", (0, 0), (-1, -1), font[0])])
         story.append(toc)
 
     # --- Body begins here ---
@@ -411,7 +433,11 @@ def render(
 
 
 def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):
-    src_txt = _esc(bead.src_text)
+    if bead.heading:
+        story.append(Paragraph(_esc(bead.src_text), st["rubric"]))
+        return
+    src_txt = ("<br/>".join(_esc(s.strip()) for s in bead.src if s.strip())
+               if bead.lines else _esc(bead.src_text))
     tgt_txt = _esc(bead.tgt_text)
     src_style = st["src_open"] if opener else st["src"]
     tgt_style = st["tgt_open"] if opener else st["tgt"]

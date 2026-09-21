@@ -643,12 +643,13 @@ def render_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
                  publisher: str = "", edition_line: str | None = None) -> tuple[str, tuple]:
     full_w, full_h, spine = cover_dimensions(trim, pages, paper)
     W, H = full_w * inch, full_h * inch
-    c = canvas.Canvas(out_path, pagesize=(W, H))
-
     font = fonts.register(font_spec.family if font_spec else None,
                           {"regular": getattr(font_spec, "regular", None),
                            "italic": getattr(font_spec, "italic", None),
                            "bold": getattr(font_spec, "bold", None)} if font_spec else None)
+    # Opened in the cover's own font: ReportLab otherwise writes Helvetica into
+    # the page as its default, unembedded, and KDP rejects a cover for that.
+    c = canvas.Canvas(out_path, pagesize=(W, H), initialFontName=font[0])
     motif = _motif_for(src_lang, accent)
     accent_color = HexColor(motif["color"])
     ink = HexColor("#241f1a")
@@ -708,7 +709,7 @@ def render_ebook_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_pdf = str(Path(tmp) / "front.pdf")
-        c = canvas.Canvas(tmp_pdf, pagesize=(tw, th))
+        c = canvas.Canvas(tmp_pdf, pagesize=(tw, th), initialFontName=font[0])
         c.setFillColor(bg)
         c.rect(0, 0, tw, th, fill=1, stroke=0)
         _draw_front(c, 0, 0, tw, th, style=style, title=title, author=author,

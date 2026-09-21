@@ -93,6 +93,7 @@ body {{ font-family: {body_family}; }}
 h1.chapter-title {{ text-align: center; font-size: 1.4em; margin: 1.4em 0 0.2em; }}
 hr.orn-rule {{ width: 35%; margin: 1.2em auto; border: none; border-top: 1px solid {decor.color}; }}
 p.src {{ margin: 0 0 0.15em 0; text-align: justify; }}
+p.rubric {{ margin: 0.9em 1.5em 0.6em 1.5em; text-align: center; font-style: italic; }}
 p.tgt {{ margin: 0 0 0.9em 1.2em; font-style: italic; color: #555555; font-size: 0.95em; text-align: justify; }}
 """)
     if opener_family:
@@ -159,7 +160,10 @@ def _music_html(book: epub.EpubBook, image_paths: list[str], caption: str, uid_p
 
 
 def _bead_html(bead, first: str, opener: bool) -> str:
-    src_txt = _esc(bead.src_text)
+    if getattr(bead, "heading", False):
+        return f'<p class="rubric">{_esc(bead.src_text)}</p>'
+    src_txt = ("<br/>".join(_esc(s.strip()) for s in bead.src if s.strip())
+               if getattr(bead, "lines", False) else _esc(bead.src_text))
     tgt_txt = _esc(bead.tgt_text)
     src_cls = "src opener" if opener else "src"
     tgt_cls = "tgt opener" if opener else "tgt"
