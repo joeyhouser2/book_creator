@@ -249,3 +249,30 @@ def test_a_cover_embeds_every_font(tmp_path):
                        tgt_lang="en", trim=(6.0, 9.0), pages=120,
                        font_spec=FontSpec("Cardo"))
     assert _unembedded(out) == set()
+
+
+def test_a_cover_title_breaks_into_even_lines(tmp_path):
+    """Greedy filling left "Prince" alone under "The Life of the Black"."""
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    from book_creator import cover
+
+    c = rl_canvas.Canvas(str(tmp_path / "t.pdf"))
+    size = 30
+    max_w = c.stringWidth("The Life of the Black", "Helvetica", size) + 1
+    assert cover._wrap(c, "The Life of the Black Prince", "Helvetica", size, max_w) == [
+        "The Life of the", "Black Prince"]
+    for line in cover._wrap(c, "The Life of the Black Prince", "Helvetica", size, max_w):
+        assert c.stringWidth(line, "Helvetica", size) <= max_w
+
+
+def test_every_emblem_draws(tmp_path):
+    from reportlab.lib.colors import HexColor
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    from book_creator import cover
+
+    c = rl_canvas.Canvas(str(tmp_path / "e.pdf"))
+    for lang, draw in cover._EMBLEMS.items():
+        draw(c, 200, 400, 80, HexColor("#1e1b18"))
+    assert "xno" in cover._EMBLEMS

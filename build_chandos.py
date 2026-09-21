@@ -1487,6 +1487,13 @@ def apply_supplied(lines: list[VerseLine], rubrics: dict[int, str],
 TITLE = "The Life of the Black Prince"
 AUTHOR = "Chandos Herald"
 SLUG = "life-of-the-black-prince"
+# The plate: the Black Prince's three feathers in a roundel, like a seal.
+COVER_STYLE = "plate"
+BLURB = ("The life of Edward, Prince of Wales -- Crécy, Poitiers, Nájera and "
+         "the long decline -- told in verse by the herald of his companion Sir "
+         "John Chandos, who rode beside him. The Anglo-Norman poem as the "
+         "manuscript has it, with Mildred K. Pope and Eleanor C. Lodge's 1910 "
+         "English translation beneath each passage.")
 
 
 def build(doc, *, out_dir: Path) -> int:
@@ -1530,12 +1537,24 @@ def build(doc, *, out_dir: Path) -> int:
         copyright=copyright, include_toc=True, edition_line=edition_line)
     print(f"  {pages} pages")
 
+    from book_creator import cover
+    wrap = out_dir / f"{SLUG}-cover.pdf"
+    _, (w, h, spine) = cover.render_cover(
+        str(wrap), style=COVER_STYLE, title=TITLE, author=AUTHOR, src_lang="xno",
+        tgt_lang="en", trim=(6.0, 9.0), pages=pages, font_spec=font,
+        blurb=BLURB, edition_line=edition_line)
+    print(f"Cover -> {wrap} ({w:.3f} x {h:.3f} in, spine {spine:.3f} in)")
+    front = out_dir / f"{SLUG}-epub-cover.png"
+    cover.render_ebook_cover(
+        str(front), style=COVER_STYLE, title=TITLE, author=AUTHOR, src_lang="xno",
+        tgt_lang="en", trim=(6.0, 9.0), font_spec=font, edition_line=edition_line)
+
     epub_path = out_dir / f"{SLUG}.epub"
     print(f"Rendering EPUB -> {epub_path}")
     render_epub.render(chapters, out_path=str(epub_path), title=TITLE,
                        author=AUTHOR, src_lang="xno", tgt_lang="en",
                        font_spec=font, decor=decor, copyright=copyright,
-                       edition_line=edition_line)
+                       cover_image_path=str(front), edition_line=edition_line)
 
     # The pairing written out in full, for proofreading against the scan.
     review = out_dir / f"{SLUG}-pairs.json"

@@ -32,6 +32,7 @@ _MOTIFS: dict[str, dict] = {
     "el": {"name": "Greek", "color": "#1f3d63"},
     "fr": {"name": "French", "color": "#27408b"},     # royal azure
     "de": {"name": "German", "color": "#3d5234"},     # forest/oak green
+    "xno": {"name": "Anglo-Norman", "color": "#1e1b18"},  # sable: the Black Prince
 }
 _DEFAULT_MOTIF = {"name": "", "color": "#5a4a2c"}
 
@@ -163,7 +164,72 @@ def _oak(c, cx, cy, size, color):
                   fill=1, stroke=0)                       # cap
 
 
-_EMBLEMS = {"la": _laurel, "grc": _meander, "el": _meander, "fr": _fleur, "de": _oak}
+def _feather(c, x, y, length, angle, color, droop):
+    """One ostrich feather, quill at (x, y), leaning `angle` degrees, its tip
+    curling over to the right (droop 1) or the left (droop -1)."""
+    L = length
+    c.saveState()
+    c.translate(x, y)
+    c.rotate(angle)
+    c.scale(droop, 1)
+    c.setStrokeColor(color)
+    c.setLineWidth(max(0.6, L * 0.02))
+    c.setLineCap(1)
+    c.setLineJoin(1)
+    # Quill, up the middle and over with the curl.
+    p = c.beginPath()
+    p.moveTo(0, 0)
+    p.lineTo(0, 0.80 * L)
+    p.curveTo(0, 0.92 * L, 0.06 * L, 0.98 * L, 0.14 * L, 0.93 * L)
+    c.drawPath(p, fill=0, stroke=1)
+    # Plume: tall and narrow, the top bending over into a small hook.
+    p = c.beginPath()
+    p.moveTo(0, 0.26 * L)
+    p.curveTo(-0.12 * L, 0.40 * L, -0.12 * L, 0.72 * L, -0.07 * L, 0.90 * L)
+    p.curveTo(-0.03 * L, 1.03 * L, 0.16 * L, 1.05 * L, 0.21 * L, 0.92 * L)
+    p.curveTo(0.23 * L, 0.86 * L, 0.18 * L, 0.83 * L, 0.13 * L, 0.86 * L)
+    p.curveTo(0.12 * L, 0.72 * L, 0.12 * L, 0.42 * L, 0, 0.26 * L)
+    c.drawPath(p, fill=0, stroke=1)
+    # A few barbs swept up from the quill: enough to say "feather" without
+    # filling the plume, which at thumbnail size would turn it to a blot.
+    c.setLineWidth(max(0.4, L * 0.011))
+    for t in (0.40, 0.52, 0.64, 0.76):
+        reach = 0.075 * L
+        for sd in (-1, 1):
+            c.line(0, t * L, sd * reach, (t + 0.06) * L)
+    c.restoreState()
+
+
+def _feathers(c, cx, cy, size, color):
+    """Three ostrich feathers through a scroll: the Black Prince's badge,
+    his "shield for peace" (Anglo-Norman)."""
+    L = size * 0.80
+    base_y = cy - 0.34 * size
+    for angle, droop in ((20, -1), (-20, 1), (0, 1)):
+        _feather(c, cx, base_y, L, angle, color, droop)
+    # The scroll beneath, where "Ich dene" was written. Only outlined, and
+    # below the quills rather than across them, so it reads on any ground --
+    # the band style draws emblems reversed out of the accent.
+    w, h = 0.62 * size, 0.09 * size
+    y = base_y - h - 0.02 * size
+    c.saveState()
+    c.setStrokeColor(color)
+    c.setLineWidth(max(0.6, size * 0.018))
+    c.roundRect(cx - w / 2, y, w, h, h * 0.35, fill=0, stroke=1)
+    for sd in (-1, 1):
+        tip = cx + sd * (w / 2 + 0.08 * size)
+        p = c.beginPath()
+        p.moveTo(cx + sd * w / 2, y + h)
+        p.lineTo(tip, y + h * 0.5)
+        p.lineTo(tip - sd * 0.03 * size, y + h * 0.5)
+        p.lineTo(tip, y - h * 0.3)
+        p.lineTo(cx + sd * w / 2, y)
+        c.drawPath(p, fill=0, stroke=1)
+    c.restoreState()
+
+
+_EMBLEMS = {"la": _laurel, "grc": _meander, "el": _meander, "fr": _fleur, "de": _oak,
+            "xno": _feathers}
 
 
 def _motif_for(src_lang: str, accent: str | None) -> dict:
@@ -186,6 +252,13 @@ def _draw_emblem(c, motif, cx, cy, size):
 # Text helpers
 # --------------------------------------------------------------------------- #
 def _wrap(c, text, font, size, max_w):
+    """Lines of text no wider than max_w, as even in length as they can be.
+
+    Filling each line greedily leaves a title's last word alone on a line --
+    "The Life of the Black / Prince" -- where "The Life of the / Black
+    Prince" takes the same number of lines. So the greedy count is kept and
+    the break is chosen that makes the longest line shortest.
+    """
     words = text.split()
     lines, cur = [], ""
     for w in words:
@@ -197,7 +270,32 @@ def _wrap(c, text, font, size, max_w):
             cur = w
     if cur:
         lines.append(cur)
-    return lines
+    if len(lines) < 2 or len(words) > 40:
+        return lines
+    width = lambda a, b: c.stringWidth(" ".join(words[a:b]), font, size)
+    n, count = len(words), len(lines)
+    # best[k][i]: the smallest possible longest line setting words[i:] in k lines.
+    inf = float("inf")
+    best = [[inf] * (n + 1) for _ in range(count + 1)]
+    cut = [[n] * (n + 1) for _ in range(count + 1)]
+    best[0][n] = 0.0
+    for k in range(1, count + 1):
+        for i in range(n - 1, -1, -1):
+            for j in range(i + 1, n + 1):
+                w = width(i, j)
+                if w > max_w and j > i + 1:
+                    break
+                worst = max(w, best[k - 1][j])
+                if worst < best[k][i]:
+                    best[k][i], cut[k][i] = worst, j
+    if best[count][0] == inf:
+        return lines
+    out, i = [], 0
+    for k in range(count, 0, -1):
+        j = cut[k][i]
+        out.append(" ".join(words[i:j]))
+        i = j
+    return out
 
 
 def _centered(c, text, font, size, cx, top_y, color, max_w, leading=None):
@@ -254,10 +352,18 @@ def _bottom_label(c, label, font, cx, y0, accent, max_w, size=11.5):
     custom edition_line can be any length and would otherwise run off the
     panel edge.
     """
+    # A label that would take three lines is set a little smaller to take
+    # two: the third reached down into the plate style's frame.
+    while size > 9.0 and len(_wrap(c, label, font, size, max_w)) > 2:
+        size -= 0.5
     leading = size * 1.25
     n = len(_wrap(c, label, font, size, max_w))
-    _centered(c, label, font, size, cx, y0 + 0.95 * inch + (n - 1) * leading,
-              accent, max_w, leading=leading)
+    # Further lines go down, not up: wrapped upward, a two-line label rose
+    # into the rule above it, and through the arch's base. Only a label long
+    # enough to cross the half-inch safe margin is pushed up.
+    top = y0 + 0.95 * inch
+    top += max(0.0, (y0 + 0.5 * inch) - (top - (n - 1) * leading))
+    _centered(c, label, font, size, cx, top, accent, max_w, leading=leading)
 
 
 # --------------------------------------------------------------------------- #
