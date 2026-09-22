@@ -1316,6 +1316,132 @@ async function inspectLocal(which) {
     detail.insertAdjacentHTML("beforeend", ocrPanelHtml(f, info));
     wireOcrPanel(f);
   }
+  if (kind === "pdf" && which === "lsrc") {
+    detail.insertAdjacentHTML("beforeend", facsimilePanelHtml());
+    wireFacsimilePanel(f);
+  }
+}
+
+// --------------------------------------------------------------------------- //
+// Facsimile — a scanned PDF as a print edition, page for page
+//
+// Every page of the book kept as it was printed, so its contents and index
+// still point at the right page; the covers, endpapers, library slips and
+// blanks taken out, and margins given back. The page review shows what each
+// scanned page was taken for, and a click changes it.
+// --------------------------------------------------------------------------- //
+// A click moves a page on: as decided → keep → drop → plate → as decided.
+const FX_CYCLE = ["auto", "text", "dropped", "plate"];
+const FX_KEPT = new Set(["text", "plate"]);
+
+function facsimilePanelHtml() {
+  const styles = (COVER_STYLES.length ? COVER_STYLES.map((s) => s.id)
+    : ["band", "typographic", "plate", "ornament", "column", "arch", "emblem"]);
+  const opts = styles.map((s) =>
+    `<option value="${s}" ${s === "band" ? "selected" : ""}>${s}</option>`).join("");
+  return `
+    <h3>Facsimile edition</h3>
+    <p class="muted small">The scan's own pages, as printed, set for modern print:
+      covers, endpapers, library slips and blank leaves taken out, yellowed
+      paper whitened, and margins and a gutter given back — with a new title
+      page, copyright page and cover.</p>
+    <div class="fx-fields">
+      <label>Title <input id="fxTitle" type="text"></label>
+      <label>Author <input id="fxAuthor" type="text"></label>
+      <label>Volume / subtitle <input id="fxSubtitle" type="text" placeholder="Volume I"></label>
+      <label>Editor <input id="fxEditor" type="text"></label>
+      <label class="wide">First published
+        <input id="fxSource" type="text" placeholder="at Oxford by Basil Blackwell in 1921"></label>
+      <label>Cover <select id="fxCover">${opts}</select></label>
+      <label class="check"><input id="fxColour" type="checkbox"> Colour plates</label>
+      <label class="wide">Back-cover blurb <textarea id="fxBlurb" rows="2"></textarea></label>
+    </div>
+    <p class="fx-actions">
+      <button id="fxReview">Review pages</button>
+      <button id="fxBuild" class="primary">Build facsimile</button>
+      <span id="fxNote" class="muted small"></span></p>`;
+}
+
+function wireFacsimilePanel(f) {
+  // What the rest of the form already knows about the book.
+  $("fxTitle").value = $("title").value;
+  $("fxAuthor").value = $("author").value;
+  $("fxReview").onclick = () => showFacsimilePages(f);
+  $("fxBuild").onclick = () => buildFacsimile(f);
+}
+
+async function showFacsimilePages(f) {
+  if (state.contentsOpen) {
+    state.contentsOpen = false;
+    $("contentsToggle").textContent = "Contents";
+  }
+  const wrap = $("previewWrap");
+  const url = `/api/facsimile/pages?path=${encodeURIComponent(f.path)}`;
+  let data;
+  try { data = await getJSON(url); }
+  catch (e) { wrap.innerHTML = `<p class="muted">⚠ ${escapeHtml(e.message)}</p>`; return; }
+  if (data.status === "running") {
+    wrap.innerHTML = `<p class="muted">Reading every page of the scan — about half a
+      minute for a 500-page book, once; after that it is remembered.</p>`;
+    $("pageLabel").textContent = "reading pages…";
+    setTimeout(() => showFacsimilePages(f), 2500);
+    return;
+  }
+  if (data.status === "error") {
+    wrap.innerHTML = `<p class="muted">⚠ ${escapeHtml(data.error || "could not read the scan")}</p>`;
+    return;
+  }
+  const s = data.summary;
+  $("pageLabel").textContent = `${s.scanned} scanned → ${s.new_pages} pages`;
+  $("fxNote").textContent = `${s.kept} pages kept, ${s.scanned - s.kept} left out` +
+    (s.blanks ? `, ${s.blanks} blank(s) put back to keep pages on their side` : "") + ".";
+  const tiles = data.pages.map((p) => {
+    const kept = FX_KEPT.has(p.kind);
+    return `<figure class="fx-tile ${kept ? "kept" : "out"} k-${p.kind}${p.by_hand ? " by-hand" : ""}"
+        data-page="${p.page}" title="${escapeHtml(p.reason || p.kind)} — click to change">
+      <img loading="lazy" alt="page ${p.page}"
+           src="/api/facsimile/thumb/${p.page}.png?path=${encodeURIComponent(f.path)}">
+      <figcaption>${p.page} · ${p.kind}${p.by_hand ? " ✎" : ""}</figcaption></figure>`;
+  }).join("");
+  wrap.innerHTML = `<div class="fx-review">
+    <p class="small">Green pages go into the book, blue ones as plates; the rest are
+      left out. Click a page to change it: <b>keep → drop → plate → automatic</b>.
+      Your choices are saved beside the scan in <code>input/</code>.</p>
+    <div class="fx-grid">${tiles}</div></div>`;
+  wrap.querySelectorAll(".fx-tile").forEach((t) => t.onclick = async () => {
+    const page = Number(t.dataset.page);
+    const now = data.pages[page - 1];
+    const current = now.by_hand ? now.kind : "auto";
+    const next = FX_CYCLE[(FX_CYCLE.indexOf(current) + 1) % FX_CYCLE.length];
+    await postJSON("/api/facsimile/override", { path: f.path, page, kind: next });
+    showFacsimilePages(f);
+  });
+}
+
+async function buildFacsimile(f) {
+  const title = $("fxTitle").value.trim(), author = $("fxAuthor").value.trim();
+  if (!title || !author) return alert("A facsimile needs its title and author.");
+  $("buildBtn").disabled = true;
+  $("fxBuild").disabled = true;
+  $("log").textContent = "Queued…\n";
+  resetPreview();
+  try {
+    const data = await postJSON("/api/facsimile/build", {
+      path: f.path, title, author,
+      subtitle: $("fxSubtitle").value, editor: $("fxEditor").value,
+      source: $("fxSource").value, blurb: $("fxBlurb").value,
+      cover_style: $("fxCover").value, colour_plates: $("fxColour").checked,
+      holder: $("cpHolder").value,
+    });
+    state.job = data.job_id;
+    $("cancelBtn").style.display = "inline-block";
+    pollStatus();
+  } catch (e) {
+    $("log").textContent += `\n⚠ ${e.message}`;
+    $("buildBtn").disabled = false;
+  } finally {
+    $("fxBuild").disabled = false;
+  }
 }
 
 async function loadLocalOutline(which) {
@@ -1886,7 +2012,7 @@ function showProgress(p) {
   if (!p) { wrap.style.display = "none"; return; }
   wrap.style.display = "block";
   $("progressBar").style.width = `${p.percent}%`;
-  $("progressLabel").textContent =
+  $("progressLabel").textContent = p.label ? `${p.label} (${p.percent}%)` :
     `narrating ${p.done.toLocaleString()} / ${p.total.toLocaleString()} utterances (${p.percent}%)`;
 }
 

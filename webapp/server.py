@@ -497,6 +497,205 @@ def api_local_outline():
         return jsonify({"error": str(exc)}), 400
 
 
+# --------------------------------------------------------------------------- #
+# Facsimile: a scanned PDF re-presented as a print edition
+#
+# The work runs as `python -m book_creator.facsimile`, a process of its own:
+# it cleans pages in a pool of worker processes, and on Windows each worker
+# re-imports the program it was started from. Started from here, that would
+# import this server -- whose job store marks every running job interrupted
+# as it loads, the facsimile's own included.
+# --------------------------------------------------------------------------- #
+_facsimile_reads: dict[str, dict] = {}
+
+
+def _facsimile_cmd(p: Path, *args: str) -> list[str]:
+    import sys
+
+    return [sys.executable, "-u", "-m", "book_creator.facsimile", str(p), *args]
+
+
+def _utf8_env() -> dict:
+    # Its output is read as UTF-8; on Windows a child writes the ANSI code
+    # page unless told, and "…" came back as "�".
+    return {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+
+def _classify_in_background(p: Path, key: str) -> None:
+    import subprocess
+
+    state = _facsimile_reads[key]
+    try:
+        run = subprocess.run(_facsimile_cmd(p, "--classify"), capture_output=True,
+                             text=True, encoding="utf-8", errors="replace",
+                             env=_utf8_env())
+        if run.returncode:
+            raise RuntimeError((run.stderr or run.stdout).strip().splitlines()[-1])
+        state["status"] = "done"
+    except Exception as exc:  # noqa: BLE001
+        state.update(status="error", error=str(exc))
+
+
+@app.route("/api/facsimile/pages")
+def api_facsimile_pages():
+    """What each page of a scanned PDF is, as the facsimile will treat it.
+
+    Classifying reads every page's picture -- half a minute or so for a
+    500-page scan -- so the first call starts it and answers "running"; the
+    result is remembered on disk, and later calls return at once.
+    """
+    from book_creator import facsimile
+
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if p.suffix.lower() != ".pdf":
+        return jsonify({"error": "A facsimile is made from a scanned PDF."}), 400
+    key = f"{p}:{p.stat().st_mtime_ns}"
+    state = _facsimile_reads.get(key)
+    if state is None:
+        state = _facsimile_reads[key] = {"status": "running"}
+        threading.Thread(target=_classify_in_background, args=(p, key), daemon=True).start()
+    if state["status"] != "done":
+        return jsonify(state)
+    infos = facsimile.classify_cached(p)
+    overrides = facsimile.read_overrides(facsimile.overrides_path(p))
+    facsimile.apply_overrides(infos, overrides)
+    slots = facsimile.plan(infos)
+    kept = sum(1 for s in slots if s.kind == "page")
+    return jsonify({
+        "status": "done",
+        "pages": [{"page": i.index + 1, "kind": i.kind, "reason": i.reason,
+                   "by_hand": (i.index + 1) in overrides} for i in infos],
+        "summary": {"scanned": len(infos), "kept": kept,
+                    "blanks": sum(1 for s in slots if s.kind == "blank"),
+                    "new_pages": len(slots)},
+    })
+
+
+@app.route("/api/facsimile/thumb/<int:page>.png")
+def api_facsimile_thumb(page: int):
+    """A scanned page, small, for the page review."""
+    import fitz
+
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return Response(str(exc), status=400)
+    doc = fitz.open(str(p))
+    if not 1 <= page <= len(doc):
+        return Response("no such page", status=404)
+    png = doc[page - 1].get_pixmap(dpi=request.args.get("dpi", 20, type=int)).tobytes("png")
+    return Response(png, mimetype="image/png",
+                    headers={"Cache-Control": "max-age=3600"})
+
+
+@app.route("/api/facsimile/override", methods=["POST"])
+def api_facsimile_override():
+    """Keep, drop or make a plate of one scanned page, by hand.
+
+    Written to input/<scan>-pages.md, which a rebuild reads and never
+    overwrites; "auto" takes the page back to what the classifier decided.
+    """
+    from book_creator import facsimile
+
+    body = request.get_json(force=True)
+    try:
+        p = _safe_input_path(body.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    page, kind = int(body.get("page", 0)), body.get("kind", "")
+    if kind not in ("text", "dropped", "plate", "auto") or page < 1:
+        return jsonify({"error": "kind is text, dropped, plate or auto"}), 400
+    path = facsimile.overrides_path(p)
+    overrides = facsimile.read_overrides(path)
+    if kind == "auto":
+        overrides.pop(page, None)
+    else:
+        overrides[page] = kind
+    facsimile.write_overrides(path, overrides)
+    return jsonify({"ok": True, "overrides": len(overrides)})
+
+
+def _run_facsimile(job_id: str, p: Path, args: list[str]) -> None:
+    import re as _re
+    import subprocess
+
+    job = _jobs[job_id]
+    try:
+        proc = subprocess.Popen(_facsimile_cmd(p, *args), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True,
+                                encoding="utf-8", errors="replace", env=_utf8_env())
+        job["proc"] = proc
+        for line in proc.stdout:
+            line = line.rstrip()
+            m = _re.search(r"(\d+) of (\d+) pages cleaned", line)
+            with _lock:
+                if m:
+                    done, total = int(m.group(1)), int(m.group(2))
+                    job["progress"] = {"done": done, "total": total,
+                                       "percent": round(100 * done / max(1, total)),
+                                       "label": f"cleaning page {done} of {total}"}
+                elif line:
+                    job["log"].append(line)
+            _store.save(job_id, job)
+        code = proc.wait()
+        if job.get("cancel"):
+            job["status"] = "cancelled"
+        elif code:
+            raise RuntimeError(job["log"][-1] if job["log"] else f"exit {code}")
+        else:
+            pdf = Path(OUTPUT_DIR) / f"{p.stem}-facsimile.pdf"
+            cover_pdf = Path(OUTPUT_DIR) / f"{p.stem}-cover.pdf"
+            with _lock:
+                job["pdf_path"] = str(pdf)
+                job["pages"] = preview.page_count(str(pdf))
+                job["artifacts"] = {"pdf": str(pdf)}
+                if cover_pdf.exists():
+                    job["cover_path"] = str(cover_pdf)
+                    job["artifacts"]["cover"] = str(cover_pdf)
+                job["progress"] = None
+                job["status"] = "done"
+    except Exception as exc:  # noqa: BLE001
+        with _lock:
+            job["status"] = "error"
+            job["error"] = str(exc)
+            job["log"].append(f"✗ {exc}")
+    finally:
+        job.pop("proc", None)
+        _store.save(job_id, job, force=True)
+
+
+@app.route("/api/facsimile/build", methods=["POST"])
+def api_facsimile_build():
+    """Build the facsimile interior and its cover, as a job like any build."""
+    body = request.get_json(force=True)
+    try:
+        p = _safe_input_path(body.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    title, author = (body.get("title") or "").strip(), (body.get("author") or "").strip()
+    if not (title and author):
+        return jsonify({"error": "A facsimile needs its title and author."}), 400
+    args = ["--title", title, "--author", author]
+    for key in ("subtitle", "editor", "source", "holder", "credit", "blurb",
+                "trim", "accent"):
+        if (body.get(key) or "").strip():
+            args += [f"--{key}", body[key].strip()]
+    args += ["--cover-style", body.get("cover_style") or "band"]
+    if body.get("colour_plates"):
+        args.append("--colour-plates")
+    job_id = uuid.uuid4().hex[:12]
+    label = f"{title} — facsimile"
+    _jobs[job_id] = {"status": "running", "log": [], "pages": 0, "title": label,
+                     "kind": "facsimile", "pdf_path": None, "cover_path": None,
+                     "error": None, "progress": None, "artifacts": {}, "cancel": False}
+    _store.create(job_id, label)
+    threading.Thread(target=_run_facsimile, args=(job_id, p, args), daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
 @app.route("/api/local/division/<int:index>.txt")
 def api_local_division(index: int):
     """One division of a local file, exactly as a build would read it.
@@ -1307,6 +1506,10 @@ def api_cancel(job_id: str):
     if not job:
         return jsonify({"error": "unknown job"}), 404
     job["cancel"] = True
+    # A facsimile is its own process with nothing worth keeping half-done.
+    proc = job.get("proc")
+    if proc and proc.poll() is None:
+        proc.terminate()
     return jsonify({"cancelling": True})
 
 

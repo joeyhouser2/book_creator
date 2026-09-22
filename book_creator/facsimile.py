@@ -97,6 +97,52 @@ def _measure(page) -> tuple[float, float]:
     return ink, colour
 
 
+def _measure_one(job: tuple[str, int, int]) -> list[tuple[float, float]]:
+    import fitz
+
+    src, lo, hi = job
+    doc = fitz.open(src)
+    return [_measure(doc[i]) for i in range(lo, hi)]
+
+
+def _measure_all(doc) -> list[tuple[float, float]]:
+    """(ink, colour) for every page, measured in parallel.
+
+    Rendering a page means decoding its full scan, however small the
+    rendering: 580 pages took two and a half minutes one after another.
+    """
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+
+    n = len(doc)
+    if not doc.name or n < 40:
+        return [_measure(doc[i]) for i in range(n)]
+    step = 20
+    jobs = [(doc.name, lo, min(n, lo + step)) for lo in range(0, n, step)]
+    out: list[tuple[float, float]] = []
+    with ProcessPoolExecutor(max_workers=max(1, (os.cpu_count() or 2) - 1)) as pool:
+        for part in pool.map(_measure_one, jobs):
+            out.extend(part)
+    return out
+
+
+def classify_cached(src) -> list[PageInfo]:
+    """classify(), remembered on disk by the scan's size and date."""
+    import json
+
+    import fitz
+
+    src = Path(src)
+    st = src.stat()
+    cache = Path("cache") / "facsimile" / f"{src.stem}-{st.st_size}-{st.st_mtime_ns}.json"
+    if cache.exists():
+        return [PageInfo(**d) for d in json.loads(cache.read_text(encoding="utf-8"))]
+    infos = classify(fitz.open(str(src)))
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps([vars(p) for p in infos]), encoding="utf-8")
+    return infos
+
+
 def _real_words(text: str) -> int:
     """Words that look like words: OCR of a bookplate or a pattern is not."""
     words = _WORD.findall(text)
@@ -111,10 +157,11 @@ def classify(doc) -> list[PageInfo]:
 
     sizes = Counter((round(pg.rect.width / 10), round(pg.rect.height / 10)) for pg in doc)
     usual = sizes.most_common(1)[0][0]
+    measured = _measure_all(doc)
     infos: list[PageInfo] = []
     for i, page in enumerate(doc):
         text = " ".join(page.get_text().split())
-        ink, colour = _measure(page)
+        ink, colour = measured[i]
         size = (round(page.rect.width / 10), round(page.rect.height / 10))
         odd = abs(size[0] - usual[0]) > 2 or abs(size[1] - usual[1]) > 2
         tokens = text.split()
@@ -559,7 +606,7 @@ class Result:
 
 def build(src, out, ed: Edition, *, trim: tuple[float, float] = (6.0, 9.0),
           colour_plates: bool = False, overrides: Path | None = None,
-          font_family: str = "Cardo", log=print) -> Result:
+          font_family: str = "Cardo", log=print, on_progress=None) -> Result:
     """The scan at `src`, as a print-ready interior at `out`."""
     import fitz
     from reportlab.lib.units import inch
@@ -568,7 +615,7 @@ def build(src, out, ed: Edition, *, trim: tuple[float, float] = (6.0, 9.0),
     from . import fonts
 
     doc = fitz.open(str(src))
-    infos = classify(doc)
+    infos = classify_cached(src)
     if overrides:
         apply_overrides(infos, read_overrides(overrides))
     slots = plan(infos)
@@ -605,7 +652,9 @@ def build(src, out, ed: Edition, *, trim: tuple[float, float] = (6.0, 9.0),
     with ProcessPoolExecutor(max_workers=max(1, (os.cpu_count() or 2) - 1)) as pool:
         for k, (index, data, iw, ih) in enumerate(pool.map(_prepare, jobs, chunksize=8)):
             ready[index] = (data, iw, ih)
-            if log and (k + 1) % 100 == 0:
+            if on_progress:
+                on_progress(k + 1, len(jobs))
+            elif log and (k + 1) % 100 == 0:
                 log(f"  … {k + 1} of {len(jobs)} pages cleaned")
 
     book = fitz.open()
@@ -713,13 +762,63 @@ def cloth_colour(src, infos: list[PageInfo]) -> str | None:
     return "#{:02x}{:02x}{:02x}".format(*(round(v * 255) for v in (r, g, b)))
 
 
+def overrides_path(src) -> Path:
+    """Where a person's page decisions for a scan are kept: input/, beside it,
+    so a rebuild never overwrites them."""
+    return Path("input") / f"{Path(src).stem}-pages.md"
+
+
+def write_overrides(path: Path, overrides: dict[int, str]) -> None:
+    """The decisions file, rewritten from {scan page: kind}."""
+    word = {"dropped": "drop", "text": "keep", "plate": "plate"}
+    lines = ["# Pages of the scan decided by hand (read by book_creator.facsimile).",
+             "# One per line: `drop 5`, `keep 576`, `plate 8`; ranges like `drop 2-4`.", ""]
+    lines += [f"{word[k]} {n}" for n, k in sorted(overrides.items()) if k in word]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def make(src, ed: Edition, *, trim=(6.0, 9.0), colour_plates=False,
+         cover_style="typographic", blurb="", accent="", out: Path | None = None,
+         log=print, on_progress=None) -> dict:
+    """Interior, cover, contact sheet and report for a scan: {name: path}."""
+    src = Path(src)
+    out = Path(out or Path("output") / f"{src.stem}-facsimile.pdf")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    res = build(src, out, ed, trim=trim, colour_plates=colour_plates,
+                overrides=overrides_path(src), log=log, on_progress=on_progress)
+    made = {"pdf": str(out), "pages": res.pages}
+    if cover_style and cover_style != "none":
+        from . import cover
+        from .model import FontSpec
+
+        # Sized from the finished interior: the spine is the page count.
+        wrap = out.with_name(f"{src.stem}-cover.pdf")
+        _, (cw, ch, spine) = cover.render_cover(
+            str(wrap), style=cover_style, title=ed.title, author=ed.author,
+            src_lang="en", tgt_lang="en", trim=trim, pages=res.pages,
+            font_spec=FontSpec(family="Cardo"), blurb=blurb,
+            accent=accent or cloth_colour(src, res.infos),
+            edition_line=ed.subtitle or None)
+        log(f"• Cover → {wrap} ({cw:.3f} × {ch:.3f} in, spine {spine:.3f} in)")
+        made["cover"] = str(wrap)
+    made["sheet"] = contact_sheet(src, res.infos, out.with_name(f"{src.stem}-pages.png"))
+    rep_path = out.with_name(f"{src.stem}-pages.md")
+    rep_path.write_text(report(src, res), encoding="utf-8")
+    made["report"] = str(rep_path)
+    log(f"• Contact sheet → {made['sheet']}\n• Decisions → {rep_path}")
+    return made
+
+
 def main(argv=None) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(description="A scanned book as a modern print edition.")
     ap.add_argument("pdf")
-    ap.add_argument("--title", required=True)
-    ap.add_argument("--author", required=True)
+    ap.add_argument("--classify", action="store_true",
+                    help="only decide what each page is, and remember it")
+    ap.add_argument("--title", default="")
+    ap.add_argument("--author", default="")
     ap.add_argument("--subtitle", default="")
     ap.add_argument("--editor", default="")
     ap.add_argument("--source", default="")
@@ -734,31 +833,29 @@ def main(argv=None) -> int:
                     help="cover accent colour; by default, the original cloth's")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
-    src = Path(a.pdf)
-    out = Path(a.out or Path("output") / f"{src.stem}-facsimile.pdf")
-    out.parent.mkdir(parents=True, exist_ok=True)
+    import sys
+
+    # Its log has arrows and ellipses; a Windows console's code page has not.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if a.classify:
+        infos = classify_cached(a.pdf)
+        print(f"• classified {len(infos)} pages", flush=True)
+        return 0
+    if not (a.title and a.author):
+        ap.error("--title and --author are needed to build")
     tw, th = (float(v) for v in a.trim.lower().split("x"))
     ed = Edition(a.title, a.author, a.subtitle, a.editor, a.source, a.holder,
                  credit=a.credit)
-    res = build(src, out, ed, trim=(tw, th), colour_plates=a.colour_plates,
-                overrides=Path("input") / f"{src.stem}-pages.md")
-    if a.cover_style != "none":
-        from . import cover
-        from .model import FontSpec
+    def progress(done: int, total: int) -> None:
+        # One line in ten pages: what the web app reads for its progress bar.
+        if done % 10 == 0 or done == total:
+            print(f"  … {done} of {total} pages cleaned", flush=True)
 
-        # Sized from the finished interior: the spine is the page count.
-        wrap = out.with_name(f"{src.stem}-cover.pdf")
-        _, (cw, ch, spine) = cover.render_cover(
-            str(wrap), style=a.cover_style, title=ed.title, author=ed.author,
-            src_lang="en", tgt_lang="en", trim=(tw, th), pages=res.pages,
-            font_spec=FontSpec(family="Cardo"), blurb=a.blurb,
-            accent=a.accent or cloth_colour(src, res.infos),
-            edition_line=ed.subtitle or None)
-        print(f"• Cover → {wrap} ({cw:.3f} × {ch:.3f} in, spine {spine:.3f} in)")
-    sheet = contact_sheet(src, res.infos, out.with_name(f"{src.stem}-pages.png"))
-    rep = out.with_name(f"{src.stem}-pages.md")
-    rep.write_text(report(src, res), encoding="utf-8")
-    print(f"• Contact sheet → {sheet}\n• Decisions → {rep}")
+    make(a.pdf, ed, trim=(tw, th), colour_plates=a.colour_plates,
+         cover_style=a.cover_style, blurb=a.blurb, accent=a.accent,
+         out=Path(a.out) if a.out else None,
+         log=lambda m: print(m, flush=True), on_progress=progress)
     return 0
 
 

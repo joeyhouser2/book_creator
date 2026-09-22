@@ -542,6 +542,12 @@ def rebuild(pages: list[tuple[str, bool]], *, keep_apparatus: bool = False,
         report.notes_cut += len(notes)
         body = drop_markers(body)
         if title:
+            # The chapter's title is the running head its pages will carry:
+            # known from here on, so a later page whose number OCR lost
+            # ("THE STRIFE OF PARTIES loS ...") is not taken for a new chapter.
+            if is_division(title):
+                seen.update(h for h in heads
+                            if len(_norm(h)) >= 5 and _norm(h) in _norm(title))
             divisions.append((title, [body]))
         elif divisions:
             divisions[-1][1].append(body)

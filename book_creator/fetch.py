@@ -224,6 +224,52 @@ def ocr_override(p: Path, *, log=None) -> str | None:
     return text
 
 
+_PDF_SCANS: dict[tuple, list[tuple[str, str]]] = {}
+
+
+def pdf_scan_divisions(p: Path, *, log=None) -> list[tuple[str, str]] | None:
+    """A scanned book's PDF as its chapters, or None if it is not one.
+
+    A library scan -- a picture of every page with the OCR laid invisibly
+    over it -- has the same furniture as the Archive's EPUBs: running heads
+    and page numbers, footnotes, covers and bookplates. Read as one flat
+    text, Volume I of The Wars of Marlborough came out as nine "divisions"
+    from "XV" to "I". Read page by page through the scan clean-up it is its
+    Introduction, Preface and sixteen chapters.
+    """
+    import fitz
+
+    from . import facsimile, scanned
+
+    st = p.stat()
+    key = (str(p.resolve()), st.st_size, st.st_mtime_ns)
+    if key in _PDF_SCANS:
+        return _PDF_SCANS[key]
+    doc = fitz.open(str(p))
+    try:
+        sample = [doc[i] for i in range(0, len(doc), max(1, len(doc) // 20))]
+        def pictured(page) -> bool:
+            area = page.rect.width * page.rect.height
+            return any(r.width * r.height >= 0.85 * area
+                       for x in page.get_images(full=True)
+                       for r in page.get_image_rects(x[0]))
+        if len(doc) < 20 or sum(pictured(pg) for pg in sample) < 0.8 * len(sample):
+            return None
+        pages = []
+        for page in doc:
+            text = " ".join(page.get_text().split())
+            tokens = text.split()
+            info = facsimile.PageInfo(
+                index=page.number, words=facsimile._real_words(text), text=text,
+                junk=sum(bool(facsimile._JUNK.search(t)) for t in tokens) / max(1, len(tokens)))
+            pages.append((text, info.readable and not facsimile._library(info)))
+    finally:
+        doc.close()
+    divisions, _ = scanned.rebuild(pages, log=log)
+    _PDF_SCANS[key] = divisions
+    return divisions
+
+
 def _pdf_text(p: Path, *, log=None) -> str:
     """A PDF's text: its own layer, or the OCR already run on it.
 
@@ -237,6 +283,12 @@ def _pdf_text(p: Path, *, log=None) -> str:
     info = ocr.inspect_pdf(p)
     if not info.needs_ocr:
         import fitz
+
+        # A scanned book reads as its chapters, its furniture taken out --
+        # the same text the outline and a build see.
+        divisions = pdf_scan_divisions(p, log=log)
+        if divisions and len(divisions) > 1:
+            return "\n\n".join((f"{t}\n\n{b}" if t else b) for t, b in divisions)
 
         doc = fitz.open(str(p))
         try:
@@ -292,6 +344,11 @@ def load_divisions(*, path: str | None = None, gid: int | None = None,
             log(f"• The EPUB has no usable structure of its own; found "
                 f"{len(detected)} division(s) in its text instead.")
         return detected
+
+    if path and Path(path).suffix.lower() == ".pdf":
+        divisions = pdf_scan_divisions(Path(path), log=log)
+        if divisions and len(divisions) > 1:
+            return divisions
 
     text = load_text(path=path, gid=gid, log=log)
     return segment.detect_chapters(text, mode=mode, poem_titles=poem_titles)
