@@ -331,6 +331,13 @@ def _ornament_frame(c, x0, y0, w, h, color, inset):
     c.restoreState()
 
 
+def _lang_label(motif, src_lang) -> str:
+    """The source language as a cover names it -- nothing for an English book,
+    which is the reader's own language, not an edition's selling point."""
+    name = motif.get("name") or ("" if src_lang in ("en", "eng") else src_lang)
+    return name.upper()
+
+
 def _edition_label(src_lang, motif, edition_line):
     if edition_line:
         return edition_line.upper()
@@ -475,10 +482,11 @@ def _front_typographic(c, x0, y0, tw, th, *, title, author, src_lang, motif,
 
     # A broad accent rule high on the panel, and the language above it.
     top_rule = y0 + th - 1.35 * inch
-    lang = (motif.get("name") or src_lang).upper()
+    lang = _lang_label(motif, src_lang)
     c.setFont(font[0], 11)
     c.setFillColor(accent)
-    c.drawCentredString(cx, top_rule + 0.28 * inch, " ".join(lang))
+    if lang:
+        c.drawCentredString(cx, top_rule + 0.28 * inch, " ".join(lang))
     c.saveState()
     c.setStrokeColor(accent)
     c.setLineWidth(3.0)
@@ -594,7 +602,7 @@ def _front_column(c, x0, y0, tw, th, *, title, author, src_lang, motif, font,
 
     # The language, set vertically up the column and reversed out of it.
     paper = HexColor("#faf6ec")
-    lang = (motif.get("name") or src_lang).upper()
+    lang = _lang_label(motif, src_lang)
     c.saveState()
     c.translate(x0 + col_w * 0.62, y0 + th * 0.5)
     c.rotate(90)

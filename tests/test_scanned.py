@@ -230,3 +230,22 @@ def test_ocr_of_a_scans_plates_does_not_replace_its_text(tmp_path, monkeypatch):
     full = dict(thin, characters=1_250_000)
     monkeypatch.setattr(ocr, "cached_for", lambda p: [full])
     assert ocr.best_for(book) == full
+
+
+def test_chapter_numerals_as_ocr_sets_them():
+    """Lower case, a space before the stop, and a last I read as L -- the
+    chapter before says which number it must be."""
+    assert sc.split_heading("v.— THE STRIFE OF PARTIES The last Parliament", [])[0] \
+        == "v.— THE STRIFE OF PARTIES"
+    assert sc.split_heading("XII .— SCHLANGENBERG Greeted upon every hand", [])[0] \
+        == "XII .— SCHLANGENBERG"
+    pages = [(f"{n}.— {t} {BODY}.", True) for n, t in
+             (("VI", "1703"), ("VIL", "THE MARCH"), ("VIIL", "BAVARIA"), ("IX", "BLENHEIM"),
+              ("X", "AFTER BLENHEIM"), ("XL", "THE LINES OF BRABANT"))]
+    titles = [t for t, _ in sc.rebuild(pages)[0]]
+    assert [t.split(".")[0] for t in titles] == ["VI", "VII", "VIII", "IX", "X", "XI"]
+
+
+def test_roman_page_numbers_but_not_words_made_of_their_letters():
+    assert sc.is_page_number("ix") and sc.is_page_number("xiii") and sc.is_page_number("153-")
+    assert not sc.is_page_number("civil") and not sc.is_page_number("mix")

@@ -1,3 +1,5 @@
 ebooklib
 beautifulsoup4
 pymupdf
+numpy
+scipy

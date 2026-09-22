@@ -34,7 +34,10 @@ _PAGE_NUMBER = re.compile(r"^[*^]?(?=.*\d)[\dilIoO$S^]{1,4}$|^[ilIoO]{2,3}\d?$")
 # A word in capitals, as running heads and chapter headings are set.
 _CAPS = re.compile(r"^[A-Z0-9(][A-Z0-9,.'’()\-—&^]*$|^[—\-&^.]+$|^\^?\.?[—\-]+$")
 # "XIX.- DUNKIRK", "XXL— LILLE", "APPENDIX I ^.— THE BRITISH INFANTRY".
-_NUMBERED = re.compile(r"^(?:[XVIL]{1,7}\.?\s?[—\-]|APPENDIX\b|CHAPTER\b|BOOK\b|PART\b)")
+# A chapter numeral as OCR sets it: "XIX.-", "v.—" in lower case, "XII .—"
+# with a space before the stop.
+_NUMERAL = r"(?:[XVIL]{1,7}|[xvil]{1,7})\s?\.?\s?[—\-]"
+_NUMBERED = re.compile(r"^(?:" + _NUMERAL + r"|APPENDIX\b|CHAPTER\b|BOOK\b|PART\b)")
 # Divisions that are apparatus, not text: nobody wants the index read aloud.
 _APPARATUS = re.compile(
     r"^(general\s+)?index|^index of|^bibliography|^errata|^contents|"
@@ -51,8 +54,14 @@ _CITATION = re.compile(
     r"History|Life|Journal|Papers|Coxe|Lediard)\b")
 
 
+# Front matter is numbered in lower-case roman ("INTRODUCTION ix"). Only a
+# well-formed numeral counts, so "civil" or "mix" never does.
+_ROMAN_PAGE = re.compile(r"^(?=[ivxlc])c{0,3}(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$")
+
+
 def is_page_number(token: str) -> bool:
-    return bool(_PAGE_NUMBER.match(token.strip(".,:;")))
+    t = token.strip(".,:;-")
+    return bool(_PAGE_NUMBER.match(t) or (len(t) >= 2 and _ROMAN_PAGE.match(t)))
 
 
 # Beside a running head the book has already confirmed, a page number can be
@@ -290,13 +299,21 @@ def split_heading(text: str, heads: list[str], seen: set | None = None) -> tuple
     m = _OPENER.match(text)
     if m and m.group(3) and len(tokens) > 1 and is_page_number(tokens[1]):
         return "", " ".join(tokens[2:])
+    # A numeral OCR set in lower case, "v.— THE STRIFE OF PARTIES", begins no
+    # run of capitals, so it is taken here with the capitals after it.
+    m = re.match(r"^[xvil]{1,7}\s?\.?\s?[—\-]\s*", text)
+    if m:
+        after = text[m.end():].split(" ")
+        width = _caps_run(after)
+        if width:
+            return (text[:m.end()] + " ".join(after[:width])).strip(), " ".join(after[width:])
     n = _caps_run(tokens)
     if n and n < len(tokens) and is_page_number(tokens[n]) and not _OPENER.match(text):
         return "", text
     run = " ".join(tokens[:n])
     # The book's own title can stand above the first chapter's heading:
     # "A SUBALTERN'S WAR CHAPTER I 1914 — 1916 BEGINNING ...".
-    m = re.search(r"\b(?:[XVIL]{1,7}\.?\s?[—\-]|APPENDIX\b|CHAPTER\b)", run)
+    m = re.search(r"\b(?:" + _NUMERAL + r"|APPENDIX\b|CHAPTER\b)", run)
     if m and m.start():
         skip = len(run[:m.start()].split())
         tokens, n = tokens[skip:], n - skip
@@ -325,12 +342,26 @@ def split_heading(text: str, heads: list[str], seen: set | None = None) -> tuple
     return "", text
 
 
+def roman_value(s: str) -> int | None:
+    """The value of a well-formed roman numeral, or None."""
+    if not re.fullmatch(r"M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})", s or "") \
+            or not s:
+        return None
+    vals = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+    total = 0
+    for a, b in zip(s, s[1:] + " "):
+        v = vals[a]
+        total += -v if b in vals and vals[b] > v else v
+    return total
+
+
 def tidy_title(run: str) -> str:
     """A heading as a chapter title: "XIX.- DUNKIRK, GHENT, AND BRUGES" ->
     "XIX. Dunkirk, Ghent, and Bruges"."""
     run = re.sub(r"\^", "", run)
+    run = re.sub(r"^([xvil]+)\b", lambda m: m.group(1).upper(), run)
     run = re.sub(r"\s*\.?\s*[—\-]+\s*", ". ", run, count=1) \
-        if re.match(r"^[XVIL]{1,7}\.?\s?[—\-]", run) else run
+        if re.match(r"^" + _NUMERAL, run) else run
     run = re.sub(r"\s*\.\s*[—\-]+\s*", ". ", run)
     run = re.sub(r"^(APPENDIX|CHAPTER|BOOK|PART)\s+([XVIL]+|\d+|[A-Z])\.?\s+(?=\S)", r"\1 \2. ",
                  run, flags=re.I)
@@ -532,8 +563,20 @@ def rebuild(pages: list[tuple[str, bool]], *, keep_apparatus: bool = False,
         return [("", mend_words(body))], report
 
     out = []
-    chapters, letter = 0, ""
+    chapters, letter, numeral = 0, "", 0
     for title, bodies in divisions:
+        # OCR reads a numeral's last I as L: "VIL.", "VIIL.", "XL." for XI.
+        # The chapter before says which number this one must be.
+        m = re.match(r"^([XVILxvil]+)(\s?\.?\s?[—\-].*)$", title)
+        if m:
+            seen_as = m.group(1).upper()
+            value = roman_value(seen_as)
+            if numeral and value != numeral + 1:
+                fixed = seen_as.replace("L", "I")
+                if roman_value(fixed) == numeral + 1:
+                    seen_as, value = fixed, numeral + 1
+            title = seen_as + m.group(2)
+            numeral = value or numeral
         # "Chapter |", "Chapter &": a number OCR could not read is the
         # chapter's place in the book.
         m = re.match(r"^(chapter)\s+(\S+)(.*)$", title, re.I)
