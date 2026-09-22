@@ -396,6 +396,7 @@ def clean_image(page, *, colour: bool = False, edges: bool = True):
     out = np.clip((arr - ink) / span, 0.0, 1.0)
     if edges:                   # never on a map: its lines run to the edge
         out = _clear_edges(out)
+        out = _clear_perforations(out)
     # Near-white is paper: the grain of it, the scanner's edge of the page,
     # the ghost of the other side. Made pure white, it also costs nothing to
     # store -- the grain is what made a 570-page book 400 MB.
@@ -430,6 +431,70 @@ def _clear_edges(out):
     edge = edge[edge > 0]
     if edge.size:
         out[np.isin(labels, edge)] = 1.0
+    return out
+
+
+def _clear_perforations(out, dpi: int = DPI):
+    """Whiten a library's perforated stamp: "UNIV. OF CALIFORNIA ... LIBRARY"
+    punched through the title page as letters made of round holes.
+
+    A hole is a small round dot. So is a full stop, but a full stop stands
+    alone; a row of leader dots in a contents page stands in a line; the
+    holes of a stamp stand among dozens of others, above and below as well as
+    beside. Only dots with neighbours in both directions, in a cluster of
+    many, are taken out.
+    """
+    import numpy as np
+
+    try:
+        from scipy import ndimage
+    except ImportError:
+        return out
+    grey = out.mean(axis=2) if out.shape[2] > 1 else out[..., 0]
+    labels, n = ndimage.label(grey < 0.8)
+    if not n:
+        return out
+    scale = dpi / 300.0
+    boxes = ndimage.find_objects(labels)
+    areas = np.bincount(labels.ravel())
+    dots = []                                  # (label, cy, cx)
+    for k, box in enumerate(boxes, start=1):
+        if box is None:
+            continue
+        h, w = box[0].stop - box[0].start, box[1].stop - box[1].start
+        if not (4 * scale <= h <= 22 * scale and 4 * scale <= w <= 22 * scale):
+            continue
+        if max(h, w) > 1.6 * min(h, w) or areas[k] < 0.45 * h * w:
+            continue                           # not round, or not solid
+        dots.append((k, (box[0].start + box[0].stop) / 2, (box[1].start + box[1].stop) / 2))
+    if len(dots) < 25:
+        return out
+    pts = np.array([(y, x) for _, y, x in dots])
+    reach = 40 * scale
+    stamp = []
+    for i, (k, y, x) in enumerate(dots):
+        d = np.hypot(pts[:, 0] - y, pts[:, 1] - x)
+        near = pts[(d > 0) & (d < reach)]
+        if len(near) >= 3 and np.ptp(near[:, 0]) >= 8 * scale and np.ptp(near[:, 1]) >= 8 * scale:
+            stamp.append(k)
+    if len(stamp) < 25:
+        return out
+    mask = np.isin(labels, stamp)
+    # What the round holes leave behind -- half-holes, rims, a crescent where
+    # the next page showed through -- lies inside the stamp's own outline and
+    # is smaller than any letter a title page sets: those go too.
+    ys, xs = np.nonzero(mask)
+    pad = round(15 * scale)
+    y0, y1 = max(0, ys.min() - pad), ys.max() + pad
+    x0, x1 = max(0, xs.min() - pad), xs.max() + pad
+    for k, box in enumerate(boxes, start=1):
+        if box is None:
+            continue
+        if box[0].start >= y0 and box[0].stop <= y1 and box[1].start >= x0 and box[1].stop <= x1 \
+                and max(box[0].stop - box[0].start, box[1].stop - box[1].start) <= 24 * scale:
+            mask[box][labels[box] == k] = True
+    mask = ndimage.binary_dilation(mask, iterations=max(1, round(2 * scale)))
+    out[mask] = 1.0
     return out
 
 

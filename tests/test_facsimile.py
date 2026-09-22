@@ -130,3 +130,23 @@ def test_a_grey_wedge_at_the_edge_goes_but_type_and_maps_stay():
     assert img.min() < 60                            # the type is still black
     kept = np.asarray(fx.clean_image(pg, edges=False))
     assert kept[5, w - 5] < 255                      # a plate keeps what it has
+
+
+def test_a_perforated_library_stamp_goes_but_dots_that_are_type_stay():
+    """"UNIV. OF CALIFORNIA AT LOS ANGELES LIBRARY" is punched through the
+    title page as letters of round holes. A full stop is a round dot too, and
+    a contents page's leaders are a row of them."""
+    doc, pg = _page("Contents of Vol. II.")
+    for row in range(6):                       # the stamp: dots above and beside
+        for col in range(12):
+            # A hole is about 9 px across at 300 dpi: 1.1 points.
+            c = fitz.Point(60 + col * 7, 360 + row * 7)
+            pg.draw_circle(c, 1.1, color=None, fill=(0.45, 0.45, 0.45))
+    for col in range(14):                      # leader dots, in one line only
+        pg.draw_circle(fitz.Point(60 + col * 12, 430), 1.0, color=None, fill=(0, 0, 0))
+    img = np.asarray(fx.clean_image(pg))
+    band = lambda y0, y1: (img[y0:y1] < 200).sum()
+    dpi = fx.DPI / 72.0
+    assert band(int(355 * dpi), int(400 * dpi)) == 0        # the stamp is gone
+    assert band(int(425 * dpi), int(436 * dpi)) > 0         # the leaders are not
+    assert img.min() < 60                                   # nor is the type
