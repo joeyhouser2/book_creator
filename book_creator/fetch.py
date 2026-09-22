@@ -209,10 +209,13 @@ def ocr_override(p: Path, *, log=None) -> str | None:
 
     if p.suffix.lower() not in (".pdf", ".epub"):
         return None
-    cached = ocr.cached_for(p)
-    if not cached:
+    best = ocr.best_for(p)
+    if best is None:
+        if ocr.cached_for(p) and log:
+            log(f"  ⚠  Not using the OCR run on {p.name}: it found far less text "
+                "than the file already has (the file's pictures are plates, not "
+                "its pages).")
         return None
-    best = cached[0]
     text = Path(best["path"]).read_text(encoding="utf-8", errors="replace")
     if log:
         log(f"• Using the OCR run on {p.name} (language '{best['lang']}', "

@@ -443,3 +443,31 @@ def cached_for(path: str | Path) -> list[dict]:
                     "characters": f.stat().st_size,
                     "modified": f.stat().st_mtime})
     return sorted(out, key=lambda d: -d["modified"])
+
+
+# An OCR run on an EPUB reads the pictures inside it. A scan that carries its
+# pages as pictures gives back the book; one that carries only its plates --
+# the Internet Archive's Marlborough has 10 images to 578 text pages -- gives
+# back 5,000 characters of map lettering, which then replaced a readable
+# 1.3-million-character text in every build. OCR has to find at least this
+# share of what the file's own text layer holds to be worth using.
+OCR_WORTH = 0.25
+
+
+def best_for(path: str | Path) -> dict | None:
+    """The OCR run to build from, if any is better than the file's own text."""
+    p = Path(path)
+    cached = cached_for(p)
+    if not cached:
+        return None
+    best = cached[0]
+    if p.suffix.lower() == ".epub":
+        from . import epub_reader
+
+        try:
+            own = epub_reader.inspect(p).as_dict().get("characters", 0)
+        except epub_reader.EpubError:
+            own = 0
+        if own and best["characters"] < OCR_WORTH * own:
+            return None
+    return best

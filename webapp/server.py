@@ -248,8 +248,12 @@ def api_ocr_inspect():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
+    best = ocr.best_for(p)
     out = {"name": p.name, "kind": p.suffix.lower().lstrip("."),
-           "cached": ocr.cached_for(p)}
+           "cached": ocr.cached_for(p),
+           # Which run a build will use, if any: one that found far less text
+           # than the file holds (an EPUB's plates, not its pages) is not.
+           "used": best["name"] if best else None}
     if p.suffix.lower() == ".pdf":
         try:
             out["text_layer"] = ocr.inspect_pdf(p).as_dict()
@@ -408,10 +412,9 @@ def _apply_ocr_verdict(p: Path, report: dict) -> None:
     work it can now do. The original warning is replaced rather than kept
     alongside: "find a real ebook" is no longer the advice.
     """
-    cached = ocr.cached_for(p)
-    if not cached:
+    best = ocr.best_for(p)
+    if best is None:
         return
-    best = cached[0]
     report["ocr_text"] = best["path"]
     report["characters"] = best["characters"]
     report["usable"] = True

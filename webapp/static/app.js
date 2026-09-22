@@ -1183,7 +1183,10 @@ function ocrPanelHtml(f, info) {
     <h3>OCR</h3>
     <p class="muted small">${verdict}</p>
     ${done ? `<p class="muted small">Already read: <ul class="small">${done}</ul>
-      A build uses the most recent of these automatically.</p>` : ""}
+      ${info.used
+        ? "A build uses the most recent of these automatically."
+        : "A build does not use these: OCR found far less text than the file " +
+          "already has, so its pictures are plates or maps, not its pages."}</p>` : ""}
     <div class="facets">
       <label>Language <select id="ocrLang">${langs}</select></label>
       <label>Resolution
@@ -1329,7 +1332,9 @@ async function loadLocalOutline(which) {
     box.innerHTML = `<small class="muted">outline unavailable — ${escapeHtml(e.message)}</small>`;
     return;
   }
-  renderRange(box, f.outline);
+  // A page-by-page scan has had its front matter taken out already, so its
+  // first division is the first chapter, not a title page to skip.
+  renderRange(box, f.outline, !(f.report && f.report.page_scan));
   const n = f.outline.length;
   box.insertAdjacentHTML("beforeend",
     `<small class="muted">${n} division(s) found` +

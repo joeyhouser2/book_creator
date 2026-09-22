@@ -27,6 +27,8 @@ _IA_ACCURACY = re.compile(
     r"The text on this page is estimated to be only\s*([\d.]+)%\s*accurate",
     re.I)
 _IA_PAGE_HEAD = re.compile(r"^\s*Page\s+\d+\s*", re.I)
+# A document titled "Page 12": one printed page per document.
+_PAGE_TITLE = re.compile(r"<title>\s*Page\s+\d+\s*</title>", re.I)
 
 # Block-level elements become line breaks so paragraphs survive as paragraphs.
 _BLOCK_TAGS = ("p", "div", "br", "li", "tr", "blockquote", "section",
@@ -63,6 +65,9 @@ class EpubReport:
     # Mean of the accuracy figures an OCR scan reports about itself, if any.
     ocr_accuracy: float | None = None
     ocr_pages: int = 0
+    # One XHTML document per printed page, as the Internet Archive builds
+    # them: its running heads and footnotes are cleaned out on reading.
+    page_scan: bool = False
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -82,6 +87,7 @@ class EpubReport:
             "size_mb": round(self.size_mb, 1),
             "chars_per_document": self.chars_per_document,
             "ocr_accuracy": self.ocr_accuracy, "ocr_pages": self.ocr_pages,
+            "page_scan": self.page_scan,
             "warnings": self.warnings, "usable": self.usable,
         }
 
@@ -104,6 +110,7 @@ def inspect(path: str | Path) -> EpubReport:
         raise EpubError(f"{p.name} is not a valid EPUB (not a ZIP archive).") from exc
 
     accuracies: list[float] = []
+    page_titled = 0
     with zf:
         for info in zf.infolist():
             name = info.filename.lower()
@@ -116,11 +123,18 @@ def inspect(path: str | Path) -> EpubReport:
                 except Exception:  # noqa: BLE001 - a bad member is not fatal
                     continue
                 report.characters += len(_strip_tags(raw))
+                if _PAGE_TITLE.search(raw):
+                    page_titled += 1
                 for m in _IA_ACCURACY.finditer(raw):
                     accuracies.append(float(m.group(1)))
 
     report.ocr_pages = len(accuracies)
-    if accuracies:
+    report.page_scan = report.documents >= 20 and page_titled >= 0.6 * report.documents
+    # The Internet Archive notes its accuracy only on the pages it could not
+    # read -- bookplates, maps, a contents page -- and says nothing on the
+    # rest. Averaging the noted pages called a readable 578-page book "10%
+    # accurate". The figure describes the book only when most pages carry it.
+    if accuracies and len(accuracies) >= 0.5 * max(report.documents, 1):
         report.ocr_accuracy = round(statistics.fmean(accuracies), 1)
 
     _add_warnings(report)
@@ -135,6 +149,16 @@ def _add_warnings(r: EpubReport) -> None:
         r.warnings.append(
             "Unusable: almost no extractable text — this is probably a "
             "picture book or an image-only scan.")
+    if r.ocr_pages and r.ocr_accuracy is None:
+        r.warnings.append(
+            f"{r.ocr_pages} of {r.documents} pages have no readable text (the "
+            "scan marks them itself: bookplates, maps, plates). They are left "
+            "out; the rest of the book reads normally.")
+    if r.page_scan:
+        r.warnings.append(
+            "A page-by-page scan: running heads, page numbers, footnotes, the "
+            "front matter and the index are taken out, and chapters are found "
+            "from the book's own headings.")
     if r.ocr_accuracy is not None:
         # The file is telling you outright how bad its own OCR is.
         level = ("Unusable: " if r.ocr_accuracy < 80 else "")
@@ -143,7 +167,7 @@ def _add_warnings(r: EpubReport) -> None:
             f"accurate across {r.ocr_pages} page(s). Below about 95% the text "
             "is not worth printing or narrating — a narrator reads the errors "
             "aloud. Find a real ebook rather than a scan.")
-    elif r.images >= max(10, r.documents * 0.8):
+    elif r.images >= max(10, r.documents * 0.8) and not r.page_scan:
         r.warnings.append(
             f"{r.images} images against {r.documents} text documents — this "
             "looks like a page scan. Check the preview before building.")
@@ -177,6 +201,11 @@ def read_epub(path: str | Path, *, log=None) -> str:
     if log:
         for w in report.warnings:
             log(f"  ⚠  {p.name}: {w}")
+
+    if report.page_scan:
+        divisions = _scan_divisions(p, log=log)
+        if divisions:
+            return "\n\n".join((f"{t}\n\n{b}" if t else b) for t, b in divisions)
 
     try:
         book = epub.read_epub(str(p))
@@ -357,6 +386,11 @@ def read_divisions(path: str | Path, *, log=None) -> list[tuple[str, str]]:
     if log:
         for w in report.warnings:
             log(f"  ⚠  {p.name}: {w}")
+    if report.page_scan:
+        divisions = _scan_divisions(p, log=log)
+        if divisions:
+            return divisions
+
     try:
         book = epub.read_epub(str(p))
     except Exception as exc:  # noqa: BLE001 - ebooklib raises assorted types
@@ -381,3 +415,40 @@ def read_divisions(path: str | Path, *, log=None) -> list[tuple[str, str]]:
             f"({report.documents} document(s), {len(divisions)} division(s), "
             f"{titled} titled).")
     return divisions
+
+
+# A rebuilt scan, by file and version: the web app's text preview asks for
+# the book one screenful at a time, and rebuilding 579 pages takes seconds.
+_SCANS: dict[tuple, list[tuple[str, str]]] = {}
+
+
+def _scan_divisions(p: Path, *, log=None) -> list[tuple[str, str]]:
+    from ebooklib import epub
+
+    st = p.stat()
+    key = (str(p.resolve()), st.st_size, st.st_mtime_ns)
+    if key not in _SCANS:
+        try:
+            book = epub.read_epub(str(p))
+        except Exception as exc:  # noqa: BLE001 - ebooklib raises assorted types
+            raise EpubError(f"Could not read {p.name}: {exc}") from exc
+        _SCANS[key] = _read_scan(book, log=log)[0]
+    return _SCANS[key]
+
+
+def _read_scan(book, *, log=None):
+    """A page-per-document scan, rebuilt as a book (see scanned.py)."""
+    from bs4 import BeautifulSoup
+
+    from . import scanned
+
+    pages = []
+    for item in _documents_in_reading_order(book):
+        try:
+            html = item.get_content().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            continue
+        # A page the scan marks unreadable is a plate or a map, not text.
+        readable = not _IA_ACCURACY.search(html)
+        pages.append((_document_text(BeautifulSoup(html, "html.parser")), readable))
+    return scanned.rebuild(pages, log=log)
