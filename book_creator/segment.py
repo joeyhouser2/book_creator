@@ -159,11 +159,26 @@ def outline_of(divisions: list[tuple[str, str]]) -> list[dict]:
     headings -- can be listed in the range picker without being flattened back
     to text and re-detected, which is what reduced a whole novel to one row.
     """
+    # The opening and closing words say where a narration would begin and end
+    # better than a title can: "(front matter / untitled)" could be anything.
     return [
         {"index": i + 1, "title": title or "(front matter / untitled)",
-         "chars": len(body)}
+         "chars": len(body), "opening": _words(body, 110),
+         "closing": _words(body, 120, end=True)}
         for i, (title, body) in enumerate(divisions)
     ]
+
+
+def _words(text: str, n: int, *, end: bool = False) -> str:
+    """About n characters from one end of a text, cut at a word."""
+    text = " ".join(text.split())
+    if len(text) <= n:
+        return text
+    if end:
+        cut = text[-n:]
+        return "…" + cut[cut.find(" ") + 1:] if " " in cut else "…" + cut
+    cut = text[:n]
+    return (cut[:cut.rfind(" ")] if " " in cut else cut) + "…"
 
 
 def segment_prose(text: str, lang: str = "default") -> list[str]:

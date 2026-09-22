@@ -497,6 +497,31 @@ def api_local_outline():
         return jsonify({"error": str(exc)}), 400
 
 
+@app.route("/api/local/division/<int:index>.txt")
+def api_local_division(index: int):
+    """One division of a local file, exactly as a build would read it.
+
+    The contents view uses it to show where a chosen chapter begins: the
+    first words the narrator would say, not a screenful of the whole file.
+    """
+    try:
+        p = _safe_input_path(request.args.get("path", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        divisions = fetch.load_divisions(
+            path=str(p), mode=request.args.get("mode", "prose"))
+        divisions = segment.subdivide(
+            divisions, request.args.get("split", type=int) or 0)
+    except (epub_reader.EpubError, OSError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not 1 <= index <= len(divisions):
+        return jsonify({"error": f"no division {index}"}), 404
+    title, body = divisions[index - 1]
+    return jsonify({"index": index, "title": title, "text": body,
+                    "count": len(divisions)})
+
+
 # --------------------------------------------------------------------------- #
 # Perseus (the classical canon, original + human translation)
 # --------------------------------------------------------------------------- #

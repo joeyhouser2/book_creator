@@ -1340,6 +1340,125 @@ async function loadLocalOutline(which) {
     `<small class="muted">${n} division(s) found` +
     (n === 1 ? " — try “Split long sections” above to break this "
              + "into parts you can select between." : "") + `</small>`);
+  if (which === "lsrc") {
+    // The dropdowns and the contents view are two faces of one choice.
+    box.querySelectorAll("select").forEach((s) =>
+      s.addEventListener("change", () => { if (state.contentsOpen) showContents(); }));
+    $("contentsToggle").style.display = n > 1 ? "" : "none";
+    if (state.contentsOpen) showContents();
+  }
+}
+
+// --------------------------------------------------------------------------- //
+// Contents — where a narration starts and ends, chosen from the book itself
+//
+// Two dropdowns of titles cut to 30 characters were the only way to say where
+// an audiobook begins, and "(front matter / untitled)" or "Chapter 3" says
+// nothing about what the narrator will read first. Here every division shows
+// its opening words and running time, and the chosen span is spelled out.
+// --------------------------------------------------------------------------- //
+const CHARS_PER_SECOND = 14;       // audio.estimate's narration rate
+
+function spoken(chars) {
+  const min = Math.round(chars / CHARS_PER_SECOND / 60);
+  if (min < 1) return "< 1 min";
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min`;
+}
+
+function contentsRange() {
+  return readRange($("range-lsrc")) || [1, (state.lsrc?.outline || []).length];
+}
+
+function setContentsEnd(end, index) {
+  const sel = $("range-lsrc").querySelector(`[data-end="${end}"]`);
+  if (!sel) return;
+  sel.value = String(index);
+  // Keep the span the right way round: a start after the end moves the end.
+  let [from, to] = contentsRange();
+  if (from > to) {
+    const other = $("range-lsrc").querySelector(`[data-end="${end === "from" ? "to" : "from"}"]`);
+    other.value = String(index);
+  }
+  showContents();
+}
+
+function showContents() {
+  const f = state.lsrc;
+  const divs = (f && f.outline) || [];
+  if (!divs.length) return;
+  state.contentsOpen = true;
+  state.viewingCover = false;
+  $("contentsToggle").textContent = "Text";
+  const [from, to] = contentsRange();
+  const chosen = divs.filter((d) => d.index >= from && d.index <= to);
+  const chars = chosen.reduce((a, d) => a + d.chars, 0);
+  const first = divs.find((d) => d.index === from);
+  const last = divs.find((d) => d.index === to);
+  $("pageLabel").textContent = `${chosen.length} of ${divs.length} divisions`;
+  const rows = divs.map((d) => {
+    const inside = d.index >= from && d.index <= to;
+    return `<li class="${inside ? "in" : "out"}${d.index === from ? " first" : ""}${d.index === to ? " last" : ""}">
+      <span class="n">${d.index}</span>
+      <div class="what">
+        <a href="#" data-show="${d.index}">${escapeHtml(d.title)}</a>
+        <small>${escapeHtml(d.opening || "")}</small>
+      </div>
+      <span class="len">${spoken(d.chars)}</span>
+      <span class="ends">
+        <button data-from="${d.index}" ${d.index === from ? "class=on" : ""}>Start</button>
+        <button data-to="${d.index}" ${d.index === to ? "class=on" : ""}>End</button>
+      </span></li>`;
+  }).join("");
+  $("previewWrap").innerHTML = `<div class="contents">
+    <div class="span-note">
+      <p><b>Narration starts</b> at ${escapeHtml(first ? first.title : "?")}:
+        <q>${escapeHtml(first ? first.opening : "")}</q></p>
+      <p><b>and ends</b> with ${escapeHtml(last ? last.title : "?")}:
+        <q>${escapeHtml(last ? last.closing : "")}</q></p>
+      <p class="muted small">${chosen.length} division(s), ${chars.toLocaleString()}
+        characters — about ${spoken(chars)} of audio before pauses.</p>
+    </div>
+    <ol>${rows}</ol></div>`;
+  const wrap = $("previewWrap");
+  wrap.querySelectorAll("[data-from]").forEach((b) =>
+    b.onclick = () => setContentsEnd("from", b.dataset.from));
+  wrap.querySelectorAll("[data-to]").forEach((b) =>
+    b.onclick = () => setContentsEnd("to", b.dataset.to));
+  wrap.querySelectorAll("[data-show]").forEach((a) =>
+    a.onclick = (e) => { e.preventDefault(); showDivision(Number(a.dataset.show)); });
+}
+
+async function showDivision(index) {
+  const f = state.lsrc;
+  if (!f) return;
+  $("previewWrap").innerHTML = `<p class="muted">reading…</p>`;
+  try {
+    const d = await getJSON(`/api/local/division/${index}.txt` +
+      `?path=${encodeURIComponent(f.path)}` +
+      `&mode=${encodeURIComponent($("mode").value)}` +
+      `&split=${Number($("splitSections").value) || 0}`);
+    $("pageLabel").textContent = `division ${d.index} of ${d.count}`;
+    $("previewWrap").innerHTML = `<div class="division-view">
+      <p><a href="#" id="backToContents">‹ Contents</a>
+         <button data-from="${d.index}">Start here</button>
+         <button data-to="${d.index}">End here</button></p>
+      <pre class="srctext"><b>${escapeHtml(d.title)}</b>\n\n${escapeHtml(d.text)}</pre></div>`;
+    $("backToContents").onclick = (e) => { e.preventDefault(); showContents(); };
+    $("previewWrap").querySelector("[data-from]").onclick = () => setContentsEnd("from", d.index);
+    $("previewWrap").querySelector("[data-to]").onclick = () => setContentsEnd("to", d.index);
+  } catch (e) {
+    $("previewWrap").innerHTML = `<p class="muted">⚠ ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function toggleContents() {
+  if (state.contentsOpen) {
+    state.contentsOpen = false;
+    $("contentsToggle").textContent = "Contents";
+    showSourcePage(state.page || 0);
+  } else {
+    showContents();
+  }
 }
 
 function renderLocalSlot(which) {
@@ -1362,6 +1481,10 @@ function renderLocalSlot(which) {
     renderLocalSlot(which);
     $(which === "lsrc" ? "range-lsrc" : "range-ltgt").innerHTML = "";
     $("localDetail").innerHTML = "";
+    if (which === "lsrc") {
+      $("contentsToggle").style.display = "none";
+      state.contentsOpen = false;
+    }
   };
 }
 
@@ -1894,6 +2017,10 @@ async function openSourcePreview(f) {
 async function showSourcePage(i) {
   const sp = state.srcPreview;
   if (!sp) return;
+  if (state.contentsOpen) {
+    state.contentsOpen = false;
+    $("contentsToggle").textContent = "Contents";
+  }
   state.page = Math.max(0, Math.min(i, sp.pages - 1));
   $("pageLabel").textContent =
     `${state.page + 1} / ${sp.pages} · ${sp.kind === "pdf" ? "source pages" : "source text"}`;
@@ -1976,6 +2103,7 @@ $("buildBtn").onclick = doBuild;
 $("saveBtn").onclick = saveConfig;
 $("cancelBtn").onclick = cancelBuild;
 $("coverToggle").onclick = toggleCover;
+$("contentsToggle").onclick = toggleContents;
 $("auEstimateBtn").onclick = estimateAudio;
 $("auEngine").addEventListener("change", updateEngineNote);
 $("auVoice").addEventListener("change", updateVoiceNote);
