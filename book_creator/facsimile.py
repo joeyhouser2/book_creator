@@ -434,65 +434,119 @@ def _clear_edges(out):
     return out
 
 
+def _clusters(points: list[tuple[float, float]], reach: float) -> list[list[tuple[float, float]]]:
+    """Points grouped with whatever lies within `reach` of them."""
+    import numpy as np
+
+    if not points:
+        return []
+    pts = np.array(points, dtype=float)
+    seen = np.zeros(len(pts), dtype=bool)
+    groups = []
+    for start in range(len(pts)):
+        if seen[start]:
+            continue
+        queue, group = [start], []
+        seen[start] = True
+        while queue:
+            i = queue.pop()
+            group.append((float(pts[i][0]), float(pts[i][1])))
+            d = np.hypot(pts[:, 0] - pts[i, 0], pts[:, 1] - pts[i, 1])
+            for j in np.nonzero((d < reach) & ~seen)[0]:
+                seen[j] = True
+                queue.append(int(j))
+        groups.append(group)
+    return groups
+
+
 def _clear_perforations(out, dpi: int = DPI):
     """Whiten a library's perforated stamp: "UNIV. OF CALIFORNIA ... LIBRARY"
     punched through the title page as letters made of round holes.
 
-    A hole is a small round dot. So is a full stop, but a full stop stands
-    alone; a row of leader dots in a contents page stands in a line; the
-    holes of a stamp stand among dozens of others, above and below as well as
-    beside. Only dots with neighbours in both directions, in a cluster of
-    many, are taken out.
+    A hole is a small round dot, but so is a full stop, so is a contents
+    page's leader, and so are the letters o, e and c at the size a book sets
+    them. What tells a stamp apart is that its holes are a grid: dozens of
+    them, evenly spaced, with nothing else between them. Only a cluster that
+    is both regular and almost purely dots is taken -- and inside it, the
+    faint rims and half-holes that whitening the paper leaves behind.
     """
     import numpy as np
 
     try:
         from scipy import ndimage
-    except ImportError:
+    except ImportError:          # a nicety: without scipy the stamp stays
         return out
     grey = out.mean(axis=2) if out.shape[2] > 1 else out[..., 0]
-    labels, n = ndimage.label(grey < 0.8)
+    # Fainter than print: a stamp's holes can be, and whole words of one can
+    # be nearly invisible. Nothing is removed on the strength of being faint
+    # -- the geometry below is what decides.
+    labels, n = ndimage.label(grey < 0.9)
     if not n:
         return out
     scale = dpi / 300.0
     boxes = ndimage.find_objects(labels)
     areas = np.bincount(labels.ravel())
-    dots = []                                  # (label, cy, cx)
+    dots, centres = [], []
     for k, box in enumerate(boxes, start=1):
         if box is None:
             continue
         h, w = box[0].stop - box[0].start, box[1].stop - box[1].start
+        cy, cx = (box[0].start + box[0].stop) / 2, (box[1].start + box[1].stop) / 2
+        centres.append((cy, cx, k, max(h, w)))
         if not (4 * scale <= h <= 22 * scale and 4 * scale <= w <= 22 * scale):
             continue
-        if max(h, w) > 1.6 * min(h, w) or areas[k] < 0.45 * h * w:
-            continue                           # not round, or not solid
-        dots.append((k, (box[0].start + box[0].stop) / 2, (box[1].start + box[1].stop) / 2))
+        # Round, and reasonably filled: a faint hole comes back as a ring
+        # rather than a disc, so this is generous. The geometry decides.
+        if max(h, w) > 1.6 * min(h, w) or areas[k] < 0.3 * h * w:
+            continue
+        dots.append((k, cy, cx))
     if len(dots) < 25:
         return out
-    pts = np.array([(y, x) for _, y, x in dots])
+
     reach = 40 * scale
-    stamp = []
-    for i, (k, y, x) in enumerate(dots):
-        d = np.hypot(pts[:, 0] - y, pts[:, 1] - x)
-        near = pts[(d > 0) & (d < reach)]
-        if len(near) >= 3 and np.ptp(near[:, 0]) >= 8 * scale and np.ptp(near[:, 1]) >= 8 * scale:
-            stamp.append(k)
-    if len(stamp) < 25:
+    groups = [g for g in _clusters([(y, x) for _, y, x in dots], reach) if len(g) >= 25]
+    if not groups:
         return out
-    mask = np.isin(labels, stamp)
-    # What the round holes leave behind -- half-holes, rims, a crescent where
-    # the next page showed through -- lies inside the stamp's own outline and
-    # is smaller than any letter a title page sets: those go too.
-    ys, xs = np.nonzero(mask)
-    pad = round(15 * scale)
-    y0, y1 = max(0, ys.min() - pad), ys.max() + pad
-    x0, x1 = max(0, xs.min() - pad), xs.max() + pad
-    for k, box in enumerate(boxes, start=1):
-        if box is None:
+    pts = np.array([(y, x) for _, y, x in dots])
+    mask = np.zeros(labels.shape, dtype=bool)
+    pad = round(20 * scale)
+    took = False
+    for group in groups:
+        g = np.array(group)
+        # Evenly spaced, as punched holes are and letters are not: each hole's
+        # nearest neighbour is the same distance away as every other's.
+        steps = []
+        for y, x in group:
+            d = np.hypot(g[:, 0] - y, g[:, 1] - x)
+            steps.append(d[d > 0].min())
+        steps = np.array(steps)
+        if steps.mean() <= 0 or steps.std() / steps.mean() > 0.35:
             continue
-        if box[0].start >= y0 and box[0].stop <= y1 and box[1].start >= x0 and box[1].stop <= x1 \
-                and max(box[0].stop - box[0].start, box[1].stop - box[1].start) <= 24 * scale:
-            mask[box][labels[box] == k] = True
+        # Several rows deep, as a stamp's letters are: a line of small
+        # capitals is evenly spaced too, and one row of it is not a stamp.
+        step = steps.mean()
+        if np.ptp(g[:, 0]) < 3 * step or np.ptp(g[:, 1]) < 3 * step:
+            continue
+        y0, y1 = max(0, round(g[:, 0].min()) - pad), round(g[:, 0].max()) + pad
+        x0, x1 = max(0, round(g[:, 1].min()) - pad), round(g[:, 1].max()) + pad
+        # And with the place to themselves: a line of type has letters in it
+        # that are nothing like a hole, and is left alone.
+        inside = [(k, big) for cy, cx, k, big in centres if y0 <= cy <= y1 and x0 <= cx <= x1]
+        holes = {k for k, y, x in dots if y0 <= y <= y1 and x0 <= x <= x1}
+        # Mostly holes: a faint stamp breaks into fragments as well, so this
+        # is loose. What keeps type out is the size test below -- no letter a
+        # book sets is as small as a hole.
+        if len(inside) and len(holes) < 0.5 * len(inside):
+            continue
+        if any(big > 26 * scale for _, big in inside):
+            continue                           # something larger than a hole
+        took = True
+        mask[y0:y1, x0:x1] |= np.isin(labels[y0:y1, x0:x1], list(holes))
+        # The rims and half-holes among them, whatever their shape.
+        block = out[y0:y1, x0:x1]
+        block[grey[y0:y1, x0:x1] > 0.45] = 1.0
+    if not took:
+        return out
     mask = ndimage.binary_dilation(mask, iterations=max(1, round(2 * scale)))
     out[mask] = 1.0
     return out
