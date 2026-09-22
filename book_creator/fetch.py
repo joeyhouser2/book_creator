@@ -227,6 +227,33 @@ def ocr_override(p: Path, *, log=None) -> str | None:
 _PDF_SCANS: dict[tuple, list[tuple[str, str]]] = {}
 
 
+def is_page_scan(p: Path) -> bool:
+    """Whether a PDF is a picture of every page with OCR laid over it.
+
+    Told from a sample: in a library scan one image covers each whole page.
+    The web app asks so that the chapter picker can start a cleaned scan at
+    its first chapter -- its front matter is already gone -- instead of
+    skipping a division as it does for a Gutenberg text's title page.
+    """
+    import fitz
+
+    doc = fitz.open(str(p))
+    try:
+        if len(doc) < 20:
+            return False
+        sample = [doc[i] for i in range(0, len(doc), max(1, len(doc) // 20))]
+
+        def pictured(page) -> bool:
+            area = page.rect.width * page.rect.height
+            return any(r.width * r.height >= 0.85 * area
+                       for x in page.get_images(full=True)
+                       for r in page.get_image_rects(x[0]))
+
+        return sum(pictured(pg) for pg in sample) >= 0.8 * len(sample)
+    finally:
+        doc.close()
+
+
 def pdf_scan_divisions(p: Path, *, log=None) -> list[tuple[str, str]] | None:
     """A scanned book's PDF as its chapters, or None if it is not one.
 
@@ -245,16 +272,10 @@ def pdf_scan_divisions(p: Path, *, log=None) -> list[tuple[str, str]] | None:
     key = (str(p.resolve()), st.st_size, st.st_mtime_ns)
     if key in _PDF_SCANS:
         return _PDF_SCANS[key]
+    if not is_page_scan(p):
+        return None
     doc = fitz.open(str(p))
     try:
-        sample = [doc[i] for i in range(0, len(doc), max(1, len(doc) // 20))]
-        def pictured(page) -> bool:
-            area = page.rect.width * page.rect.height
-            return any(r.width * r.height >= 0.85 * area
-                       for x in page.get_images(full=True)
-                       for r in page.get_image_rects(x[0]))
-        if len(doc) < 20 or sum(pictured(pg) for pg in sample) < 0.8 * len(sample):
-            return None
         pages = []
         for page in doc:
             text = " ".join(page.get_text().split())

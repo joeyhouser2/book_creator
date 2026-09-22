@@ -429,6 +429,40 @@ def _apply_ocr_verdict(p: Path, report: dict) -> None:
         f"that text, not the one in the file.")
 
 
+def _sample_text(p: Path, limit: int = 20000) -> str:
+    """Enough of a local file to tell what language it is in, read cheaply."""
+    suffix = p.suffix.lower()
+    try:
+        if suffix == ".pdf":
+            import fitz
+
+            doc = fitz.open(str(p))
+            try:
+                step = max(1, len(doc) // 15)
+                out = []
+                for i in range(0, len(doc), step):
+                    out.append(doc[i].get_text())
+                    if sum(len(t) for t in out) > limit:
+                        break
+                return " ".join(out)[:limit]
+            finally:
+                doc.close()
+        if suffix == ".epub":
+            import zipfile
+
+            with zipfile.ZipFile(p) as zf:
+                names = [n for n in zf.namelist() if n.lower().endswith((".htm", ".html", ".xhtml"))]
+                out = []
+                for name in names[len(names) // 4: len(names) // 4 + 25]:
+                    out.append(epub_reader._strip_tags(zf.read(name).decode("utf-8", "replace")))
+                    if sum(len(t) for t in out) > limit:
+                        break
+                return " ".join(out)[:limit]
+        return p.read_text(encoding="utf-8", errors="replace")[:limit]
+    except Exception:  # noqa: BLE001 - a guess is a nicety, never a failure
+        return ""
+
+
 @app.route("/api/local/inspect")
 def api_local_inspect():
     """What a local file actually contains, before a build is spent on it.
@@ -465,6 +499,9 @@ def api_local_inspect():
                   "size_mb": round(p.stat().st_size / 1024 ** 2, 1),
                   "chars_per_document": layer.chars_per_page,
                   "ocr_accuracy": None, "ocr_pages": 0,
+                  # A page-by-page scan: its front matter is taken out on
+                  # reading, so the chapter picker starts at its first chapter.
+                  "page_scan": fetch.is_page_scan(p),
                   "warnings": warnings, "usable": not layer.needs_ocr}
         _apply_ocr_verdict(p, report)
     else:
@@ -474,6 +511,16 @@ def api_local_inspect():
                   "size_mb": round(p.stat().st_size / 1024 ** 2, 1),
                   "chars_per_document": len(text), "ocr_accuracy": None,
                   "ocr_pages": 0, "warnings": [], "usable": len(text) > 100}
+    # What language the file is actually in. The language box starts at Latin
+    # -- this app began as a Latin tool -- and nothing used to read the text
+    # to see: an English history went to the narrator as Latin, which has no
+    # voice of its own, and would have been read in an Italian one.
+    from book_creator import langid
+
+    code = langid.guess(_sample_text(p))
+    if code:
+        report["language"] = code
+        report["language_name"] = langid.name(code)
     return jsonify(report)
 
 

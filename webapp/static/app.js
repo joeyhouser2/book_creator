@@ -1294,6 +1294,13 @@ async function inspectLocal(which) {
     return;
   }
   f.report = r;
+  // The language box starts at Latin, and an English book read as Latin is
+  // narrated with an Italian voice for as long as the book lasts.
+  if (r.language && which === "lsrc" && $("srcLang").value !== r.language) {
+    $("srcLang").value = r.language;
+    r.warnings = [`Language set to ${r.language_name} from the text itself — ` +
+                  `change it above if that is wrong.`, ...(r.warnings || [])];
+  }
   const warns = (r.warnings || []).map((w) =>
     `<p class="${w.startsWith("Unusable") ? "warn" : "caution"}">⚠ ${escapeHtml(w)}</p>`
   ).join("");
@@ -1839,7 +1846,9 @@ function buildPayload() {
     mode: $("mode").value,
     aligner: $("aligner").value,
     first: $("first").value,
-    sides: $("sides").value,
+    // One file, read aloud: the original, whatever the edition box says.
+    sides: ($("auOnly").checked && state.source === "local" && !state.ltgt)
+      ? "src" : $("sides").value,
     split_long_divisions: Number($("splitSections").value) || 0,
     font: $("font").value,
     trim: [parseFloat($("trimW").value), parseFloat($("trimH").value)],
@@ -1924,7 +1933,9 @@ function validate() {
   }
   if (state.source === "local") {
     if (!state.lsrc) return "Pick an Original file.";
-    if (sides !== "src" && !state.ltgt) {
+    // An audiobook of one file is that file read aloud; there is no second
+    // language to choose between, so the edition setting does not apply.
+    if (sides !== "src" && !state.ltgt && !$("auOnly").checked) {
       return "Pick a Translation file, or set Edition to \"original only\".";
     }
     // The quality report is advisory, but silently building a 24%-accurate
@@ -1936,7 +1947,7 @@ function validate() {
         `(see the warning above). Build anyway?`)) {
       return "Cancelled.";
     }
-    if (sides !== "src" && !$("pd").checked)
+    if (sides !== "src" && state.ltgt && !$("pd").checked)
       return "Confirm the translation is public domain before building.";
     return null;
   }
