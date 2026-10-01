@@ -7,6 +7,11 @@ methods:
                   translator registered for the source language (see translators)
   "auto"        — best available: MT-pivot if a translator is registered for the
                   language, else embeddings, else Gale-Church
+
+`band`, when given, restricts every backend's DP to that many positions either
+side of the diagonal (see align.run_dp). Needed for sequences long enough that
+O(n·m) stops being free -- stanza alignment across a whole epic -- and not for
+sentences inside one chapter, where it is left off.
 """
 
 from __future__ import annotations
@@ -20,7 +25,8 @@ _announced = False
 
 
 def align(src: list[str], tgt: list[str], *, method: str = "auto",
-          src_lang: str | None = None, log=None) -> list[Bead]:
+          src_lang: str | None = None, log=None,
+          band: int | None = None) -> list[Bead]:
     global _announced
 
     def note(msg: str) -> None:
@@ -35,7 +41,7 @@ def align(src: list[str], tgt: list[str], *, method: str = "auto",
         if translator is not None:
             note("• Aligner: MT-pivot (translate source → align in English)")
             from .align_mt import mt_align
-            return mt_align(src, tgt, translator=translator, log=log)
+            return mt_align(src, tgt, translator=translator, log=log, band=band)
         if method == "mt":
             raise RuntimeError(
                 f"No translator registered for source language {src_lang!r}. "
@@ -47,14 +53,14 @@ def align(src: list[str], tgt: list[str], *, method: str = "auto",
             from .align_embed import embed_align, ensure_available
             ensure_available()
             note("• Aligner: LaBSE embeddings (meaning-based)")
-            return embed_align(src, tgt)
+            return embed_align(src, tgt, band=band)
         except Exception as exc:  # noqa: BLE001 - degrade gracefully on auto
             if method == "embed":
                 raise
             note(f"• Aligner: Gale-Church (embeddings unavailable: {exc.__class__.__name__})")
 
     note("• Aligner: Gale-Church (length-based)")
-    return gale_church(src, tgt)
+    return gale_church(src, tgt, band=band)
 
 
 def reset_announcement() -> None:

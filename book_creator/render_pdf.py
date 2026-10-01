@@ -436,9 +436,16 @@ def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):
     if bead.heading:
         story.append(Paragraph(_esc(bead.src_text), st["rubric"]))
         return
-    src_txt = ("<br/>".join(_esc(s.strip()) for s in bead.src if s.strip())
-               if bead.lines else _esc(bead.src_text))
-    tgt_txt = _esc(bead.tgt_text)
+    # `lines` applies to both sides: a stanza-aligned bead holds verse in each
+    # language, and running the translation's lines together while keeping the
+    # original's would print one side as poetry and the other as prose.
+    def _side(segs: list[str], joined: str) -> str:
+        if not bead.lines:
+            return _esc(joined)
+        return "<br/>".join(_esc(s.strip()) for s in segs if s.strip())
+
+    src_txt = _side(bead.src, bead.src_text)
+    tgt_txt = _side(bead.tgt, bead.tgt_text)
     src_style = st["src_open"] if opener else st["src"]
     tgt_style = st["tgt_open"] if opener else st["tgt"]
     blocks = []

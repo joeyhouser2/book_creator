@@ -6,14 +6,79 @@ import json
 import re
 from pathlib import Path
 
-from . import (aligners, audio, clean, corpus, cover, fetch, music, render_epub,
-               render_pdf, restylers, reviewer, segment)
+from . import (aligners, audio, clean, corpus, cover, fetch, mt_cache, music,
+               pg_catalog, render_epub, render_pdf, restylers, reviewer, segment)
 from .model import Bead, BookSpec, Chapter
 
 
+# Accented letters are FOLDED to their base letter, not dropped. Every title this
+# tool handles is likely to carry them, and dropping them mangles the filename
+# rather than simplifying it: "La Légende des siècles" became
+# "la-l-gende-des-si-cles", losing the é and è outright. ß has no
+# decomposition, so it is spelled out before the fold.
+_SLUG_SPELLED = {"ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "đ": "d", "ł": "l",
+                 "þ": "th", "ð": "d"}
+
+
+# KDP will not print a paperback interior longer than this, at any trim size.
+# The same number is the top of facsimile.py's gutter table, which is where it
+# was already encoded without being checked against.
+KDP_MAX_PAGES = 828
+
+
 def _slugify(text: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    """Filename stem for a title, in any of the scripts this tool prints.
+
+    Folding alone is not enough for Greek: the accents come off but the letters
+    themselves survive, and the [a-z0-9] filter then removes the whole title --
+    every Greek book slugged to "book", so building the Iliad and then the
+    Odyssey put the second one's PDF, EPUB and cover on top of the first's.
+    `pg_catalog.searchable` already folds AND transliterates Greek (it is what
+    lets `anabasis` find Κύρου Ἀνάβασις in catalog search); reusing it here
+    keeps one transliteration table for the project and gives Greek titles
+    readable names -- "kyrou-anabasis" rather than "book".
+    """
+    text = text.lower()
+    for ch, spelled in _SLUG_SPELLED.items():
+        text = text.replace(ch, spelled)
+    folded = pg_catalog.searchable(text)
+    s = re.sub(r"[^a-z0-9]+", "-", folded).strip("-")
     return s or "book"
+
+
+# Every artifact of a build is named from the slug, so two books that slug the
+# same way land on top of each other: the PDF, EPUB and cover of whichever was
+# built first are simply gone, with nothing in the log to say so. A claim file
+# records which title owns a slug, and a mismatch stops the build before the
+# first byte is written.
+_SLUG_CLAIM = "{slug}.build.json"
+
+
+def _claim_slug(slug: str, spec: BookSpec, out_dir: str, log) -> None:
+    """Refuse to build one book over another book's output files."""
+    claim = Path(out_dir) / _SLUG_CLAIM.format(slug=slug)
+    owner = None
+    if claim.is_file():
+        try:
+            owner = json.loads(claim.read_text(encoding="utf-8")).get("title")
+        except (OSError, ValueError):
+            owner = None  # Unreadable claim: no evidence, so don't block.
+    if owner and owner != spec.title:
+        raise ValueError(
+            f"Output slug {slug!r} already belongs to {owner!r}. Building "
+            f"{spec.title!r} under it would overwrite that book's PDF, EPUB "
+            f"and cover. Give one of them its own `slug:` — or, if {owner!r} "
+            f"was simply renamed, delete {claim}."
+        )
+    # Claimed up front, not on success: a build that dies half-way still leaves
+    # partial files under this slug, and those are just as overwritable.
+    claim.parent.mkdir(parents=True, exist_ok=True)
+    claim.write_text(
+        json.dumps({"title": spec.title, "author": spec.author},
+                   ensure_ascii=False, indent=1),
+        encoding="utf-8")
+    if owner is None:
+        log(f"• Output files are named {slug}.*")
 
 
 def _apply_range(divisions: list[tuple[str, str]],
@@ -383,6 +448,167 @@ def _chapters_from_single_edition(spec: BookSpec, log) -> list[Chapter]:
     return chapters
 
 
+def _verse_blocks(src_segs: list[str], tgt_segs: list[str],
+                  spec: BookSpec) -> list[Bead]:
+    """The whole original poem as one run of beads, then the whole translation."""
+    src_block = [Bead(src=[s], tgt=[]) for s in src_segs]
+    tgt_block = [Bead(src=[], tgt=[t]) for t in tgt_segs]
+    return (tgt_block + src_block) if spec.first == "tgt" else (src_block + tgt_block)
+
+
+def _align_stanzas(src_body: str, tgt_body: str, spec: BookSpec,
+                   log) -> list[Bead] | None:
+    """Pair a stanzaic poem stanza-by-stanza. None when there are no stanzas.
+
+    The whole-block pairing above is the right call for a short lyric, and the
+    wrong one for a long stanzaic narrative: 2,500 strophes of the
+    Nibelungenlied followed by 2,300 strophes of its English is two monolingual
+    books bound together, not a parallel text.
+
+    The stanza is the unit to align on. A verse translator reorders clauses
+    within a stanza freely — which is exactly why line-by-line pairing fails —
+    but very rarely moves material across a stanza boundary, so stanza *n* of
+    the original really does correspond to stanza *n* of the translation, give
+    or take the occasional split or merge. And editions disagree on stanza
+    count (Simrock's Nibelungenlied has 2,495 to Needler's 2,379), so the
+    correspondence is found rather than assumed.
+
+    Each stanza is handed to the ordinary aligner as a single segment, so this
+    inherits whichever backend is configured, and the 1-2/2-1 moves absorb a
+    stanza the translator split or ran together. The joined stanza is then
+    exploded back into its own lines, with `lines=True` so the renderer keeps
+    the verse breaks.
+    """
+    src_st = segment.stanzas(src_body)
+    tgt_st = segment.stanzas(tgt_body)
+    if len(src_st) < 2 or len(tgt_st) < 2:
+        return None
+    if spec.clean:
+        src_st = [clean.clean_segments(st) for st in src_st]
+        tgt_st = [clean.clean_segments(st) for st in tgt_st]
+        src_st = [st for st in src_st if st]
+        tgt_st = [st for st in tgt_st if st]
+        if len(src_st) < 2 or len(tgt_st) < 2:
+            return None
+
+    # An epic's worth of stanzas is far too many for an O(n·m) DP (the
+    # Nibelungenlied measures at ~14 minutes unbanded), and the two sides are
+    # the same narrative in the same order, so the path stays near the diagonal.
+    # The band scales with the longer side, with a floor for short poems, and
+    # has to clear the two sides' length difference for a path to exist at all.
+    log(f"• Stanzas — source: {len(src_st)}, translation: {len(tgt_st)}.")
+    band = max(64, abs(len(src_st) - len(tgt_st)) + 32,
+               max(len(src_st), len(tgt_st)) // 10)
+    joined = aligners.align(["\n".join(st) for st in src_st],
+                            ["\n".join(st) for st in tgt_st],
+                            method=spec.aligner, src_lang=spec.src_lang, log=log,
+                            band=band)
+    beads: list[Bead] = []
+    for bead in joined:
+        # A bead may hold several stanzas (a 2-1 move); their lines run together
+        # into one printed unit, which is what a merged stanza pair means.
+        beads.append(Bead(
+            src=[l for stanza in bead.src for l in stanza.split("\n")],
+            tgt=[l for stanza in bead.tgt for l in stanza.split("\n")],
+            lines=True))
+    return beads
+
+
+def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
+    """Generate the missing English side with a registered translator.
+
+    Most of what is worth printing as a parallel text has no published English
+    translation at all — not a copyrighted one, none. Of the Franco-Germanic
+    epics, Gutenberg has the Nibelungenlied's German beside three English
+    translations and then essentially stops: Chastellain, Hugo's
+    *Légende des siècles* and Klopstock have originals with no English, and
+    Theuerdank and Girart de Roussillon have neither.
+
+    So the English is made here instead. This is a different job from the
+    MT-pivot aligner, which translates only to *score* a match and throws the
+    translation away (see align_mt): the text produced here is the text that
+    gets printed. Two consequences follow.
+
+    Alignment does not run at all. A translator returns one English rendering
+    per source segment, in order, so segment *i* corresponds to segment *i* by
+    construction — the same reason the corpus path skips alignment. Guessing at
+    a correspondence that is already exact could only make it worse.
+
+    And it is disclosed. `translation_pd_confirmed` stops mattering, because no
+    third-party translator holds copyright on this English; what replaces that
+    caveat is saying on the copyright page that a machine wrote it.
+    """
+    from . import translators
+
+    if not (spec.src_path or spec.src_gutenberg_id):
+        raise ValueError(
+            "translate is on, but no original was given — only a translation. "
+            "The machine-translation path renders the ORIGINAL into English; "
+            "it will not reconstruct a lost original from its translation.")
+    translator = translators.get(spec.src_lang)
+    if translator is None:
+        # Fall back to the built-in model for this language, so asking for a
+        # translation is one decision rather than two. The web UI has no way to
+        # register one, and on the command line --translate alone should work.
+        if not translators.has_local(spec.src_lang):
+            raise ValueError(
+                f"translate is on, but there is no translator for "
+                f"{spec.src_lang!r} and no built-in model for it either. Known: "
+                f"{', '.join(sorted(translators.LOCAL_MODELS))}. Register your "
+                "own — see book_creator/translators.py.")
+        translator = translators.use_local(spec.src_lang)
+        log(f"• No translator registered for {spec.src_lang}; using the "
+            f"built-in {translator.model_name} (downloaded once, ~300 MB). It "
+            "reads the modern language only.")
+
+    log(f"• Fetching source ({spec.src_lang})…")
+    divisions = fetch.load_divisions(path=spec.src_path, gid=spec.src_gutenberg_id,
+                                     mode=spec.mode,
+                                     poem_titles=spec.poem_titles, log=log)
+    divisions = segment.subdivide(divisions, spec.split_long_divisions, log=log)
+    divisions = _apply_range(divisions, spec.src_range)
+    log(f"• Divisions used: {len(divisions)}")
+
+    chapters: list[Chapter] = []
+    for title, body in divisions:
+        segs = segment.segment(body, spec.mode, spec.src_lang)
+        if spec.clean:
+            segs = clean.clean_segments(segs)
+        if segs:
+            chapters.append(Chapter(title=title, src_segments=segs))
+
+    # Translated across the whole book rather than per chapter, so the model is
+    # loaded once and the count means something. mt_cache does the chunking and
+    # the progress logging, and skips anything this model has already been
+    # asked -- which is most of a rebuild, since a book gets rebuilt for reasons
+    # that have nothing to do with its text.
+    flat = [seg for ch in chapters for seg in ch.src_segments]
+    log(f"• Machine-translating {len(flat)} segment(s) {spec.src_lang}→"
+        f"{spec.tgt_lang} — this is the slow step.")
+    english = mt_cache.translate(translator, flat, log=log)
+    if len(english) != len(flat):
+        raise ValueError(
+            f"translator returned {len(english)} items for {len(flat)} inputs")
+
+    at = 0
+    for ch in chapters:
+        n = len(ch.src_segments)
+        ch.tgt_segments = english[at:at + n]
+        # One bead per segment: the correspondence is exact, so there is
+        # nothing for an aligner to find. Verse keeps its line breaks.
+        ch.beads = [Bead(src=[s], tgt=[t], lines=(spec.mode == "verse"))
+                    for s, t in zip(ch.src_segments, ch.tgt_segments)]
+        at += n
+
+    if not spec.translation_source_note:
+        spec.translation_source_note = (
+            "The English rendering is machine translation, not a previously "
+            "published human translation.")
+    total = sum(len(ch.beads) for ch in chapters)
+    log(f"• Translated into {total} bead(s) across {len(chapters)} chapter(s).")
+    return chapters
+
+
 def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
     """Segment and align each already-paired division into beads.
 
@@ -400,7 +626,19 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
         if spec.clean:
             src_segs = clean.clean_segments(src_segs)
             tgt_segs = clean.clean_segments(tgt_segs)
-        if spec.mode == "verse":
+        if spec.mode == "verse" and spec.verse_align == "stanza":
+            # A stanzaic narrative is paired stanza against stanza: the stanza
+            # is the unit a verse translator actually preserves, even while
+            # reordering clauses freely inside it. See _align_stanzas.
+            beads = _align_stanzas(s_body, t_body, spec, log)
+            if beads is None:
+                log("• Verse mode: no stanza breaks found on one side of "
+                    f"{t_title or s_title or 'this division'}; pairing it as a block.")
+                beads = _verse_blocks(src_segs, tgt_segs, spec)
+            elif not verse_note_logged:
+                log("• Verse mode: pairing stanza against stanza.")
+                verse_note_logged = True
+        elif spec.mode == "verse":
             # Poetic translations routinely reorder clauses across lines for
             # rhyme/meter, so line-by-line embedding/length alignment is
             # unreliable (a German line's "translation" can land several
@@ -412,9 +650,7 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
                 log("• Verse mode: pairing whole poem blocks, not aligning "
                     "individual lines (see pipeline._fuzzy_match_divisions docstring).")
                 verse_note_logged = True
-            src_block = [Bead(src=[s], tgt=[]) for s in src_segs]
-            tgt_block = [Bead(src=[], tgt=[t]) for t in tgt_segs]
-            beads = (tgt_block + src_block) if spec.first == "tgt" else (src_block + tgt_block)
+            beads = _verse_blocks(src_segs, tgt_segs, spec)
         else:
             beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
                                    src_lang=spec.src_lang, log=log)
@@ -450,6 +686,9 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
     else:
         has_src = bool(spec.src_path or spec.src_gutenberg_id)
         has_tgt = bool(spec.tgt_path or spec.tgt_gutenberg_id)
+        # Gated on has_tgt, which is what makes it silent on the
+        # machine-translation path: there is no third-party translation to clear
+        # when the English is one this tool wrote itself.
         if not spec.translation_pd_confirmed and has_tgt:
             log(
                 "  ⚠  translation_pd_confirmed is False. A translator holds copyright "
@@ -457,10 +696,21 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
                 "Verify the translation is public domain (US: published before 1929) "
                 "before publishing."
             )
+        # Checked BEFORE the single-edition path below, because with `translate`
+        # on the second side is not missing — it is about to be made. Asked the
+        # other way round, an English-only edition of an untranslated original
+        # was refused for wanting "the side that is missing", which is exactly
+        # the side this path exists to supply.
+        #
+        # `sides: src` is the one case that still skips it: translating a text
+        # and then printing only the original would run the slowest step in the
+        # build to throw its output away.
+        if spec.translate and not has_tgt and spec.sides != "src":
+            chapters = _chapters_from_machine_translation(spec, log)
         # One edition given, and a monolingual edition asked for: there is
         # nothing to align it against, and demanding a second edition would be
         # demanding a translation nobody intends to print.
-        if has_src != has_tgt and spec.sides in ("src", "tgt"):
+        elif has_src != has_tgt and spec.sides in ("src", "tgt"):
             chapters = _chapters_from_single_edition(spec, log)
         else:
             chapters = _chapters_from_editions(spec, log)
@@ -479,6 +729,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
         slug = f"{slug}-{lang or spec.sides}"
         log(f"• Monolingual output, so files are named {slug}.* — the "
             "dual-language build is left alone.")
+    _claim_slug(slug, spec, out_dir, log)
 
     if spec.music.enabled and not spec.audio_only:
         log(f"• Matching poems against musical-literature catalog ({spec.music.catalog})…")
@@ -649,6 +900,17 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
     log(f"✓ Done: {out_path} ({actual_pages} pages)")
     out["pdf"] = out_path
     out["pages"] = actual_pages
+    if actual_pages > KDP_MAX_PAGES:
+        # Silence here is expensive: a parallel text is two books' worth of
+        # text, so it crosses this line easily -- Klopstock's Messias came out
+        # at 1,366 -- and nothing downstream notices. The cover is generated
+        # anyway, with a spine thicker than KDP accepts, and the rejection
+        # arrives from the dashboard after the upload rather than from here.
+        log(f"  ⚠  {actual_pages} pages exceeds KDP's {KDP_MAX_PAGES}-page "
+            "maximum for a paperback interior, so this cannot be printed as "
+            "one volume. Split it with --src-range (e.g. two volumes at half "
+            "the divisions each), which also gives each volume its own "
+            "printable spine.")
 
     if spec.cover.enabled:
         cover_path = str(Path(out_dir) / f"{slug}-cover.pdf")

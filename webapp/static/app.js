@@ -104,9 +104,30 @@ function updateSides() {
   $("pdConfirmRow").style.display = needsPd ? "" : "none";
   $("pdBanner").style.display = needsPd ? "" : "none";
 
+  updateTranslate();
   $("sidesNote").textContent = SIDES_NOTE[sides];
   if (state.corpus) renderCorpusHint();
   updateEngineNote();
+}
+
+// "Machine-translate the original" only answers one situation: an original with
+// no translation beside it, and a parallel text still wanted. Offering it when a
+// translation IS picked would invite the model to overwrite a real one (it does
+// not -- the pipeline prefers the real translation -- but the checkbox would be
+// claiming otherwise). Corpus and Perseus works arrive already paired.
+function translateApplies() {
+  if (["corpus", "perseus"].includes(state.source)) return false;
+  if ($("sides").value !== "both") return false;
+  const hasSrc = state.source === "local" ? !!state.lsrc : !!state.src;
+  const hasTgt = state.source === "local" ? !!state.ltgt : !!state.tgt;
+  return hasSrc && !hasTgt;
+}
+
+function updateTranslate() {
+  const row = $("translateRow");
+  if (!row) return;
+  row.hidden = !translateApplies();
+  if (row.hidden) $("translate").checked = false;
 }
 
 // On the corpus tab, an original-only edition unlocks the works that have no
@@ -272,6 +293,7 @@ function getRange(which) {
 }
 
 function renderSlot(which) {
+  updateTranslate();
   const slot = $(which === "src" ? "slot-src" : "slot-tgt");
   const body = slot.querySelector(".slot-body");
   const b = state[which];
@@ -1595,6 +1617,7 @@ function toggleContents() {
 }
 
 function renderLocalSlot(which) {
+  updateTranslate();
   const slot = $(which === "lsrc" ? "slot-lsrc" : "slot-ltgt");
   const body = slot.querySelector(".slot-body");
   const f = state[which];
@@ -1844,6 +1867,8 @@ function buildPayload() {
     author: $("author").value || "Unknown",
     src_lang: $("srcLang").value,
     mode: $("mode").value,
+    verse_align: $("verseAlign").value,
+    translate: $("translate").checked,
     aligner: $("aligner").value,
     first: $("first").value,
     // One file, read aloud: the original, whatever the edition box says.
@@ -1935,8 +1960,10 @@ function validate() {
     if (!state.lsrc) return "Pick an Original file.";
     // An audiobook of one file is that file read aloud; there is no second
     // language to choose between, so the edition setting does not apply.
-    if (sides !== "src" && !state.ltgt && !$("auOnly").checked) {
-      return "Pick a Translation file, or set Edition to \"original only\".";
+    if (sides !== "src" && !state.ltgt && !$("auOnly").checked
+        && !$("translate").checked) {
+      return "Pick a Translation file, set Edition to \"original only\", or "
+           + "tick \"machine-translate the original\".";
     }
     // The quality report is advisory, but silently building a 24%-accurate
     // scan wastes a long run and produces an unreadable book.
@@ -1952,10 +1979,12 @@ function validate() {
     return null;
   }
   if (!state.src) return "Pick an Original edition.";
-  if (!state.tgt) return "Pick a Translation edition.";
-  // An original-only edition publishes no translation, so there is nothing to
-  // confirm the public-domain status of.
-  if ($("sides").value !== "src" && !$("pd").checked)
+  if (!state.tgt && !$("translate").checked)
+    return "Pick a Translation edition, or tick \"machine-translate the original\".";
+  // An original-only edition publishes no translation, and a machine-translated
+  // one is this tool's own, so in neither case is there a third party's
+  // copyright to confirm.
+  if ($("sides").value !== "src" && !$("translate").checked && !$("pd").checked)
     return "Confirm the translation is public domain before building.";
   return null;
 }
@@ -2229,6 +2258,14 @@ for (const id of ["title", "author", "trimW", "trimH", "font", "srcLang"])
 $("title").addEventListener("input", refreshCoverPreview);
 $("cq").addEventListener("keydown", (e) => { if (e.key === "Enter") doCorpusSearch(); });
 $("cNeeds").addEventListener("change", doCorpusSearch);
+// Verse pairing only means anything in verse mode, so the row stays hidden in
+// prose rather than offering a choice that does nothing.
+function updateVerseAlign() {
+  $("verseAlignRow").hidden = $("mode").value !== "verse";
+}
+$("mode").addEventListener("change", updateVerseAlign);
+updateVerseAlign();
+
 $("localRefresh").onclick = loadLocalFiles;
 $("pSearchBtn").onclick = doPerseusSearch;
 $("pq").addEventListener("keydown", (e) => { if (e.key === "Enter") doPerseusSearch(); });

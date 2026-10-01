@@ -162,9 +162,14 @@ def _music_html(book: epub.EpubBook, image_paths: list[str], caption: str, uid_p
 def _bead_html(bead, first: str, opener: bool) -> str:
     if getattr(bead, "heading", False):
         return f'<p class="rubric">{_esc(bead.src_text)}</p>'
-    src_txt = ("<br/>".join(_esc(s.strip()) for s in bead.src if s.strip())
-               if getattr(bead, "lines", False) else _esc(bead.src_text))
-    tgt_txt = _esc(bead.tgt_text)
+    # Both sides, for the reason given in render_pdf._render_bead.
+    def _side(segs: list[str], joined: str) -> str:
+        if not getattr(bead, "lines", False):
+            return _esc(joined)
+        return "<br/>".join(_esc(s.strip()) for s in segs if s.strip())
+
+    src_txt = _side(bead.src, bead.src_text)
+    tgt_txt = _side(bead.tgt, bead.tgt_text)
     src_cls = "src opener" if opener else "src"
     tgt_cls = "tgt opener" if opener else "tgt"
     parts = []

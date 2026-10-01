@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 
-# Division keywords across the languages we target.
-_DIV_KW = (r"book|chapter|chap|part|canto|section|argument"
-           r"|liber|caput|commentarius|chapitre|livre|partie|kapitel|buch|teil")
+# Division keywords across the languages we target. "abenteuer"/"aventiure" and
+# their English "adventure" are the Middle High German epics' canto word: the
+# Nibelungenlied's 39 divisions are Âventiuren, and without them both the German
+# ("Erstes Abenteuer.") and the English ("FIRST ADVENTURE: Kriemhild's Dream.")
+# collapse into one 595,000-character division with no structure to anchor on.
+_DIV_KW = (r"book|chapter|chap|part|canto|section|argument|adventure|chant"
+           r"|liber|caput|commentarius|chapitre|livre|partie|kapitel|buch|teil"
+           r"|abenteuer|aventiure|gesang")
 _ROMAN = r"[ivxlcdm]+"
 # Latin ordinals (used in headings like "COMMENTARIUS PRIMUS").
 _LAT_ORD = (r"primus|secundus|tertius|quartus|quintus|sextus|septimus"
@@ -19,9 +25,35 @@ _FR_ORD = (r"première|premier|deuxième|troisième|quatrième"
            r"|cinquième|sixième|septième|huitième"
            r"|neuvième|dixième|onzième|douzième")
 # English ordinals (used in headings like "BOOK SEVENTH" — some editions name
-# "BOOK" divisions by word instead of roman numeral throughout).
-_EN_ORD = (r"first|second|third|fourth|fifth|sixth|seventh|eighth"
-           r"|ninth|tenth|eleventh|twelfth")
+# "BOOK" divisions by word instead of roman numeral throughout). These and the
+# German ones run to 39 and beyond, because that is how long the
+# medieval epics are: the Nibelungenlied has 39 Âventiuren, numbered by word in
+# both Simrock's German ("Neununddreißigstes Abenteuer.") and Needler's English
+# ("THIRTY-NINTH ADVENTURE"). Stopping at "twelfth" left the last 27 divisions of
+# each side undetected, which collapsed them into one 400,000-character block.
+# Composed rather than enumerated, since the compounds are regular.
+_EN_UNITS = ("first second third fourth fifth sixth seventh eighth ninth tenth "
+             "eleventh twelfth thirteenth fourteenth fifteenth sixteenth "
+             "seventeenth eighteenth nineteenth").split()
+_EN_TENS = "twentieth thirtieth fortieth fiftieth sixtieth".split()
+_EN_TENS_STEM = "twenty thirty forty fifty sixty".split()
+_EN_ORD = "|".join(
+    # Longest first: "twenty-first" must win over a bare "first".
+    [rf"{t}[- ]{u}" for t in _EN_TENS_STEM for u in _EN_UNITS[:9]]
+    + _EN_TENS + _EN_UNITS)
+
+# German ordinals decline ("Erstes Abenteuer", "Erste Aventiure", "Zwanzigste
+# Abenteuer"), so the stem is matched and the ending left optional below.
+# "eilft" is Simrock's archaic spelling of "elft".
+_DE_UNITS = ("erst zweit dritt viert fünft fuenft sechst siebent siebt acht "
+             "neunt zehnt elft eilft zwölft zwoelft dreizehnt vierzehnt "
+             "fünfzehnt fuenfzehnt sechzehnt siebzehnt achtzehnt neunzehnt").split()
+_DE_TENS = ("zwanzigst dreißigst dreissigst vierzigst fünfzigst fuenfzigst "
+            "sechzigst").split()
+_DE_JOIN = "ein zwei drei vier fünf fuenf sechs sieben acht neun".split()
+_DE_ORD = "|".join(
+    [rf"{u}und{t}" for t in _DE_TENS for u in _DE_JOIN] + _DE_TENS + _DE_UNITS)
+_ORDINALS = rf"{_LAT_ORD}|{_FR_ORD}|{_EN_ORD}|{_DE_ORD}"
 
 # A "<keyword> <number>" group appearing anywhere in a short heading line. This
 # catches "BOOK I", "CHAPTER 3", "Liber II", and "C. IULI ... COMMENTARIUS
@@ -30,8 +62,15 @@ _EN_ORD = (r"first|second|third|fourth|fifth|sixth|seventh|eighth"
 # common lowercase French/German words, and a case-insensitive roman class
 # would let a lowercase elision like "d'un" (the bare "d") masquerade as a
 # chapter number (e.g. "...de la part d'un domestique?").
+# Both word orders, because they split along language lines: Romance and Latin
+# headings put the number after the keyword ("LIVRE DEUXIÈME", "CAPUT III"),
+# while German and the English translations that follow it put the ordinal first
+# ("Erstes Abenteuer", "FIRST ADVENTURE"). An ordinal-first heading must be
+# ordinal-INITIAL on the line, so prose that merely says "the second part of the
+# journey" is not read as a division.
 _HEADING_KW_RE = re.compile(
-    rf"(?i:\b(?:{_DIV_KW})\b\.?)\s+(?:[IVXLCDM]+|\d+|(?i:{_LAT_ORD}|{_FR_ORD}|{_EN_ORD}))\b"
+    rf"(?i:\b(?:{_DIV_KW})\b\.?)\s+(?:[IVXLCDM]+|\d+|(?i:{_ORDINALS}))\b"
+    rf"|^(?i:(?:{_ORDINALS})\w{{0,3}})\s+(?i:\b(?:{_DIV_KW})\b)"
 )
 # A line consisting only of a roman numeral, e.g. a bare "IV." chapter marker.
 # Bare arabic numbers are intentionally excluded — they're too often footnote
@@ -320,4 +359,65 @@ def subdivide(divisions: list[tuple[str, str]], max_chars: int,
         log(f"• Split {split_count} long division(s) into parts of at most "
             f"{max_chars:,} characters — {len(divisions)} division(s) became "
             f"{len(out)}.")
+    return out
+
+
+# A strophe number printed with the verse: at the end of a line, after a wide
+# gap (Simrock's Nibelungenlied), or alone on a line between stanzas (Needler's
+# English of it). Editions number differently -- Simrock has 2495 strophes to
+# Needler's 2379 -- so the numbers are stripped rather than printed: setting
+# "288" beside "241" would assert a correspondence that is not there.
+_NUM_TAIL_RE = re.compile(r"\s{2,}\(?\d{1,4}\)?\.?\s*$")
+_NUM_LINE_RE = re.compile(r"^[\[(]?\d{1,4}[\])]?\.?$")
+
+
+def stanzas(text: str, *, drop_numbering: bool = True) -> list[list[str]]:
+    """Group verse lines into stanzas, one list of lines each.
+
+    Stanza breaks are found by measuring the text rather than by assuming a
+    layout: a Gutenberg verse file may be single-spaced with a blank line
+    between stanzas, or double-spaced with three. So the *commonest* gap
+    between consecutive lines is taken to be the within-stanza gap, and only a
+    wider gap starts a new stanza. Both editions of the Nibelungenlied come out
+    right under that rule, and they are spaced differently from each other.
+
+    Returns one stanza when the text has no wider gap to break on -- verse with
+    no stanza structure, or a division short enough to hold a single stanza.
+    Callers should treat that as "no stanzas here" rather than as one huge one.
+    """
+    rows: list[tuple[int, str]] = []   # (blank lines before this line, line)
+    gap = 0
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.strip():
+            rows.append((gap, line))
+            gap = 0
+        else:
+            gap += 1
+    if not rows:
+        return []
+
+    gaps = Counter(g for g, _ in rows[1:])
+    within = gaps.most_common(1)[0][0] if gaps else 0
+
+    groups: list[list[str]] = [[]]
+    for i, (g, line) in enumerate(rows):
+        if i and g > within:
+            groups.append([])
+        if drop_numbering:
+            line = _NUM_TAIL_RE.sub("", line)
+        groups[-1].append(line.strip())
+
+    # A line that is only a strophe number is a label, not verse. Needler prints
+    # them on their own line between stanzas, where the wide gap makes each one
+    # its own group -- left in, they would double the stanza count and offset
+    # every pairing by one. They are dropped wherever they fall, since an edition
+    # that sets them at the same gap as the verse would otherwise print them.
+    out: list[list[str]] = []
+    for grp in groups:
+        lines = [l for l in grp if l]
+        if drop_numbering:
+            lines = [l for l in lines if not _NUM_LINE_RE.match(l)]
+        if lines:
+            out.append(lines)
     return out

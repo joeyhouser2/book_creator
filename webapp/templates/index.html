@@ -209,6 +209,17 @@
             <option value="verse">verse (lines)</option>
           </select>
         </label>
+        <label id="verseAlignRow" hidden>Verse pairing
+          <select id="verseAlign">
+            <option value="block">whole poem, then whole translation</option>
+            <option value="stanza">stanza against stanza</option>
+          </select>
+          <small class="muted">A verse translator reorders clauses freely, so
+            lines are never paired one to one. Block suits a short lyric;
+            stanza is what a long stanzaic narrative needs — 2,500 strophes as
+            one block, then the translation as another, is two monolingual
+            books bound together.</small>
+        </label>
         <label class="gutenberg-only">Aligner
           <select id="aligner">
             <option value="auto">auto</option>
@@ -422,6 +433,16 @@
 
       <label class="confirm" id="pdConfirmRow"><input id="pd" type="checkbox">
         I have verified this translation is public domain.</label>
+
+      <!-- Shown only when one edition is chosen and a parallel text is wanted:
+           that is precisely the case this answers. -->
+      <label class="confirm" id="translateRow" hidden><input id="translate" type="checkbox">
+        No translation exists — machine-translate the original into English.
+        <small class="muted">Prints the model's English facing the original and
+          says so on the copyright page, so no translator's copyright applies.
+          The built-in models read the <em>modern</em> language only: fine for
+          19th-century French or German, useless on Middle High German or Old
+          French.</small></label>
 
       <div class="actions">
         <button id="buildBtn" class="primary">Build book</button>

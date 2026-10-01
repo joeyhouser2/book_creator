@@ -1400,6 +1400,8 @@ def _spec_from_payload(p: dict) -> BookSpec:
         src_path=p.get("src_path"),
         tgt_path=p.get("tgt_path"),
         mode=p.get("mode", "prose"),
+        verse_align=p.get("verse_align", "block"),
+        translate=bool(p.get("translate", False)),
         aligner=p.get("aligner", "auto"),
         src_range=_range(p.get("src_range")),
         tgt_range=_range(p.get("tgt_range")),

@@ -175,6 +175,8 @@ def load_specs(path: str) -> list[BookSpec]:
             src_path=raw.get("src_path"),
             tgt_path=raw.get("tgt_path"),
             mode=raw.get("mode", "prose"),
+            verse_align=raw.get("verse_align", "block"),
+            translate=bool(raw.get("translate", False)),
             poem_titles=bool(raw.get("poem_titles", False)),
             aligner=raw.get("aligner", "auto"),
             clean=bool(raw.get("clean", True)),

@@ -29,12 +29,24 @@ _LOG_PRIORS = {k: -math.log(v) for k, v in _PRIORS.items()}
 _STEPS = [(1, 1), (1, 0), (0, 1), (2, 1), (1, 2), (2, 2)]
 
 
-def run_dp(n: int, m: int, cost_fn, steps=None) -> list[tuple[int, int, int, int]]:
+def run_dp(n: int, m: int, cost_fn, steps=None,
+           band: int | None = None) -> list[tuple[int, int, int, int]]:
     """Generic monotone alignment DP shared by every backend.
 
     cost_fn(i, j, ds, dt) -> float gives the cost of aligning src[i:i+ds] with
     tgt[j:j+dt]. `steps` is the set of (#src, #tgt) moves allowed (defaults to
     the full Gale-Church set). Returns the path as a list of (i, j, ds, dt) beads.
+
+    `band` restricts the search to cells within that many positions of the
+    diagonal, making the cost O(n·band) instead of O(n·m). Sentence alignment
+    inside one chapter is small enough not to need it, but a whole stanzaic epic
+    is not: matching the Nibelungenlied's 2,549 German strophes against 2,328
+    English ones is 5.9M cells and a numpy dot per cell, which measures at ~14
+    minutes unbanded and seconds at band=128. Safe because the two sides are the
+    same text in the same order, so the path cannot wander far from the diagonal
+    — but only when the two sides really do START together. Scope both sides to
+    the same content first; a band applied across a 58,000-character front
+    matter that only one side has would lock in the offset instead of closing it.
     """
     steps = steps or _STEPS
     INF = float("inf")
@@ -42,8 +54,21 @@ def run_dp(n: int, m: int, cost_fn, steps=None) -> list[tuple[int, int, int, int
     back = [[None] * (m + 1) for _ in range(n + 1)]
     cost[0][0] = 0.0
 
+    def j_bounds(i: int) -> tuple[int, int]:
+        """Inclusive [lo, hi] of target positions in play at source position i."""
+        if band is None:
+            return 0, m
+        centre = (i * m) // n if n else 0
+        return max(0, centre - band), min(m, centre + band)
+
+    # Precomputed once per source position rather than per step: the inner loop
+    # runs tens of millions of times on an epic, where rebuilding these would
+    # cost more than the alignment itself.
+    bounds = [j_bounds(i) for i in range(n + 1)]
+
     for i in range(n + 1):
-        for j in range(m + 1):
+        lo, hi = bounds[i]
+        for j in range(lo, hi + 1):
             if cost[i][j] == INF:
                 continue
             base = cost[i][j]
@@ -51,11 +76,22 @@ def run_dp(n: int, m: int, cost_fn, steps=None) -> list[tuple[int, int, int, int
                 ni, nj = i + ds, j + dt
                 if ni > n or nj > m:
                     continue
+                # Writing outside the band would leave a cell that is never
+                # expanded, so the backtrace could reach a dead end.
+                if not (bounds[ni][0] <= nj <= bounds[ni][1]):
+                    continue
                 val = base + cost_fn(i, j, ds, dt)
                 if val < cost[ni][nj]:
                     cost[ni][nj] = val
                     back[ni][nj] = (i, j, ds, dt)
 
+    if back[n][m] is None and (n or m):
+        # Only reachable with a band too narrow for the two sides' length ratio
+        # to be absorbed by the 1-2/2-1 moves. Say so, rather than crashing on
+        # a None in the backtrace below.
+        raise ValueError(
+            f"No alignment path within band={band} for {n}×{m} segments. "
+            "Widen the band, or scope the two sides to the same content.")
     path: list[tuple[int, int, int, int]] = []
     i, j = n, m
     while (i, j) != (0, 0):
@@ -88,7 +124,8 @@ def _length_cost(sl: int, tl: int, c: float, s2: float) -> float:
     return -math.log(prob)
 
 
-def align_segments(src: list[str], tgt: list[str]) -> list[Bead]:
+def align_segments(src: list[str], tgt: list[str], *,
+                   band: int | None = None) -> list[Bead]:
     """Gale-Church length-based alignment of two segment lists."""
     if not src and not tgt:
         return []
@@ -110,7 +147,7 @@ def align_segments(src: list[str], tgt: list[str]) -> list[Bead]:
         tl = sum(t_len[j:j + dt])
         return _length_cost(sl, tl, c, s2) + _LOG_PRIORS[(ds, dt)]
 
-    path = run_dp(len(src), len(tgt), cost_fn)
+    path = run_dp(len(src), len(tgt), cost_fn, band=band)
     return beads_from_path(src, tgt, path)
 
 

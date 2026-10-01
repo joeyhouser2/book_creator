@@ -131,6 +131,30 @@ def main(argv: list[str] | None = None) -> int:
                         "numbering them continuously (e.g. Les Fleurs du Mal); "
                         "leave off for ones already numbered straight through "
                         "(e.g. Buch der Lieder).")
+    p.add_argument("--verse-align", choices=["block", "stanza"], default="block",
+                   help="Verse mode: how the two sides are paired. 'block' "
+                        "(default) prints the whole original poem then the "
+                        "whole translation, right for a short lyric whose "
+                        "translator reorders freely. 'stanza' pairs stanza "
+                        "against stanza, which is what a long stanzaic "
+                        "narrative needs (e.g. the Nibelungenlied's 2,500 "
+                        "strophes).")
+    p.add_argument("--translate", action="store_true",
+                   help="Machine-translate the original into English instead of "
+                        "using a second edition, for a text with no published "
+                        "translation. Needs a translator registered for "
+                        "--src-lang; --translator-model loads the built-in one. The "
+                        "English is printed and disclosed on the copyright page "
+                        "as machine translation.")
+    p.add_argument("--translator-model", metavar="MODEL", nargs="?", const="local",
+                   help="Register a translation model for --src-lang: no value "
+                        "(or 'local') uses the built-in Opus-MT model for that "
+                        "language, otherwise name a Hugging Face model. Used by "
+                        "--translate, and by --aligner mt. The built-in models "
+                        "read the MODERN language only — Middle High German or "
+                        "Old French needs a model trained on that stage. (This "
+                        "is the machine; --translator is a person's name for "
+                        "the copyright credit.)")
     p.add_argument("--aligner", choices=["auto", "embed", "mt", "gale-church"],
                    default="auto",
                    help="Alignment backend. 'embed' = LaBSE; 'mt' = translate "
@@ -344,6 +368,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n  Default without --audio-device: {info['recommended']} (most memory).")
         return 0
 
+    # Register before any build, so --translate and --aligner mt both find it.
+    # A config file registers its own via the top-level `translators:` block.
+    if args.translator_model:
+        from book_creator import translators
+        model = None if args.translator_model == "local" else args.translator_model
+        tr = translators.use_local(args.src_lang, model)
+        print(f"• Translator for {args.src_lang}: {tr.model_name}")
+
     if args.corpus:
         return _print_corpus(args)
 
@@ -387,6 +419,7 @@ def main(argv: list[str] | None = None) -> int:
             src_gutenberg_id=args.src_id, tgt_gutenberg_id=args.tgt_id,
             src_path=args.src_path, tgt_path=args.tgt_path,
             mode=args.mode, poem_titles=args.poem_titles, aligner=args.aligner,
+            verse_align=args.verse_align, translate=args.translate,
             first=args.first, sides=args.sides,
             toc=not args.no_toc, clean=not args.no_clean, restyle=not args.no_restyle,
             src_range=_parse_range(args.src_range),

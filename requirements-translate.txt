@@ -1,0 +1,11 @@
+# Machine-translating the missing English side (BookSpec.translate / --translate)
+# and the MT-pivot aligner's built-in models. Opus-MT is a Marian model, whose
+# tokenizer needs sentencepiece; sacremoses silences a tokenizer warning.
+#
+# torch>=2.6 is not pinned here because it is shared with the embedding aligner
+# and the TTS/ASR venvs, but transformers refuses to load a .bin checkpoint on
+# anything older (CVE-2025-32434) -- which is every Opus-MT model except the few
+# that ship safetensors. See the note in the README.
+transformers>=4.40
+sentencepiece>=0.2
+sacremoses>=0.1

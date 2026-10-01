@@ -42,7 +42,8 @@ def _cosine(a: Counter, b: Counter) -> float:
     return num / (da * db) if da and db else 0.0
 
 
-def mt_align(src: list[str], tgt: list[str], *, translator, log=None) -> list[Bead]:
+def mt_align(src: list[str], tgt: list[str], *, translator, log=None,
+             band: int | None = None) -> list[Bead]:
     if not src and not tgt:
         return []
     if not src:
@@ -70,5 +71,5 @@ def mt_align(src: list[str], tgt: list[str], *, translator, log=None) -> list[Be
         sim = _cosine(pooled(sv, i, ds), pooled(tv, j, dt))
         return (1.0 - sim) + _MERGE_PENALTY * (ds + dt - 2)
 
-    path = run_dp(len(src), len(tgt), cost_fn, steps=_STEPS)
+    path = run_dp(len(src), len(tgt), cost_fn, steps=_STEPS, band=band)
     return beads_from_path(src, tgt, path)

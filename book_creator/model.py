@@ -313,6 +313,25 @@ class BookSpec:
     # divisions to list).
     toc: bool = True
 
+    # Machine-translate the missing side, for an original with no published
+    # English at all. Requires a translator registered for src_lang (see
+    # book_creator/translators.py) and only applies when ONE edition was given:
+    # with two, the real translation is used. The generated English is printed,
+    # so it is disclosed on the copyright page rather than passed off as a human
+    # translation -- and translation_pd_confirmed stops mattering, because no
+    # third party holds copyright on it. See pipeline._chapters_from_machine_translation.
+    translate: bool = False
+
+    # Verse mode only -- how the two sides are paired:
+    #   "block"  — the whole original poem, then the whole translation (default)
+    #   "stanza" — stanza against stanza, aligned on stanza sequence
+    # Block is right for a short lyric, where a verse translation reorders
+    # clauses freely enough that any line pairing would be invented. Stanza is
+    # right for a long stanzaic narrative -- 2,500 strophes of the
+    # Nibelungenlied printed as one block, then its translation as another, is
+    # not a parallel text. Stanzas are found by segment.stanzas().
+    verse_align: str = "block"
+
     # Public-domain status of the TRANSLATION. The tool will warn unless this
     # is explicitly affirmed, because translators hold their own copyright.
     translation_pd_confirmed: bool = False

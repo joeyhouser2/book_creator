@@ -379,6 +379,19 @@ language it keeps, because an English-only edition is a different book from the
 parallel text and should not land on top of it. An explicit `slug` is never
 suffixed.
 
+Where the default slug comes from: the title, folded to plain ASCII and
+transliterated out of Greek by the same rules catalog search uses — *Κύρου
+Ἀνάβασις* becomes `kyrou-anabasis`. Without the transliteration the fold leaves
+the Greek letters standing and the filename filter then removes them all, so
+every Greek-titled book was named `book.pdf` and the next one built silently
+replaced it.
+
+That silent replacement is now refused outright. Each build writes
+`output/<slug>.build.json` recording which title owns the slug; starting a
+different book under a slug that is already taken stops the build before
+anything is written, and names both books. Pass a `slug` to either one to
+settle it — or delete the claim file if the book was simply renamed.
+
 A TTS failure normally just logs a warning, since the PDF is already written —
 but with `--audio-only` there is no PDF to fall back on, so the error is raised
 rather than leaving a "successful" build that produced nothing.
@@ -724,6 +737,9 @@ Output PDFs land in `output/`.
 | `mode` | `prose` (sentence alignment) or `verse` (line alignment) |
 | `sides` | `both` (parallel text, default), `src` (original only), `tgt` (translation only) — see [Monolingual editions](#monolingual-editions) |
 | `poem_titles` | verse only: also split on an isolated poem title with no numeral (see below) |
+| `verse_align` | verse only: `block` (default) or `stanza` — see [Verse pairing](#verse-block-or-stanza-pairing-verse_align) |
+| `translate` | machine-translate the missing English side, for an original with no published translation — see [No translation exists](#no-translation-exists-machine-translate-the-missing-side) |
+| `translators` | top-level block registering a translation model or endpoint per language |
 | `aligner` | `auto` / `embed` / `gale-church` (see below) |
 | `first` | `src` = original first, `tgt` = translation first |
 | `trim` | KDP trim size in inches, e.g. `[6.0, 9.0]` |
@@ -733,7 +749,7 @@ Output PDFs land in `output/`.
 
 ## How alignment works
 
-Two backends, selected by the `aligner` field (or `--aligner`):
+Three backends, selected by the `aligner` field (or `--aligner`):
 
 - **`embed` (recommended)** — **LaBSE cross-lingual embeddings**. Compares what
   sentences *mean*, so it stays aligned even when a translator splits, merges, or
@@ -750,6 +766,36 @@ Both anchor on chapter headings (when both editions agree on chapter count) to
 prevent drift over long texts. Alignment is automatic and *approximate*: always
 proofread the output, especially around chapter starts.
 
+### Verse: block or stanza pairing (`verse_align`)
+
+A verse translator reorders clauses across lines freely for rhyme and meter, so
+line-by-line pairing invents a correspondence that is not there. `verse_align`
+picks what to pair instead:
+
+- **`block`** (default) — the whole original poem, then the whole translation,
+  each keeping its own line breaks. Right for a short lyric.
+- **`stanza`** — stanza against stanza. Right for a long stanzaic narrative:
+  2,500 strophes of the Nibelungenlied printed as one block followed by 2,300
+  strophes of its English is two monolingual books bound together, not a
+  parallel text.
+
+The stanza is the unit to align on, because a translator reorders freely *within*
+a stanza but very rarely moves material across a stanza boundary. Stanzas are
+found by measuring the text rather than assuming a layout — the commonest gap
+between lines is taken to be the within-stanza gap, and only a wider gap starts a
+new stanza, so the same code reads a single-spaced file and a double-spaced one.
+Printed strophe numbers are stripped: editions number differently (Simrock has
+2,495 strophes to Needler's 2,379), so setting "288" beside "241" would assert a
+correspondence that is not there.
+
+Each stanza then goes to the ordinary aligner as one segment, so stanza pairing
+inherits whichever backend is configured, and the 1-2/2-1 moves absorb a stanza
+the translator split or ran together. The DP is **banded** here (see
+`align.run_dp`): an epic's stanzas are 5.9M cells, which measures at ~14 minutes
+unbanded and seconds banded. Safe because the two sides are the same text in the
+same order — but only when they *start* together, so scope both sides to the same
+content first with `--src-range` / `--tgt-range`.
+
 ### MT-pivot alignment (`mt`) — plug in your own translator
 
 A third backend aligns by **translation pivot**: it translates the source
@@ -760,10 +806,13 @@ Ancient Greek, where general models like LaBSE are weak. The machine translation
 only needs to be good enough to *match* sentences; the printed book still shows
 the real source and translation.
 
-Register a translator per language (any callable `texts -> english`):
+Register a translator per language (any callable `texts -> english`) — a model
+run locally, a service you host, or a plain function:
 
 ```python
 from book_creator import translators
+translators.use_local("fr")                       # built-in Opus-MT, on your GPU
+translators.use_local("de", "my-org/my-model")    # or name your own
 translators.register("la",  translators.HTTPTranslator("http://localhost:8001/translate", src_lang="la"))
 translators.register("grc", translators.HTTPTranslator("http://localhost:8002/translate", src_lang="grc"))
 ```
@@ -772,7 +821,9 @@ or in a config file:
 
 ```yaml
 translators:
-  la:  { url: "http://localhost:8001/translate" }
+  fr:  local                                      # built-in model for French
+  de:  "my-org/middle-high-german-en"             # a model by name
+  la:  { url: "http://localhost:8001/translate" } # a served endpoint
   grc: { url: "http://localhost:8002/translate" }
 books:
   - ...
@@ -782,6 +833,102 @@ Once a translator is registered for a language, `aligner: auto` uses it
 automatically (falling back to embeddings / Gale-Church otherwise). The HTTP
 contract and a runnable reference server are in
 [`examples/translator_server.py`](examples/translator_server.py).
+
+## No translation exists: machine-translate the missing side
+
+Most of what is worth printing as a parallel text has no English translation at
+all — not a copyrighted one, **none**. Of the Franco-Germanic epics, Gutenberg
+has the Nibelungenlied's German beside three English translations and then
+essentially stops: Chastellain's *Le miroir de mort* (44162) and Hugo's *La
+Légende des siècles* (12137) are French with no English anywhere, and Theuerdank,
+Girart de Roussillon, Ronsard's *La Franciade* and Voltaire's *La Henriade* are
+absent in both languages.
+
+`translate: true` (or `--translate`) renders the original into English with a
+registered translation model and prints that beside it:
+
+```bash
+python make_book.py --src-id 12137 --src-lang fr --translator-model   --translate --mode verse --title "La Légende des siècles" --author "Victor Hugo"
+```
+
+Note what this is *not*. The MT-pivot aligner below translates only to **score**
+a match and throws the translation away. This produces the text that gets
+**printed**. Two things follow:
+
+- **No alignment runs at all.** A translator returns one English rendering per
+  source segment, in order, so segment *i* corresponds to segment *i* by
+  construction — the same reason the corpus path skips alignment.
+- **It is disclosed.** `translation_pd_confirmed` stops mattering, because no
+  third-party translator holds copyright on this English. What replaces that
+  caveat is the copyright page saying a machine wrote it.
+
+### What the output actually reads like
+
+A crib, not a translation. From the 411-page Hugo build, the good and the bad
+side by side:
+
+```
+Et règne; et, sous Satan paternel, ils sont frères;
+  -> And reign; and under Satan their father, they are brothers;
+Égratignent le pâle et triste continent.
+  -> Sweat the pale and sad continent.            (égratignent = scratch)
+L'aïeul pleurait.
+  -> The aileul was crying.                       (aïeul left untranslated)
+```
+
+Two causes, one of them structural. **Verse is translated line by line**,
+because the line is the unit the parallel text pairs on — so each line reaches
+the model without the ones around it, and a model that would have got
+`l'aïeul` from context does not get it from four words alone. Prose does better,
+since a whole sentence carries its own context. There is a real tension here:
+translating whole stanzas would read better and would destroy the line
+correspondence that makes it a parallel text.
+
+So treat this as a reading aid facing the original, which is what a parallel text
+is for — not as an edition to sell as a translation. Disclosing it on the
+copyright page is the tool's default and should stay that way.
+
+### Which languages the built-in models can actually read
+
+`--translator-model` with no value loads the built-in Opus-MT model for
+`--src-lang`:
+
+| `src_lang` | model |
+|---|---|
+| `de` | `Helsinki-NLP/opus-mt-de-en` |
+| `fr` | `Helsinki-NLP/opus-mt-fr-en` |
+| `it` | `Helsinki-NLP/opus-mt-it-en` |
+| `es` | `Helsinki-NLP/opus-mt-es-en` |
+| `nl` | `Helsinki-NLP/opus-mt-nl-en` |
+| `pt` | `Helsinki-NLP/opus-mt-ROMANCE-en` |
+
+These read the **modern** form of each language, and that is the real limit on
+this feature — not the code. Hugo (1859), Voltaire (1723) and Klopstock (18th c.)
+are within reach. Middle High German (Kudrun, Willehalm, Gottfried's *Tristan*),
+Old French (Girart de Roussillon) and Early New High German (Theuerdank) are not.
+Chastellain's Middle French shows what that failure looks like:
+
+```
+Il fault laisser voz haulx actours   ->  It fails to leave voz haulx actours
+Cuydés vous la mort sy infame        ->  Cuydes you die sy infamy
+```
+
+A historical language stage needs a model trained on it, named explicitly:
+
+```bash
+--translator-model my-org/middle-high-german-en
+```
+
+which is exactly what the [`latin`](https://github.com/joeyhouser2/latin) repo
+did for Latin. Needs `pip install -r requirements-translate.txt`.
+
+> **Note:** Opus-MT models mostly ship their weights as `pytorch_model.bin`
+> rather than safetensors, and `transformers` refuses to `torch.load` those
+> on torch < 2.6 (CVE-2025-32434). This project therefore needs
+> **torch >= 2.6**; `opus-mt-de-en` is unusable below it, though
+> `opus-mt-fr-en` works either way because it also publishes safetensors.
+> `LocalTranslator` raises `TranslatorUnavailable` naming which of the two
+> is missing, rather than a CVE notice that never mentions the model.
 
 ## Segment review (local LLM QA pass)
 
@@ -963,19 +1110,19 @@ touching the rest of the running text. CLI: `--opener-font uncialantiqua`.
 | `download_voices.py` | fetch public-domain narrator samples from LibriVox into voices/ |
 | `audio.py` | pluggable GPU TTS engines + interleaved bilingual audiobook assembly |
 | `narration_check.py` | listen back to a finished narration: find blanks, loops and misreadings |
-| `segment.py` | detect chapters; split into sentences (prose) or lines (verse) |
+| `segment.py` | detect chapters; split into sentences (prose), lines (verse), or stanzas |
 | `fonts.py` | auto-discover font families in fonts/, register, expose catalog |
-| `align.py` | shared alignment DP + Gale-Church backend |
+| `align.py` | shared alignment DP (optionally banded) + Gale-Church backend |
 | `align_embed.py` | LaBSE embedding (meaning-based) backend |
 | `align_mt.py` | MT-pivot backend (translate source, align in English) |
-| `translators.py` | per-language translator registry + HTTP/callable adapters |
+| `translators.py` | per-language translator registry + local-model / HTTP / callable adapters |
 | `clean.py` | strip inline section markers / boilerplate before alignment |
 | `aligners.py` | backend selection (`auto` / `embed` / `mt` / `gale-church`) |
 | `decorations.py` | vector ornaments + chapter dividers |
 | `render_pdf.py` | KDP interior PDF: mirrored gutter margins, embedded fonts, page numbers |
 | `render_epub.py` | reflowable EPUB3: embedded fonts, cover, nav TOC |
 | `cover.py` | KDP wraparound cover with per-language ornamental motifs |
-| `pipeline.py` | orchestrates fetch → segment → align → render → cover → epub |
+| `pipeline.py` | orchestrates fetch → segment → align (or machine-translate) → render → cover → epub |
 | `webapp/` | Flask UI: Gutendex + corpus search, local files, background build jobs, PyMuPDF page preview, audio player |
 | `webapp/jobs.py` | SQLite job record, so builds survive a server restart |
 | `ollama_client.py` | thin client for a local Ollama server's tool-calling chat API |

@@ -51,7 +51,8 @@ def _get_model(name: str):
 
 
 def embed_align(src: list[str], tgt: list[str], *, model_name: str = DEFAULT_MODEL,
-                steps: list[tuple[int, int]] | None = None) -> list[Bead]:
+                steps: list[tuple[int, int]] | None = None,
+                band: int | None = None) -> list[Bead]:
     if not src and not tgt:
         return []
     if not src:
@@ -81,5 +82,5 @@ def embed_align(src: list[str], tgt: list[str], *, model_name: str = DEFAULT_MOD
         penalty = _MERGE_PENALTY * (ds + dt - 2)
         return (1.0 - sim) + penalty
 
-    path = run_dp(len(src), len(tgt), cost_fn, steps=steps or _STEPS)
+    path = run_dp(len(src), len(tgt), cost_fn, steps=steps or _STEPS, band=band)
     return beads_from_path(src, tgt, path)
