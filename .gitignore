@@ -31,6 +31,10 @@ input/*.pdf
 input/caesar_*.txt
 input/pere_goriot_*.txt
 input/eugenie_grandet_*.txt
+# Fetched by fetch_sources.py, which reproduces them byte for byte.
+input/parzival_mhg.txt
+input/henriade_fr.txt
+input/messias_de.txt
 
 # Local settings written by the web UI (machine-specific paths:
 # where the latin corpus lives, which database file to read).
