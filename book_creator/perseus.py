@@ -85,6 +85,10 @@ def _connect(db_path: str | Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    # This index's search column was folded by pg_catalog.searchable too, so it
+    # goes stale on the same terms as the Gutenberg one.
+    from . import pg_catalog
+    pg_catalog.sync_translit(conn, "works", _SCHEMA)
     return conn
 
 

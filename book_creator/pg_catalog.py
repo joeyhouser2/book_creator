@@ -37,6 +37,17 @@ _GREEK_TRANSLIT = {
     "φ": "ph", "χ": "ch", "ψ": "ps", "ω": "o",
 }
 
+# Upsilon is "y" on its own but "u" as the second half of a diphthong -- nobody
+# writes "Kyroy" or "Aytolykos". Handled as digraphs before the per-letter pass,
+# so the result matches how a reader would actually spell the name, both for a
+# search query and for an output filename.
+_GREEK_DIGRAPHS = {"ου": "ou", "αυ": "au", "ευ": "eu", "ηυ": "eu"}
+
+# Bumped whenever the folding above changes. An index built by an older version
+# holds strings this version no longer produces, so its folded column can no
+# longer be matched against a folded query; see _connect.
+TRANSLIT_VERSION = "2"
+
 CATALOG_URL = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv.gz"
 CACHE_DIR = Path("cache")
 DB_PATH = CACHE_DIR / "pg_catalog.db"
@@ -69,7 +80,40 @@ def searchable(text: str) -> str:
     """
     folded = unicodedata.normalize("NFD", (text or "").lower())
     folded = "".join(c for c in folded if unicodedata.category(c) != "Mn")
+    for pair, latin in _GREEK_DIGRAPHS.items():
+        folded = folded.replace(pair, latin)
     return "".join(_GREEK_TRANSLIT.get(c, c) for c in folded)
+
+
+def sync_translit(conn: sqlite3.Connection, table: str, schema: str) -> bool:
+    """Keep an index and the folding that built it in step; True if dropped.
+
+    An index's folded column is only searchable by a query put through the same
+    `searchable`. Change the folding and an older index still answers, wrongly:
+    it holds spellings the current one never produces, so Latin-script queries
+    quietly stop reaching the Greek titles the column exists for.
+
+    An EMPTY index is simply stamped with the current version, so nothing that
+    fills one -- build(), a fixture -- has to remember to. A populated index
+    whose stamp is missing or older was folded by different rules, and is
+    dropped: the source is a download, so rebuilding is cheap and there is
+    nothing here worth migrating.
+    """
+    def stamp() -> None:
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES "
+                     "('translit', ?)", (TRANSLIT_VERSION,))
+        conn.commit()
+
+    if not conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]:
+        stamp()
+        return False
+    row = conn.execute(
+        "SELECT value FROM meta WHERE key = 'translit'").fetchone()
+    if row and row["value"] == TRANSLIT_VERSION:
+        return False
+    conn.executescript(f"DROP TABLE {table};" + schema)
+    stamp()
+    return True
 
 
 class CatalogError(RuntimeError):
@@ -92,6 +136,7 @@ def _connect(db_path: str | Path = DB_PATH) -> sqlite3.Connection:
     if cols and "search" not in cols:
         conn.executescript("DROP TABLE books;" + _SCHEMA)
         conn.commit()
+    sync_translit(conn, "books", _SCHEMA)
     return conn
 
 

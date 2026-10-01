@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import time
 
 import pytest
@@ -56,6 +57,21 @@ def test_status_counts_and_dates(catalog):
 def test_search_without_an_index_says_how_to_build_one(tmp_path):
     with pytest.raises(pg_catalog.CatalogError, match="update-catalog"):
         pg_catalog.search("anabasis", db_path=tmp_path / "nothing.db")
+
+
+def test_an_index_folded_by_older_rules_counts_as_absent(catalog):
+    # An index outlives the folding that built it. Left in place it would keep
+    # answering, wrongly: its search column holds spellings the current fold no
+    # longer produces, so Latin-script queries stop reaching Greek titles.
+    with sqlite3.connect(str(catalog)) as conn:
+        conn.execute("UPDATE meta SET value = '0' WHERE key = 'translit'")
+        conn.commit()
+    assert pg_catalog.status(catalog)["available"] is False
+
+
+def test_a_current_index_is_left_alone(catalog):
+    assert pg_catalog.status(catalog)["books"] == 7
+    assert pg_catalog.status(catalog)["books"] == 7
 
 
 # --------------------------------------------------------------------------- #
@@ -126,7 +142,10 @@ def test_paging(catalog):
 # Script and diacritic folding
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("raw,folded", [
-    ("Κύρου Ανάβασις Τόμος 1", "kyroy anabasis tomos 1"),
+    # Upsilon is "y" alone but "u" in a diphthong: "Kyrou", not "Kyroy".
+    ("Κύρου Ανάβασις Τόμος 1", "kyrou anabasis tomos 1"),
+    ("Αὐτόλυκος", "autolykos"),
+    ("Εὐριπίδης", "euripides"),
     ("Ξενοφῶν", "xenophon"),
     ("Ανάβασις", "anabasis"),
     ("Anabasis", "anabasis"),
