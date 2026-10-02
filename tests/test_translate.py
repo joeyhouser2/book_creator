@@ -8,6 +8,8 @@ deterministic stand-in exercises the whole path.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from book_creator import pipeline, segment, translators
@@ -278,9 +280,9 @@ def test_translate_prefers_a_translator_that_was_registered(source_file, no_down
 
 
 def test_translate_refuses_a_language_with_no_model_at_all(source_file):
-    # Ancient Greek has no Opus-MT model, and guessing one would be worse than
-    # saying so: the corpus path is where Greek gets its English.
-    spec = _spec(mode="prose", src_lang="grc", src_path=source_file, translate=True)
+    # Old English has no Opus-MT model and no latin-repo fine-tune, and guessing
+    # one would be worse than saying so.
+    spec = _spec(mode="prose", src_lang="ang", src_path=source_file, translate=True)
     with pytest.raises(ValueError, match="no built-in model"):
         pipeline._chapters_from_machine_translation(spec, lambda _m: None)
 
@@ -622,3 +624,91 @@ def test_cache_refuses_a_translator_that_loses_segments(tmp_path):
 
     with pytest.raises(ValueError, match="translator returned"):
         mt_cache.translate(Lossy(), ["a", "b"], db_path=tmp_path / "mt.db")
+
+
+# --------------------------------------------------------------------------- #
+# The latin repo's own fine-tuned models
+# --------------------------------------------------------------------------- #
+def test_latin_translator_is_named_after_the_model_it_runs(tmp_path):
+    """mt_cache keys on the name, so the Latin model must not share a key with
+    anything else — and must keep its own answers between builds."""
+    from book_creator import latin_translator, mt_cache
+    tr = latin_translator.LatinRepoTranslator("la")
+    assert tr.model_name == "latin-repo:models/nllb-latin"
+    assert mt_cache.translator_id(tr) == "model_name:latin-repo:models/nllb-latin"
+
+
+def test_latin_translator_knows_greek_too():
+    from book_creator import latin_translator
+    tr = latin_translator.LatinRepoTranslator("grc")
+    assert tr.src_lang == "ell_Grek"
+    assert "greek" in tr.model
+
+
+def test_latin_translator_refuses_a_language_it_has_no_model_for():
+    from book_creator import latin_translator
+    with pytest.raises(ValueError, match="No latin-repo model"):
+        latin_translator.LatinRepoTranslator("fr")
+
+
+def test_latin_translator_passes_blank_text_through_without_spawning(monkeypatch):
+    """Blank-only input must not pay for a model load, and must not invent text."""
+    from book_creator import latin_translator
+    import subprocess
+
+    def boom(*a, **k):
+        raise AssertionError("spawned a subprocess for blank input")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    tr = latin_translator.LatinRepoTranslator("la")
+    assert tr(["", "   "]) == ["", ""]
+
+
+def test_latin_translator_reports_a_failed_subprocess(monkeypatch):
+    from book_creator import latin_translator, corpus_jobs
+    import subprocess
+    monkeypatch.setattr(corpus_jobs, "find_repo", lambda p=None: Path("."))
+    monkeypatch.setattr(corpus_jobs, "find_python", lambda r: Path("python"))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+        a[0] if a else [], 1, stdout="", stderr="CUDA out of memory"))
+    tr = latin_translator.LatinRepoTranslator("la")
+    with pytest.raises(RuntimeError, match="CUDA out of memory"):
+        tr(["Gallia est omnis divisa in partes tres."])
+
+
+def test_latin_translator_rejects_a_short_result(monkeypatch):
+    from book_creator import latin_translator, corpus_jobs
+    import subprocess, json as _json
+    monkeypatch.setattr(corpus_jobs, "find_repo", lambda p=None: Path("."))
+    monkeypatch.setattr(corpus_jobs, "find_python", lambda r: Path("python"))
+    body = "\n===TRANSLATIONS===\n" + _json.dumps({"translations": ["one"]})
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+        a[0] if a else [], 0, stdout=body, stderr=""))
+    tr = latin_translator.LatinRepoTranslator("la")
+    with pytest.raises(ValueError, match="translator returned"):
+        tr(["unum", "duo"])
+
+
+def test_translate_uses_the_latin_repo_for_latin(source_file, monkeypatch):
+    """Latin must not fall through to the Opus-MT branch: there is no
+    opus-mt-la-en, and the Italic model renders "Arma virumque cano" as
+    "Guns for man who is lame"."""
+    from book_creator import latin_translator
+    monkeypatch.setattr(latin_translator, "available", lambda repo=None: (True, "/repo"))
+    stub = _Named(f"latin-repo:models/nllb-la")
+    stub.model = "models/nllb-latin"
+    monkeypatch.setattr(latin_translator, "register", lambda lang, **k: stub)
+    spec = _spec(mode="prose", src_lang="la", src_path=source_file, translate=True)
+    notes: list[str] = []
+    chapters = pipeline._chapters_from_machine_translation(spec, notes.append)
+    assert [b for ch in chapters for b in ch.beads]
+    assert any("latin repo" in n for n in notes), notes
+
+
+def test_translate_says_so_when_the_latin_repo_is_missing(source_file, monkeypatch):
+    from book_creator import latin_translator
+    monkeypatch.setattr(latin_translator, "available",
+                        lambda repo=None: (False, "no corpus.db found"))
+    spec = _spec(mode="prose", src_lang="la", src_path=source_file, translate=True)
+    with pytest.raises(ValueError, match="no corpus.db found"):
+        pipeline._chapters_from_machine_translation(spec, lambda _m: None)

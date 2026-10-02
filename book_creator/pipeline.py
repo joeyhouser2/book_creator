@@ -6,7 +6,8 @@ import json
 import re
 from pathlib import Path
 
-from . import (aligners, audio, clean, corpus, cover, fetch, mt_cache, music,
+from . import (aligners, audio, clean, corpus, cover, fetch, latin_translator,
+               mt_cache, music,
                pg_catalog, render_epub, render_pdf, restylers, reviewer, segment)
 from .model import Bead, BookSpec, Chapter
 
@@ -550,16 +551,29 @@ def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
         # Fall back to the built-in model for this language, so asking for a
         # translation is one decision rather than two. The web UI has no way to
         # register one, and on the command line --translate alone should work.
-        if not translators.has_local(spec.src_lang):
+        # Latin and Greek have no Opus-MT model worth the name, but the sibling
+        # latin repo has fine-tunes for exactly them -- see latin_translator.
+        if spec.src_lang in latin_translator.MODELS:
+            ok, why = latin_translator.available()
+            if ok:
+                translator = latin_translator.register(spec.src_lang)
+                log(f"• No translator registered for {spec.src_lang}; using the "
+                    f"latin repo's {translator.model} at {why}.")
+            else:
+                raise ValueError(
+                    f"translate is on for {spec.src_lang!r}, which needs the "
+                    f"latin repo's fine-tuned model, but: {why}")
+        elif not translators.has_local(spec.src_lang):
             raise ValueError(
                 f"translate is on, but there is no translator for "
                 f"{spec.src_lang!r} and no built-in model for it either. Known: "
                 f"{', '.join(sorted(translators.LOCAL_MODELS))}. Register your "
                 "own — see book_creator/translators.py.")
-        translator = translators.use_local(spec.src_lang)
-        log(f"• No translator registered for {spec.src_lang}; using the "
-            f"built-in {translator.model_name} (downloaded once, ~300 MB). It "
-            "reads the modern language only.")
+        elif translator is None:
+            translator = translators.use_local(spec.src_lang)
+            log(f"• No translator registered for {spec.src_lang}; using the "
+                f"built-in {translator.model_name} (downloaded once, ~300 MB). "
+                "It reads the modern language only.")
 
     log(f"• Fetching source ({spec.src_lang})…")
     divisions = fetch.load_divisions(path=spec.src_path, gid=spec.src_gutenberg_id,
