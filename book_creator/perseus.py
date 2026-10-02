@@ -382,6 +382,16 @@ def divisions(xml: str) -> list[Division]:
 
     body = root.find(".//t:text/t:body", _TEI_NS)
     if body is None:
+        # Perseus mixes two generations of TEI. The Latin editions are
+        # namespaced P5; many of the English translations beside them are the
+        # older un-namespaced P4, carrying TEIform= attributes and numbered
+        # <div1> rather than <div type="textpart">. Looking only for namespaced
+        # TEI found every original and missed the translation next to it --
+        # Claudian's Gothic War failed with "TEI has no <body>" while both
+        # files were sitting there intact.
+        body = next((e for e in root.iter()
+                     if e.tag.split("}")[-1] == "body"), None)
+    if body is None:
         raise PerseusError("TEI has no <body>.")
 
     leaves: list[Division] = []
@@ -397,24 +407,39 @@ def _collect_leaves(node, path: tuple[str, ...], out: list) -> None:
     """Depth-first walk emitting only textparts that contain no textparts."""
     for child in node:
         tag = child.tag.split("}")[-1]
-        if tag == "div" and child.get("type") == "textpart":
+        # P5 marks a citable unit <div type="textpart">; P4 numbers its
+        # divisions <div1>, <div2>, ... and types them by what they are
+        # ("poem", "book"), so the depth is in the tag rather than an attribute.
+        if (tag == "div" and child.get("type") == "textpart") or _is_p4_div(tag):
             ref = child.get("n") or str(len(out) + 1)
             here = path + (ref,)
             if _has_textpart_child(child):
                 _collect_leaves(child, here, out)
             else:
                 head = child.find("t:head", _TEI_NS)
+                if head is None:
+                    head = next((e for e in child
+                                 if e.tag.split("}")[-1] == "head"), None)
                 out.append(Division(path=here, title=_text(head),
                                     text=_tei_text(child)))
         else:
             _collect_leaves(child, path, out)
 
 
+_P4_DIV = re.compile(r"^div[1-7]$")
+
+
+def _is_p4_div(tag: str) -> bool:
+    """A numbered division from the older, un-namespaced TEI."""
+    return bool(_P4_DIV.match(tag))
+
+
 def _has_textpart_child(node) -> bool:
     for child in node.iter():
         if child is node:
             continue
-        if child.tag.split("}")[-1] == "div" and child.get("type") == "textpart":
+        tag = child.tag.split("}")[-1]
+        if (tag == "div" and child.get("type") == "textpart") or _is_p4_div(tag):
             return True
     return False
 
