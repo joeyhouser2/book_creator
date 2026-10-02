@@ -397,11 +397,50 @@ def africa() -> None:
     _write("africa_la.txt", parts, "Petrarch's Africa (Latin)")
 
 
+# Pontano's poetry at poetiditalia, by the site's own work codes. His prose
+# De bello Neapolitano -- the title usually cited, and often miscatalogued as
+# verse -- exists only as Google Books scans; these are the actual poems.
+PONTANO_WORKS = {
+    "uran": "Urania",
+    "part": "Parthenopeus",
+    "hesp": "De hortis Hesperidum",
+}
+
+
+def pontano() -> None:
+    """Giovanni Pontano's Latin poetry (poetiditalia.it), one file per work.
+
+    Each work is walked book by book until a page yields no verse, since the
+    site gives no index of how many books a poem has and guessing a count would
+    either truncate the poem or stop on a spurious empty page.
+    """
+    s = _session()
+    for code, name in PONTANO_WORKS.items():
+        parts, total = [], 0
+        for n in range(1, 30):
+            r = s.get(f"https://www.poetiditalia.it/texts/PONTANO|{code}|{n:03d}",
+                      timeout=60)
+            r.encoding = "utf-8"
+            lines = [html.unescape(_TAG.sub("", m)).replace("\xa0", " ").strip()
+                     for m in re.findall(r'(?s)<p class="c_v">(.*?)</p>', r.text)]
+            lines = [l for l in lines if l]
+            if not lines:
+                break
+            parts.append(f"Liber {ROMAN[n - 1]}" + "\n\n" + "\n".join(lines))
+            total += len(lines)
+            time.sleep(0.4)
+        if not parts:
+            raise SystemExit(f"PONTANO|{code}: no verse found - site changed?")
+        slug = {"uran": "urania", "part": "parthenopeus", "hesp": "hesperidum"}[code]
+        _write(f"pontano_{slug}_la.txt", parts, f"Pontano, {name}")
+
+
 SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias,
            "lusiadas_en": lusiadas_en,
            "gerusalemme": gerusalemme,
            "maldon": maldon,
-           "africa": africa}
+           "africa": africa,
+           "pontano": pontano}
 
 
 def main(argv: list[str]) -> int:

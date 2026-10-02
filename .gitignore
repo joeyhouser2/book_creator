@@ -41,6 +41,9 @@ input/gerusalemme_en.txt
 input/maldon_ang.txt
 input/maldon_en.txt
 input/africa_la.txt
+input/pontano_urania_la.txt
+input/pontano_parthenopeus_la.txt
+input/pontano_hesperidum_la.txt
 
 # Local settings written by the web UI (machine-specific paths:
 # where the latin corpus lives, which database file to read).
