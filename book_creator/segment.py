@@ -53,7 +53,21 @@ _DE_TENS = ("zwanzigst dreißigst dreissigst vierzigst fünfzigst fuenfzigst "
 _DE_JOIN = "ein zwei drei vier fünf fuenf sechs sieben acht neun".split()
 _DE_ORD = "|".join(
     [rf"{u}und{t}" for t in _DE_TENS for u in _DE_JOIN] + _DE_TENS + _DE_UNITS)
-_ORDINALS = rf"{_LAT_ORD}|{_FR_ORD}|{_EN_ORD}|{_DE_ORD}"
+# Portuguese, Spanish and Italian ordinals, which the Romance epics number their
+# cantos by: "Canto Primeiro" (Os Lusiadas), "Canto Primo" (Gerusalemme
+# Liberata). Written out in both genders rather than stemmed, because the
+# keyword-first branch below matches an ordinal to a word boundary and a stem
+# like "primeir" would not reach the "o" of "Primeiro".
+_ROM_ORD = ("primeiro|primeira|primero|primera|primo|prima"
+            "|segundo|segunda|secondo|seconda"
+            "|terceiro|terceira|tercero|tercera|terzo|terza"
+            "|quarto|quarta|cuarto|cuarta"
+            "|quinto|quinta|sexto|sexta|sesto|sesta"
+            "|sétimo|setimo|séptimo|septimo|settimo|settima"
+            "|oitavo|oitava|octavo|octava|ottavo|ottava"
+            "|nono|nona|noveno|novena"
+            "|décimo|decimo|décima|decima")
+_ORDINALS = rf"{_LAT_ORD}|{_FR_ORD}|{_EN_ORD}|{_DE_ORD}|{_ROM_ORD}"
 
 # A "<keyword> <number>" group appearing anywhere in a short heading line. This
 # catches "BOOK I", "CHAPTER 3", "Liber II", and "C. IULI ... COMMENTARIUS

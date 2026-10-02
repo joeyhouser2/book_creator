@@ -31,6 +31,13 @@ HEADINGS = [
     "Chant premier",
     "CHANT PREMIER.",
     "CHANT QUATRIÈME",
+    # Romance epics number their cantos by ordinal word.
+    "Canto Primeiro",          # Os Lusíadas
+    "Canto Décimo",
+    "Canto Sétimo",
+    "Canto Primo",             # Gerusalemme Liberata
+    "Canto Ottavo",
+    "CANTO PRIMERO",           # La Araucana
     # Ordinal then keyword -- German, and the English translations that follow it.
     # The Nibelungenlied runs to 39, so the lists have to reach that far.
     "Erstes Abenteuer.",
@@ -78,6 +85,10 @@ NOT_HEADINGS = [
     # puts a numeral right after it on a short line.
     "il écoutait le chant des oiseaux dans les arbres du parc ce matin-là",
     "the chant rose and fell among the pillars of the dim cathedral nave",
+    # "segundo"/"primeiro" are everyday words; only a heading puts one straight
+    # after a division keyword on a short line.
+    "o segundo dia de viagem foi mais calmo que o primeiro para todos",
+    "y el segundo canto de las aves llenaba el aire de la mañana aquel día",
     # The lowercase-roman trap the original code guarded against: an elided "d"
     # must not read as a roman numeral after a French keyword.
     "...de la part d'un domestique?",
