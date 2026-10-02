@@ -92,6 +92,9 @@ _HEADING_KW_RE = re.compile(
 _BARE_NUM_RE = re.compile(r"^[IVXLCDM]{1,7}\.?$")
 
 
+_NUM_TAIL_RE = re.compile(r"\s{2,}\(?\d{1,4}\)?\.?\s*$")
+
+
 def _is_heading(line: str) -> bool:
     """Heuristic: is this physical line a structural-division heading?"""
     s = line.strip()
@@ -99,6 +102,15 @@ def _is_heading(line: str) -> bool:
         return False
     if _BARE_NUM_RE.match(s):
         return True
+    # A column-aligned number at the end of a line is a stanza or line number,
+    # not part of a heading -- the same mark segment.stanzas() strips. Taking it
+    # off BEFORE matching stops a verse line that happens to end in a division
+    # keyword from reading as one: Burton's Lusiads prints
+    # "But Mars, for ever wont t'espouse the part      36", where "part" plus
+    # that 36 looked exactly like "BOOK 36" and split a canto in half.
+    s = _NUM_TAIL_RE.sub("", s).strip()
+    if not s:
+        return False
     # A keyword+number heading, but only on a short-ish title-like line (so a
     # prose sentence that merely mentions "book i" isn't treated as a
     # heading). Generous enough for descriptive chapter titles printed inline
@@ -381,8 +393,10 @@ def subdivide(divisions: list[tuple[str, str]], max_chars: int,
 # English of it). Editions number differently -- Simrock has 2495 strophes to
 # Needler's 2379 -- so the numbers are stripped rather than printed: setting
 # "288" beside "241" would assert a correspondence that is not there.
-_NUM_TAIL_RE = re.compile(r"\s{2,}\(?\d{1,4}\)?\.?\s*$")
-_NUM_LINE_RE = re.compile(r"^[\[(]?\d{1,4}[\])]?\.?$")
+# A stanza number alone on a line, in either numbering an edition might use:
+# arabic (Needler's Nibelungenlied) or roman (Fairfax's Tasso, where every
+# one of the 1,927 stanzas is headed "IX" and the like).
+_NUM_LINE_RE = re.compile(r"^[\[(]?(?:\d{1,4}|[IVXLCDM]{1,7})[\])]?\.?$")
 
 
 def stanzas(text: str, *, drop_numbering: bool = True) -> list[list[str]]:

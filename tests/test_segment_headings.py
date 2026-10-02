@@ -81,6 +81,11 @@ NOT_HEADINGS = [
     "he told of the second part of the journey",
     "and so the twentieth chapter of his life closed in sorrow",
     "it was mentioned in the first book of the series, at length",
+    # A verse line ending in a division keyword followed by its column-aligned
+    # stanza number. Burton's Lusiads is full of these, and they split cantos
+    # in half until the trailing number was stripped before matching.
+    "But Mars, for ever wont t’espouse the part      36",
+    "“Compast our courses thence the greater part      10",
     # "chant" is an ordinary word in both French and English; only a heading
     # puts a numeral right after it on a short line.
     "il écoutait le chant des oiseaux dans les arbres du parc ce matin-là",

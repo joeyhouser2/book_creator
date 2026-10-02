@@ -66,6 +66,8 @@ ROMAN = ("I II III IV V VI VII VIII IX X XI XII XIII XIV XV XVI XVII XVIII "
 # <ref> footnotes, {{templates}}, escaped newlines and all. With the naive
 # pattern the tail of each attribute leaked out as if it were verse, doubling
 # the Henriade and salting it with wikitext that still looked French.
+# A line that is only a stanza number, in either numbering.
+_NUM_ONLY = re.compile(r"^[\[(]?(?:\d{1,4}|[IVXLCDM]{1,7})[\])]?\.?$")
 _TAG = re.compile(r"""<[a-zA-Z/!?][^>"']*(?:(?:"[^"]*"|'[^']*')[^>"']*)*>""")
 
 
@@ -173,7 +175,134 @@ def messias() -> None:
     _write("messias_de.txt", parts, "Der Messias (German)")
 
 
-SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias}
+def lusiadas_en() -> None:
+    """Burton's Lusiads, English, 10 cantos (Gutenberg 77660 + 77661).
+
+    Assembled rather than used as fetched. Burton's two volumes interleave each
+    canto's verse with its prose argument and its endnotes, all three titled
+    "CANTO N.", so the verse bodies are not a contiguous range and --tgt-range
+    cannot isolate them. For each canto the LARGEST division with that title is
+    the verse -- the argument runs about 1,300 characters against the verse's
+    40,000 -- which also sidesteps picking the right one by position.
+
+    Worth the trouble because Burton kept Camoes' ottava rima, 8 lines to the
+    stanza, so this pairs stanza for stanza against the Portuguese. Mickle's
+    translation (32528) is one clean file but renders the whole poem in running
+    heroic couplets, which can only pair canto against canto.
+    """
+    from book_creator import fetch, segment
+
+    want = re.compile(r"^CANTO\s+([IVX]+)\.?$", re.I)
+    best: dict[int, str] = {}
+    for gid in (77660, 77661):
+        text = fetch.strip_gutenberg_boilerplate(fetch.fetch_gutenberg(gid))
+        for title, body in segment.detect_chapters(text, mode="verse"):
+            m = want.match(title.strip())
+            if not m:
+                continue
+            n = ROMAN.index(m.group(1).upper()) + 1
+            if len(body) > len(best.get(n, "")):
+                best[n] = body
+    if sorted(best) != list(range(1, 11)):
+        raise SystemExit(f"expected cantos 1-10, found {sorted(best)}")
+    parts = [f"Canto {ROMAN[n - 1]}\n\n" + best[n].strip() for n in range(1, 11)]
+    _write("lusiadas_en.txt", parts, "Os Lusiadas, Burton's English")
+
+
+def gerusalemme() -> None:
+    """Tasso's Gerusalemme Liberata: Italian (it.wikisource) and Fairfax's
+    English (Gutenberg 392), both as 20 cantos.
+
+    Both sides are assembled rather than used as fetched. Fairfax numbers every
+    one of his ~1,900 stanzas with a bare roman numeral on its own line, which
+    the division detector reads as a chapter marker -- the file comes through as
+    1,925 divisions instead of 20. And his ARGUMENT is a verse summary he wrote
+    himself, with no counterpart in Tasso, so leaving it in would offset every
+    stanza pairing in the canto.
+
+    Worth it because Fairfax translated into Tasso's own ottava rima, so the two
+    sides pair stanza for stanza.
+    """
+    from book_creator import fetch
+
+    # Italian. The index links are absolute URLs, not /wiki/ paths.
+    s = _session()
+    idx = s.get("https://it.wikisource.org/wiki/Gerusalemme_liberata", timeout=60)
+    idx.encoding = "utf-8"
+    links = []
+    for href in re.findall(r'href="(https://it\.wikisource\.org/wiki/'
+                           r'Gerusalemme_liberata/Canto_[^"#]+)"', idx.text):
+        if href not in links:
+            links.append(href)
+    if len(links) != 20:
+        raise SystemExit(f"expected 20 cantos, found {len(links)} - site changed?")
+
+    it_parts = []
+    for n, href in enumerate(links, 1):
+        r = s.get(href, timeout=60)
+        r.encoding = "utf-8"
+        # Each ottava is its own <div class="poem">, its lines separated by
+        # <br/>. Matching those divs with a non-greedy </div> does not work --
+        # they contain nested divs and spans, so the match ends early and most
+        # stanzas come back as a line or two. Instead the DIV END becomes a
+        # blank line, which is exactly the stanza boundary segment.stanzas()
+        # looks for. Without it a whole canto reads as one 1,200-line stanza.
+        m = (re.search(r'(?s)<div class="prp-pages-output"[^>]*>(.*?)<div class="printfooter"', r.text)
+             or re.search(r'(?s)<div class="mw-parser-output">(.*?)<div class="printfooter"', r.text))
+        frag = re.sub(r"(?is)<(script|style|table|sup).*?</\1>", "", m.group(1))
+        frag = re.sub(r"(?is)</div>", "\n\n", frag)
+        frag = re.sub(r"(?is)<br\s*/?>|</p>|</dd>|</li>", "\n", frag)
+        text = html.unescape(_TAG.sub("", frag))
+        stanzas, cur = [], []
+        for raw in text.splitlines():
+            line = raw.replace("\xa0", " ").strip()
+            if not line:
+                if len(cur) >= 2:
+                    stanzas.append("\n".join(cur))
+                cur = []
+                continue
+            if (_NUM_ONLY.match(line)
+                    or re.match(r"(?i)^(canto\b|gerusalemme|torquato|indice)", line)
+                    or "djvu" in line):
+                continue
+            # Wikisource's every-fourth-line numbering ({{R|20}}) renders hard
+            # against the first word, so the verse arrives as "20I più schivi".
+            # Only strip a number that runs straight into a capital: a digit
+            # followed by a space could be the poet's own.
+            line = re.sub(r"^\d{1,4}(?=[A-ZÀ-Þ])", "", line)
+            cur.append(line)
+        if len(cur) >= 2:
+            stanzas.append("\n".join(cur))
+        if len(stanzas) < 50:
+            raise SystemExit(f"canto {n}: only {len(stanzas)} stanzas found")
+        it_parts.append(f"Canto {ROMAN[n - 1]}" + "\n\n" + "\n\n".join(stanzas))
+        time.sleep(0.4)
+    _write("gerusalemme_it.txt", it_parts, "Gerusalemme Liberata (Italian)")
+
+    # English: split Fairfax on "<ORDINAL> BOOK", dropping each argument.
+    b = fetch.strip_gutenberg_boilerplate(fetch.fetch_gutenberg(392))
+    marks = list(re.finditer(r"(?m)^[ \t]*([A-Z]+)\s+BOOK[ \t]*$", b))
+    if len(marks) != 20:
+        raise SystemExit(f"expected 20 Fairfax books, found {len(marks)}")
+    en_parts = []
+    for k, m in enumerate(marks):
+        body = b[m.end(): marks[k + 1].start() if k + 1 < len(marks) else len(b)]
+        a = re.search(r"(?mi)^\s*THE ARGUMENT\.?\s*$", body)
+        if a:
+            after = body[a.end():]
+            n = re.search(r"(?m)^\s*[IVXLCDM]{1,7}\.?\s*$", after)
+            body = after[n.start():] if n else after
+        # Fairfax's bare roman stanza numbers read as 1,904 chapter headings
+        # otherwise, because a line that is only a roman numeral is exactly how
+        # some editions DO mark a division.
+        kept = [l for l in body.splitlines() if not _NUM_ONLY.match(l.strip())]
+        en_parts.append(f"Canto {ROMAN[k]}" + "\n\n" + "\n".join(kept).strip())
+    _write("gerusalemme_en.txt", en_parts, "Gerusalemme Liberata (Fairfax's English)")
+
+
+SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias,
+           "lusiadas_en": lusiadas_en,
+           "gerusalemme": gerusalemme}
 
 
 def main(argv: list[str]) -> int:

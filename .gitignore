@@ -35,6 +35,9 @@ input/eugenie_grandet_*.txt
 input/parzival_mhg.txt
 input/henriade_fr.txt
 input/messias_de.txt
+input/lusiadas_en.txt
+input/gerusalemme_it.txt
+input/gerusalemme_en.txt
 
 # Local settings written by the web UI (machine-specific paths:
 # where the latin corpus lives, which database file to read).
