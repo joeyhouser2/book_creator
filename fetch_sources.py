@@ -370,10 +370,38 @@ def maldon() -> None:
            "The Battle of Maldon (Garnett's English)")
 
 
+def africa() -> None:
+    """Petrarch's Africa, Latin, 9 books (poetiditalia.it, Festa's text).
+
+    The poem Petrarch was crowned laureate for, and the one almost nobody
+    reads. No English translation is in the public domain -- Bergin and
+    Wilson's 1977 Yale version is still in copyright -- so this is the
+    original alone, for the machine-translation path to face.
+
+    Each verse line is its own <p class="c_v">, which is as clean as these
+    sources get: no stanza numbering to strip and no apparatus mixed into the
+    verse.
+    """
+    s = _session()
+    parts = []
+    for n in range(1, 10):
+        r = s.get(f"https://www.poetiditalia.it/texts/PETRARCA|afri|{n:03d}", timeout=60)
+        r.encoding = "utf-8"
+        lines = [html.unescape(_TAG.sub("", m)).replace("\xa0", " ").strip()
+                 for m in re.findall(r'(?s)<p class="c_v">(.*?)</p>', r.text)]
+        lines = [l for l in lines if l]
+        if len(lines) < 100:
+            raise SystemExit(f"book {n}: only {len(lines)} verse lines found")
+        parts.append(f"Liber {ROMAN[n - 1]}" + "\n\n" + "\n".join(lines))
+        time.sleep(0.4)
+    _write("africa_la.txt", parts, "Petrarch's Africa (Latin)")
+
+
 SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias,
            "lusiadas_en": lusiadas_en,
            "gerusalemme": gerusalemme,
-           "maldon": maldon}
+           "maldon": maldon,
+           "africa": africa}
 
 
 def main(argv: list[str]) -> int:
