@@ -640,7 +640,22 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
         if spec.clean:
             src_segs = clean.clean_segments(src_segs)
             tgt_segs = clean.clean_segments(tgt_segs)
-        if spec.mode == "verse" and spec.verse_align == "stanza":
+        if spec.mode == "verse" and spec.verse_align == "line":
+            # For a translation made line for line -- a scholarly crib rather
+            # than a verse rendering -- the line IS the unit of correspondence,
+            # and block pairing throws that away: 325 lines of Old English
+            # followed by 325 of English is not a facing text. Still aligned
+            # rather than zipped, so a line the translator split or ran together
+            # is absorbed by the 1-2/2-1 moves.
+            if not verse_note_logged:
+                log("• Verse mode: pairing line against line.")
+                verse_note_logged = True
+            beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
+                                   src_lang=spec.src_lang, log=log,
+                                   band=max(64, abs(len(src_segs) - len(tgt_segs)) + 32))
+            for bead in beads:
+                bead.lines = True
+        elif spec.mode == "verse" and spec.verse_align == "stanza":
             # A stanzaic narrative is paired stanza against stanza: the stanza
             # is the unit a verse translator actually preserves, even while
             # reordering clauses freely inside it. See _align_stanzas.

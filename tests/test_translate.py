@@ -712,3 +712,15 @@ def test_translate_says_so_when_the_latin_repo_is_missing(source_file, monkeypat
     spec = _spec(mode="prose", src_lang="la", src_path=source_file, translate=True)
     with pytest.raises(ValueError, match="no corpus.db found"):
         pipeline._chapters_from_machine_translation(spec, lambda _m: None)
+
+
+def test_verse_line_pairing_pairs_each_line(tmp_path):
+    """A line-for-line crib (Garnett's Maldon) loses everything to block
+    pairing: 325 lines of Old English then 325 of English is not a facing text."""
+    src = "brocen wurde;\nhet tha hyssa hwaene\nfeorr afysan\nhicgan to handum"
+    tgt = "was broken.\nThen bade he each youth\nTo hasten afar\nBe mindful of might"
+    spec = _spec(verse_align="line", aligner="gale-church")
+    beads = pipeline._align_paired([(("", src), ("", tgt))], spec, lambda _m: None)[0].beads
+    assert len(beads) == 4
+    assert all(b.src and b.tgt and b.lines for b in beads)
+    assert beads[0].src == ["brocen wurde;"] and beads[0].tgt == ["was broken."]

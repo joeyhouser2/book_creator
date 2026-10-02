@@ -131,14 +131,15 @@ def main(argv: list[str] | None = None) -> int:
                         "numbering them continuously (e.g. Les Fleurs du Mal); "
                         "leave off for ones already numbered straight through "
                         "(e.g. Buch der Lieder).")
-    p.add_argument("--verse-align", choices=["block", "stanza"], default="block",
+    p.add_argument("--verse-align", choices=["block", "stanza", "line"], default="block",
                    help="Verse mode: how the two sides are paired. 'block' "
                         "(default) prints the whole original poem then the "
                         "whole translation, right for a short lyric whose "
                         "translator reorders freely. 'stanza' pairs stanza "
                         "against stanza, which is what a long stanzaic "
                         "narrative needs (e.g. the Nibelungenlied's 2,500 "
-                        "strophes).")
+                        "strophes). 'line' pairs line against line, right only when the "
+                        "translation was made line for line, as a scholarly crib is.")
     p.add_argument("--translate", action="store_true",
                    help="Machine-translate the original into English instead of "
                         "using a second edition, for a text with no published "

@@ -325,6 +325,8 @@ class BookSpec:
     # Verse mode only -- how the two sides are paired:
     #   "block"  — the whole original poem, then the whole translation (default)
     #   "stanza" — stanza against stanza, aligned on stanza sequence
+    #   "line"   — line against line, for a translation made line for line
+    #              (a scholarly crib, not a verse rendering)
     # Block is right for a short lyric, where a verse translation reorders
     # clauses freely enough that any line pairing would be invented. Stanza is
     # right for a long stanzaic narrative -- 2,500 strophes of the

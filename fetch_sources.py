@@ -300,9 +300,80 @@ def gerusalemme() -> None:
     _write("gerusalemme_en.txt", en_parts, "Gerusalemme Liberata (Fairfax's English)")
 
 
+def maldon() -> None:
+    """The Battle of Maldon: Old English (en.wikisource, Bright's Reader) and
+    Garnett's line-for-line English (Gutenberg 15879).
+
+    Garnett's volume prints five poems, and its contents list repeats every
+    title, so "BYRHTNOTH, OR THE FIGHT AT MALDON" matches twice before the poem
+    itself; the text runs from the last such heading to "THE DREAM OF THE ROOD",
+    and his numbered notes at the foot are not verse.
+
+    The poem survives without its opening, which is why both sides begin
+    mid-sentence ("brocen wurde" / "was broken").
+    """
+    from book_creator import fetch
+
+    # Old English. The naive tag regex leaks Parsoid's data-mw attribute, which
+    # carries the page's whole wikitext -- see _TAG.
+    s = _session()
+    r = s.get("https://en.wikisource.org/wiki/Bright%27s_Anglo-Saxon_Reader/"
+              "The_Battle_of_Maldon", timeout=60)
+    r.encoding = "utf-8"
+    m = re.search(r'(?s)<div[^>]*id="mw-content-text".*?>(.*?)<div class="printfooter"', r.text)
+    frag = re.sub(r"(?is)<(script|style|table|sup).*?</\1>", "", m.group(1))
+    frag = re.sub(r"(?is)<br\s*/?>|</p>|</div>|</li>", "\n", frag)
+    lines = [l.replace("\xa0", " ").strip()
+             for l in html.unescape(_TAG.sub("", frag)).splitlines()]
+    lines = [l for l in lines if l]
+    # The verse is bounded by lines carrying Old English letters, but five lines
+    # INSIDE it carry none ("folc and foldan; feallan sceolon"), so the letters
+    # locate the region and everything within it is kept. The poem survives
+    # without its opening, which Bright marks "[...] brocen wurde;" -- that is
+    # the first line, and it sits just outside the lettered region.
+    letters = re.compile(r"[þðæāēīōūȳǣ]")
+    first = next(i for i, l in enumerate(lines) if letters.search(l))
+    last = len(lines) - 1 - next(i for i, l in enumerate(reversed(lines))
+                                 if letters.search(l))
+    opening = first - 1
+    if opening >= 0 and lines[opening].startswith("[..."):
+        first = opening
+    oe = [re.sub(r"\s{2,}", "   ", re.sub(r"^\[\.\.\.\]\s*", "", l))
+          for l in lines[first:last + 1]]
+    if len(oe) < 320:
+        raise SystemExit(f"expected ~325 Old English lines, got {len(oe)}")
+    _write("maldon_ang.txt", ["The Battle of Maldon" + "\n\n" + "\n".join(oe)],
+           "The Battle of Maldon (Old English)")
+
+    # Garnett's English.
+    b = fetch.strip_gutenberg_boilerplate(fetch.fetch_gutenberg(15879))
+    marks = list(re.finditer(r"(?m)^[ \t]*THE FIGHT AT MALDON\.?\s*$", b))
+    end = re.search(r"(?m)^[ \t]*THE DREAM OF THE ROOD\.?\s*$", b[marks[-1].end():])
+    body = b[marks[-1].end(): marks[-1].end() + end.start()]
+    en, seen_verse = [], False
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if re.match(r"^\[\d+\]", line):      # his notes begin; the verse is done
+            break
+        if not seen_verse:
+            # Skip the prose argument that precedes the verse.
+            if line.startswith("*"):
+                seen_verse = True
+            else:
+                continue
+        en.append(re.sub(r"\s{2,}", " ", line))
+    if len(en) < 300:
+        raise SystemExit(f"expected ~325 English lines, got {len(en)}")
+    _write("maldon_en.txt", ["The Battle of Maldon" + "\n\n" + "\n".join(en)],
+           "The Battle of Maldon (Garnett's English)")
+
+
 SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias,
            "lusiadas_en": lusiadas_en,
-           "gerusalemme": gerusalemme}
+           "gerusalemme": gerusalemme,
+           "maldon": maldon}
 
 
 def main(argv: list[str]) -> int:
