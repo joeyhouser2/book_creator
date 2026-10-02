@@ -48,3 +48,6 @@ config/settings.json
 
 # Office suites leave a lock beside any file they have open.
 .~lock.*#
+
+# Exported from the latin repo's corpus; rebuildable, 10 MB.
+cache/latin_vocab.tsv
