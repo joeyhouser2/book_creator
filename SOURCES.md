@@ -35,6 +35,42 @@ scholarly crib rather than a verse rendering.
 
 ---
 
+## The Perseus corpus — 744 works already paired
+
+The single largest source, and the one easiest to overlook because
+`cache/perseus.db` goes silently empty: **148 Latin and 596 Greek works, each an
+original beside a public-domain human translation**, anchored on its own CTS
+citation scheme. "Book 3, line 40" is "Book 3, line 40" — no statistical
+alignment, no machine translation, nothing to disclose.
+
+Rebuild with `python make_book.py --update-perseus`, then build any work with
+`--perseus-id <id>`. The copyright check is automatic: the build prints
+"Translation published 1922 — before 1929, so public domain in the US."
+
+War poetry and epic in there, which is where this project started:
+
+| Work | Author | Translation |
+|---|---|---|
+| **de Bello Gothico** ✅ *built, 47 pp* | Claudian | Platnauer 1922 |
+| de bello Gildonico · In Rufinum · de consulatu Stilichonis | Claudian | Platnauer 1922 |
+| **Aeneid** | Virgil | 1910 |
+| **Civil War** (*Pharsalia*) | Lucan | 1905 |
+| Bellum Iugurthinum · Catilinae Coniuratio | Sallust | 1899 |
+| Gallic War · Civil War | Caesar | 1872 / 1856 |
+| De Bello Africo · De Bello Alexandrino | Pseudo-Caesar | 1955 |
+
+Beyond war: Lucretius, Catullus, Horace, Ovid (6), Tacitus, Livy, Plautus (20),
+Terence (6), Suetonius (12), Cicero (43).
+
+One fix was needed to reach them. Perseus pairs a namespaced TEI P5 edition with
+translations digitised decades earlier as un-namespaced **P4** — `TEIform=`
+attributes and numbered `<div1>` rather than `<div type="textpart">`. Looking
+only for namespaced TEI found every original and missed the translation beside
+it, so Claudian failed with "TEI has no `<body>`" while both files sat there
+intact.
+
+---
+
 ## 🟡 Ready to build
 
 | Work | Source | Note |
@@ -65,11 +101,36 @@ scholarly crib rather than a verse rendering.
 
 | Work | Why |
 |---|---|
-| **Ocland, *Anglorum Praelia*** | Latin **and** an English translation sit together at the Philological Museum — but Birmingham's terms allow "printing of one copy only… for personal reference only". A live copyright on the translation. Sharrock's 1585 version is PD if a scan ever surfaces. |
+| **Ocland, *Anglorum Praelia*** | The English at the Philological Museum is **Sutton's own**, and so in copyright. His introduction says why: he meant to use Sharrock's 1585 translation "but the copy… in the Early English Books microfilm series… is of such poor quality (many pages are out of order or missing altogether) that this proved impossible". So Sharrock exists but is damaged in the only accessible scan. |
+| **Ocland, *Eirenarchia* / *Elizabetha*** | Ocland's *other* poem, same site — and for this one Sutton **did** use Sharrock's 1585 translation, which is public domain. Worth checking: it may be buildable where *Anglorum Praelia* is not. |
 | **Basinio da Parma, *Hesperis*** | Gallica has all 13 books — as **BnF Arsenal Ms-630**, parchment, *écriture italienne du XVe siècle*. A **manuscript**, so print OCR cannot read it; it needs HTR. This is also why the Ludwig Boltzmann digital edition stalled at 2 of 13 books and was never published. |
 | **Petrarch's *Africa*** (English) | Bergin & Wilson's 1977 Yale translation is in copyright, so the built edition faces machine English instead. |
 | **Slovo o polku Igoreve** | No source in either language, and no Old East Slavic model. A modern Russian model on a 12th-century text is the *"Guns for man who is lame"* problem. |
 | **Gottfried, *Tristan*** | Gutenberg's two "Tristan" entries are Bédier's modern French retelling via Belloc, not Gottfried. No MHG original. |
+
+---
+
+## Humanist Greek
+
+Original Greek verse written in the Renaissance — a tradition almost entirely
+unread, and a harder sourcing problem than the Latin, because the modern
+scholarship that makes these texts accessible is itself in copyright.
+
+| Work | Status |
+|---|---|
+| **Marcus Musurus, *Ode to Plato*** (1513) | The Greek is public domain — it was printed as the dedicatory poem to the Aldine *editio princeps* of Plato. The only modern English is **Dijkstra & Hermans, *Akroterion* 60 (2015)**, open access to read but **in copyright**; their own article notes it is the first full translation since **Roscoe (1805)**, which would be PD if a copy can be found. So: original available, translation blocked unless Roscoe surfaces. |
+| **Angelo Poliziano, *Liber epigrammatum graecorum*** (1498) | The first book of original ancient-style Greek verse printed in the West. Not yet checked for a digital text or a public-domain translation. |
+| **Laurentius Rhodoman** (1545–1606) | Greek hexameter epics — *Palaestina*, the Arion poem. An active digital edition project at **rhodomanologia.de**; its licence and completeness are unchecked. Rhodoman is the one case here where a modern project might make the Greek readily fetchable. |
+
+Note the shape of the problem: for the Latin, Perseus supplies 1,900s
+translations that are long out of copyright. Humanist Greek was never translated
+in that era at all, so the English either does not exist or was made recently
+enough to still be owned.
+
+Greek OCR, if it comes to that: Kraken models from
+[AjaxMultiCommentary](https://github.com/AjaxMultiCommentary/OCR-kraken-models)
+are in `cache/kraken/` (5.2% CER on polytonic, better than Tesseract's `grc`),
+but Kraken is not installed and brings its own torch stack.
 
 ---
 
