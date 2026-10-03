@@ -5,7 +5,11 @@ stands. The recurring lesson: the code was rarely the obstacle. Finding a text
 that is *public domain*, *digitised*, and *not behind a bot check* was.
 
 Texts that can be fetched automatically live in [`fetch_sources.py`](fetch_sources.py);
-the files themselves are gitignored, since they are re-fetchable.
+the files themselves are gitignored, since they are re-fetchable. The OCR output
+that is *not* re-fetchable by script is tracked in [`ocr-texts/`](ocr-texts/).
+
+**[WANTED.md](WANTED.md) is the companion to this file**: for everything still
+blocked, what to look for by hand, where, and what to check before bothering.
 
 **Legend** — ✅ built · 🟡 ready to build · 🔶 blocked on sourcing · ⛔ blocked on
 copyright or language.
@@ -80,6 +84,9 @@ intact.
 | **Pontano, *De hortis Hesperidum*** | poetiditalia, `PONTANO\|hesp` | 486 lines |
 | **Wolfram, *Parzival*** | Bibliotheca Augustana (fetched) | 24,812 MHG lines in hand; Weston's English is PG 47297/47298 but its divisions need the same assembly Burton's Lusiads needed |
 | **Jacob Balde** | CAMENA, 55 XML files | **CC BY-SA** — share-alike conflicts with a conventional all-rights-reserved book. A decision, not an obstacle. |
+| **Ocland, *Anglorum Praelia*** | Latin fetched (4,332 lines); Sharrock's 1585 English is **EEBO-TCP `A08452`, public domain since 2015** | Buildable now with a *human* translation — but 13% of Sharrock's 2,993 lines carry an illegible gap and 5 holes of 2+ pages remain. Human-with-lacunae or machine-complete is a decision. See [WANTED.md](WANTED.md). |
+| **Ocland, *Elizabetha*** | same `A08452` file, 823 lines | Ocland's *other* poem, and the one Sutton himself translated from Sharrock. Stands alone. |
+| **Basinio, *Hesperis*** | **Drudi's printed 1794 edition**, Google Books `AuzlAAAAMAAJ`, full view | Needs one manual download, then the ordinary OCR path — **no HTR**. Supersedes the manuscript roadmap. See [WANTED.md](WANTED.md). |
 
 ---
 
@@ -87,13 +94,15 @@ intact.
 
 | Work | What exists | What's missing |
 |---|---|---|
-| **Germain de Brie, *Chordigerae navis conflagratio*** | Gallica [bpt6k715617](https://gallica.bnf.fr/ark:/12148/bpt6k715617) (1513) and [bpt6k9415155x](https://gallica.bnf.fr/ark:/12148/bpt6k9415155x) (1514). OCR'd: 602 lines, **71% of words in the Latin vocabulary** | a Latinist's proofread. GT4HistOCR + the correction pass produce a readable draft, not an edition |
+| **Germain de Brie, *Chordigerae navis conflagratio*** | Gallica [bpt6k715617](https://gallica.bnf.fr/ark:/12148/bpt6k715617) (1513), 45 page images and OCR in [`ocr-texts/`](ocr-texts/). **73.2% of words in the Latin vocabulary** | a Latinist's proofread. The correction pass cannot help: it fixed **0 tokens**, refusing 440 ambiguous and 305 candidate-less ones. A better recogniser or a human, not more passes |
 | **Cantar de Mio Cid** | Rose's *The Lay of the Cid* (PG 6088), 152 numbered laisses — a ready human translation | the Spanish. Cervantes Virtual is Cloudflare-blocked; es.wikisource has Sánchez's apparatus but not the verse; archive.org's search API returns 400 |
 | **Kudrun** | Nichols' English (PG 46109) | the Middle High German. Not on Gutenberg, Augustana or zeno |
 | **Mistral, *Mirèio*** | Preston's English (PG 56008) | the Occitan |
 | **Chastellain, *Le miroir de mort*** | PG 44162, Middle French | an English translation. Machine translation of Middle French fails badly — *"Il fault laisser voz haulx actours"* → *"It fails to leave voz haulx actours"* |
 | **Pontano, *De bello Neapolitano*** | Google Books scans | a text. Also **prose history, not verse** — often miscatalogued |
-| **La Araucana**, **Ronsard *La Franciade***, **Voltaire's other epics**, **Theuerdank**, **Girart de Roussillon**, **Raoul de Cambrai**, **the Dietrich cycle**, **Willehalm** | — | nothing digitised in either language |
+| **Ronsard, *La Franciade*** | the French, full text on archive.org (`oeuvrescompltes00ronsgoog`, 1858; `ronsard0016unse`, 1572) | a **public-domain English**. Usher's is 2010 |
+| **Ercilla, *La Araucana*** | the Spanish, several full-text editions on archive.org (`laaraucana01erci`, `laaraucanapoema01erciuoft`) | a **public-domain English**. Lancaster & Manchester's is 1945 |
+| **Voltaire's other epics**, **Theuerdank**, **Girart de Roussillon**, **Raoul de Cambrai**, **the Dietrich cycle**, **Willehalm** | — | nothing digitised in either language |
 
 ---
 
@@ -101,9 +110,6 @@ intact.
 
 | Work | Why |
 |---|---|
-| **Ocland, *Anglorum Praelia*** | The English at the Philological Museum is **Sutton's own**, and so in copyright. His introduction says why: he meant to use Sharrock's 1585 translation "but the copy… in the Early English Books microfilm series… is of such poor quality (many pages are out of order or missing altogether) that this proved impossible". So Sharrock exists but is damaged in the only accessible scan. |
-| **Ocland, *Eirenarchia* / *Elizabetha*** | Ocland's *other* poem, same site — and for this one Sutton **did** use Sharrock's 1585 translation, which is public domain. Worth checking: it may be buildable where *Anglorum Praelia* is not. |
-| **Basinio da Parma, *Hesperis*** | Gallica has all 13 books — as **BnF Arsenal Ms-630**, parchment, *écriture italienne du XVe siècle*. A **manuscript**, so print OCR cannot read it; it needs HTR. This is also why the Ludwig Boltzmann digital edition stalled at 2 of 13 books and was never published. |
 | **Petrarch's *Africa*** (English) | Bergin & Wilson's 1977 Yale translation is in copyright, so the built edition faces machine English instead. |
 | **Slovo o polku Igoreve** | No source in either language, and no Old East Slavic model. A modern Russian model on a 12th-century text is the *"Guns for man who is lame"* problem. |
 | **Gottfried, *Tristan*** | Gutenberg's two "Tristan" entries are Bédier's modern French retelling via Belloc, not Gottfried. No MHG original. |
@@ -118,7 +124,7 @@ scholarship that makes these texts accessible is itself in copyright.
 
 | Work | Status |
 |---|---|
-| **Marcus Musurus, *Ode to Plato*** (1513) | The Greek is public domain — it was printed as the dedicatory poem to the Aldine *editio princeps* of Plato. The only modern English is **Dijkstra & Hermans, *Akroterion* 60 (2015)**, open access to read but **in copyright**; their own article notes it is the first full translation since **Roscoe (1805)**, which would be PD if a copy can be found. So: original available, translation blocked unless Roscoe surfaces. |
+| **Marcus Musurus, *Ode to Plato*** (1513) | The Greek is public domain and in hand — it was printed as the dedicatory poem to the Aldine *editio princeps* of Plato. The only modern English is **Dijkstra & Hermans, *Akroterion* 60 (2015)**, open access to read but **in copyright**; their own article notes it is the first full translation since **Roscoe (1805)**. Roscoe is *The Life and Pontificate of Leo the Tenth*, London 1805, 4 vols, on archive.org — a findable book, so this is the closest of the three to unblocking. See [WANTED.md](WANTED.md). |
 | **Angelo Poliziano, *Liber epigrammatum graecorum*** (1498) | The first book of original ancient-style Greek verse printed in the West. Not yet checked for a digital text or a public-domain translation. |
 | **Laurentius Rhodoman** (1545–1606) | Greek hexameter epics — *Palaestina*, the Arion poem. An active digital edition project at **rhodomanologia.de**; its licence and completeness are unchecked. Rhodoman is the one case here where a modern project might make the Greek readily fetchable. |
 

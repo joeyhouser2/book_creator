@@ -29,6 +29,32 @@ recogniser to be nearly right; on the de Brie page it is not close enough for
 one or two edits to reach a real word. That text needs a better recogniser or a
 Latinist, not more post-processing.
 
+## `ocland_sharrock_1585_eebo_tcp_A08452.xml`
+
+Not OCR at all, and kept here because it belongs beside the Latin it faces:
+John Sharrock's 1585 English of *Anglorum Praelia*, as the Text Creation
+Partnership keyed it from the Early English Books microfilm. Released to the
+public domain on 1 January 2015; the file's own header says so.
+
+TEI, 592 KB, 3,959 `<l>` elements across three divisions:
+
+| Division | Lines | `2+ pages` missing | Illegible gaps |
+|---|---|---|---|
+| *Anglorum Praelia* book 1 | 1,695 | 3 | 622 |
+| *Anglorum Praelia* book 2 | 1,298 | 2 | 203 |
+| *Elizabetha* | 823 | 3 | 106 |
+
+516 of the 3,959 lines (13.0%) contain a gap. This is the damage Dana Sutton
+described when he explained why he translated the poem himself rather than
+reprinting Sharrock — he was right about the microfilm, but the TCP
+transcription of it is public domain and 87% of its lines are clean, which he
+does not mention and may not have known.
+
+Line counts do not pair with the Latin's 4,332: Sharrock worked in English
+meeter, not line for line, so this needs alignment rather than line-matching.
+
+## `cache/`, for the record
+
 The page images themselves stay in `cache/gallica/` (21 MB, 45 JPEGs of
 bpt6k715617 — 23 at default scale, 22 at full). Re-downloadable from Gallica's
 IIIF endpoint, which is not bot-checked but does rate-limit: it returns the
