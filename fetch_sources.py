@@ -39,12 +39,15 @@ not code). Re-run this to get them back.
 from __future__ import annotations
 
 import html
+import os
 import re
 import sys
 import time
 from pathlib import Path
 
 import requests
+
+from book_creator import corpus_jobs
 
 # This script's whole job is non-ASCII text, and a Windows console defaults to
 # cp1252 — which raised UnicodeEncodeError on the "✓" of the first success
@@ -435,12 +438,67 @@ def pontano() -> None:
         _write(f"pontano_{slug}_la.txt", parts, f"Pontano, {name}")
 
 
+def ocland() -> None:
+    """Ocland's Anglorum Praelia (1580), Latin, from the EEBO scan on archive.org.
+
+    The Philological Museum has this with a facing English translation, but that
+    translation is Dana Sutton's own and in copyright. His introduction explains
+    why he did not use the obvious public-domain alternative: he meant to print
+    Sharrock's 1585 version "but the copy of it employed in the Early English
+    Books microfilm series and its on-line equivalent is of such poor quality
+    (many pages are out of order or missing altogether) that this proved
+    impossible".
+
+    That holds up. The Sharrock scan is on archive.org too, and its OCR is
+    blackletter wreckage -- "Appꝛoching vzawes,the pong man ſhunnes". So the
+    Latin comes from the 1580 first edition and the English is made here.
+
+    The 1580 Latin is set in roman type and survives its OCR far better than a
+    1513 page does: 78% of its words are in the corpus vocabulary as fetched,
+    and 87% after ocr_correct has expanded the long s and fixed what one edit
+    can reach.
+    """
+    import subprocess
+
+    from book_creator import ocr_correct
+
+    repo = corpus_jobs.find_repo()
+    python = corpus_jobs.find_python(repo)
+    ident = ("bim_early-english-books-1475-1640_anglorum-prlia-ab-anno_"
+             "ockland-christopher_1580")
+    # Fetched through the latin repo's own connector, under its venv: it knows
+    # that /download/<id>/<id>_djvu.txt redirects to raw OCR while /stream/
+    # serves an HTML wrapper.
+    bridge = (
+        "import sys, json; sys.path.insert(0, '.')\n"
+        "from ingest.archive_org import ArchiveOrgConnector\n"
+        f"meta, parts = ArchiveOrgConnector().fetch({ident!r})\n"
+        "t = parts[0][1] if isinstance(parts[0], tuple) else str(parts[0])\n"
+        "sys.stdout.write('\\n===TEXT===\\n'); sys.stdout.write(t)\n")
+    # The child's stdout must be UTF-8 or it dies on the first long s: the text
+    # is full of them, and a Windows console defaults to cp1252.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    proc = subprocess.run([str(python), "-c", bridge], cwd=str(repo), env=env,
+                          capture_output=True, text=True, encoding="utf-8")
+    if proc.returncode != 0 or "\n===TEXT===\n" not in proc.stdout:
+        raise SystemExit("archive.org fetch failed: "
+                         + (proc.stderr or proc.stdout)[-300:])
+    raw = proc.stdout.split("\n===TEXT===\n", 1)[1]
+
+    repaired = ocr_correct.repair(raw, ocr_correct.load_vocab())
+    print(f"  ocr_correct: {repaired.summary}")
+    lines = [l.strip() for l in repaired.text.splitlines() if l.strip()]
+    _write("ocland_la.txt", ["Anglorum Praelia" + "\n\n" + "\n".join(lines)],
+           "Ocland, Anglorum Praelia (Latin)")
+
+
 SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias,
            "lusiadas_en": lusiadas_en,
            "gerusalemme": gerusalemme,
            "maldon": maldon,
            "africa": africa,
-           "pontano": pontano}
+           "pontano": pontano,
+           "ocland": ocland}
 
 
 def main(argv: list[str]) -> int:

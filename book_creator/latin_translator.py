@@ -85,14 +85,17 @@ class LatinRepoTranslator:
     def __init__(self, lang: str = "la", *, repo: str | None = None,
                  batch: int = 8, timeout: int | None = None):
         lang = lang.lower()
+        # Set before the validation below, because __del__ runs even on an
+        # instance whose __init__ raised, and close() would then trip over the
+        # attribute not existing yet.
+        self._proc = None
+        self._errlog = None
         if lang not in MODELS:
             raise ValueError(
                 f"No latin-repo model for {lang!r}. Known: {', '.join(MODELS)}.")
         self.lang = lang
         self.model, self.src_lang = MODELS[lang]
         self._repo = repo
-        self._proc = None
-        self._errlog = None
         self.batch = batch
         self.timeout = timeout
         # mt_cache keys on this, so a rebuild reuses what the model already said.
@@ -165,21 +168,29 @@ class LatinRepoTranslator:
         self.close()
 
     def close(self) -> None:
-        """Let the model go. Safe to call more than once."""
-        if self._proc is not None:
-            try:
-                self._proc.stdin.close()
-                self._proc.wait(timeout=20)
-            except Exception:  # noqa: BLE001 - shutting down regardless
-                self._proc.kill()
+        """Let the model go. Safe to call more than once, and at interpreter
+        shutdown, where anything may already be half torn down."""
+        proc = getattr(self, "_proc", None)
+        if proc is not None:
             self._proc = None
-        if self._errlog is not None:
             try:
-                self._errlog.close()
-                Path(self._errlog.name).unlink(missing_ok=True)
+                proc.stdin.close()
+                proc.wait(timeout=20)
+            except Exception:  # noqa: BLE001 - shutting down regardless
+                # kill() may itself be gone -- a stubbed process in a test, or
+                # a module already collected at exit. Nothing left to do then.
+                try:
+                    proc.kill()
+                except Exception:  # noqa: BLE001
+                    pass
+        errlog = getattr(self, "_errlog", None)
+        if errlog is not None:
+            self._errlog = None
+            try:
+                errlog.close()
+                Path(errlog.name).unlink(missing_ok=True)
             except Exception:  # noqa: BLE001 - best effort
                 pass
-            self._errlog = None
 
     def __call__(self, texts: list[str]) -> list[str]:
         texts = list(texts)
