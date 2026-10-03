@@ -664,27 +664,26 @@ def test_latin_translator_passes_blank_text_through_without_spawning(monkeypatch
     assert tr(["", "   "]) == ["", ""]
 
 
-def test_latin_translator_reports_a_failed_subprocess(monkeypatch):
-    from book_creator import latin_translator, corpus_jobs
-    import subprocess
-    monkeypatch.setattr(corpus_jobs, "find_repo", lambda p=None: Path("."))
-    monkeypatch.setattr(corpus_jobs, "find_python", lambda r: Path("python"))
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
-        a[0] if a else [], 1, stdout="", stderr="CUDA out of memory"))
+def test_latin_translator_reports_what_the_worker_printed(monkeypatch, tmp_path):
+    """The worker's stderr goes to a file rather than a pipe -- an undrained
+    pipe deadlocks on transformers' loading bars -- so a failure has to be read
+    back from that file, with the bars filtered out of the report."""
+    from book_creator import latin_translator
+    log = tmp_path / "nllb.log"
+    log.write_text("Loading weights: 1/512\nLoading weights: 2/512\n"
+                   "torch.OutOfMemoryError: CUDA out of memory\n",
+                   encoding="utf-8")
     tr = latin_translator.LatinRepoTranslator("la")
-    with pytest.raises(RuntimeError, match="CUDA out of memory"):
-        tr(["Gallia est omnis divisa in partes tres."])
+    tr._errlog = type("F", (), {"name": str(log), "flush": lambda self: None})()
+    msg = tr._died("never became ready")
+    assert "CUDA out of memory" in msg
+    assert "Loading weights" not in msg, "the progress bars are not the error"
 
 
 def test_latin_translator_rejects_a_short_result(monkeypatch):
-    from book_creator import latin_translator, corpus_jobs
-    import subprocess, json as _json
-    monkeypatch.setattr(corpus_jobs, "find_repo", lambda p=None: Path("."))
-    monkeypatch.setattr(corpus_jobs, "find_python", lambda r: Path("python"))
-    body = "\n===TRANSLATIONS===\n" + _json.dumps({"translations": ["one"]})
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
-        a[0] if a else [], 0, stdout=body, stderr=""))
+    from book_creator import latin_translator
     tr = latin_translator.LatinRepoTranslator("la")
+    monkeypatch.setattr(tr, "_start", lambda batch: ["one"])
     with pytest.raises(ValueError, match="translator returned"):
         tr(["unum", "duo"])
 
@@ -724,3 +723,32 @@ def test_verse_line_pairing_pairs_each_line(tmp_path):
     assert len(beads) == 4
     assert all(b.src and b.tgt and b.lines for b in beads)
     assert beads[0].src == ["brocen wurde;"] and beads[0].tgt == ["was broken."]
+
+
+def test_latin_worker_survives_a_second_call(monkeypatch):
+    """The worker is kept alive between batches. It used to be respawned per
+    250-line chunk, so one book reloaded a 2.5 GB model about twenty times --
+    enough that Ocland's build hit its timeout before it finished translating."""
+    from book_creator import latin_translator
+    tr = latin_translator.LatinRepoTranslator("la")
+    calls = []
+
+    def fake_start(batch):
+        calls.append(("start", tuple(batch)))
+        tr._proc = type("P", (), {"poll": lambda self: None})()
+        return [t.upper() for t in batch]
+
+    monkeypatch.setattr(tr, "_start", fake_start)
+    monkeypatch.setattr(tr, "_send", lambda payload: calls.append(("send", tuple(payload["texts"]))))
+    monkeypatch.setattr(tr, "_read", lambda: ["DUO"])
+    assert tr(["unum"]) == ["UNUM"]
+    assert tr(["duo"]) == ["DUO"]
+    assert [c[0] for c in calls] == ["start", "send"], calls
+
+
+def test_latin_worker_close_is_idempotent():
+    from book_creator import latin_translator
+    tr = latin_translator.LatinRepoTranslator("la")
+    tr.close()
+    tr.close()          # must not raise with nothing to close
+    assert tr._proc is None
