@@ -1,0 +1,48 @@
+# Kudrun, Middle High German with Arthur Nichols' 1889 English, stanza for stanza.
+#
+# Both texts number their 1,705 strophes the same way, and Nichols divides the
+# poem into 32 tales. python fetch_kudrun.py writes input/kudrun_mhg.txt (from
+# Bartsch's 1865 edition, OCR'd with Tesseract's `lat` model, gaps filled from
+# Google's OCR of the same scan) and input/kudrun_en.txt (Nichols, PG 46109),
+# both cut at Nichols' tale boundaries so each division pairs exactly.
+# 57 strophes the OCR lost are printed as "[strophe lost to OCR]" beside their
+# English rather than dropped.
+#
+# Run with:  python make_book.py config/kudrun.yaml
+
+books:
+  - title: "Kudrun"
+    author: "Anonymous"
+    src_lang: de
+    tgt_lang: en
+    src_path: "input/kudrun_mhg.txt"
+    tgt_path: "input/kudrun_en.txt"
+    mode: verse
+    verse_align: stanza
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Arthur Nichols, 1889 (Project Gutenberg #46109) — public domain."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: medieval
+      color: "#3b4a2f"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Arthur Nichols"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Middle High German text of <i>Kudrun</i>
+        is anonymous and in the public domain; it is set from Karl Bartsch's
+        1865 edition from machine-read text that has not been proofread, and
+        57 of its 1,705 strophes the reading lost are marked as such. The
+        English translation by Arthur Nichols (1889) is in the public domain.
+    cover:
+      paper: white
+      blurb: "The Middle High German epic of Kudrun, a Hegelingen princess who outlasts captivity, in Bartsch's text with Arthur Nichols' 1889 English translation facing it, stanza for stanza."
+    epub: true

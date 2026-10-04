@@ -350,6 +350,7 @@ def test_use_local_refuses_a_language_it_has_no_model_for():
     ({"model": None}, "model_name", "Helsinki-NLP/opus-mt-fr-en"),
     ("my-org/my-model", "model_name", "my-org/my-model"),
     ("http://localhost:8001/translate", "url", "http://localhost:8001/translate"),
+    ({"ollama": "qwen3:14b"}, "model_name", "qwen3:14b"),
 ])
 def test_configure_from_reads_both_local_models_and_endpoints(cfg, attr, expected):
     translators.configure_from({"fr": cfg})
@@ -357,7 +358,7 @@ def test_configure_from_reads_both_local_models_and_endpoints(cfg, attr, expecte
 
 
 def test_configure_from_rejects_an_entry_naming_neither():
-    with pytest.raises(ValueError, match="neither a 'url' nor a 'model'"):
+    with pytest.raises(ValueError, match="no 'url', 'ollama' model or 'model'"):
         translators.configure_from({"fr": {"batch": 8}})
 
 
@@ -752,3 +753,81 @@ def test_latin_worker_close_is_idempotent():
     tr.close()
     tr.close()          # must not raise with nothing to close
     assert tr._proc is None
+
+
+
+def _ollama(replies):
+    """An OllamaTranslator whose model answers from `replies`, one per call."""
+    tr = translators.OllamaTranslator("test-model", "fr", batch=3)
+    asked = []
+
+    def ask(numbered):
+        asked.append(numbered)
+        return replies.pop(0)
+    tr._ask = ask
+    return tr, asked
+
+
+def test_ollama_translator_splits_a_numbered_reply_back_into_lines():
+    tr, asked = _ollama(["1. one\n2. two\n3. three"])
+    assert tr(["un", "deux", "trois"]) == ["one", "two", "three"]
+    assert len(asked) == 1
+
+
+def test_ollama_translator_does_not_trust_a_reply_missing_a_number():
+    # Line 2 dropped: accepting it would pair every later line with the wrong
+    # English, so the batch is redone a segment at a time.
+    tr, asked = _ollama(["1. one\n3. three", "1. one", "1. two", "1. three"])
+    assert tr(["un", "deux", "trois"]) == ["one", "two", "three"]
+    assert len(asked) == 4
+
+
+def test_ollama_translator_leaves_blank_text_alone():
+    tr, asked = _ollama(["1. one"])
+    assert tr(["un", "", "  "]) == ["one", "", ""]
+    assert len(asked) == 1
+
+
+VERSE = """Erstes Buch
+Der Mond stieg auf,
+und weiss war das Land;
+dann kam die Nacht.
+Ein Hund bellte nicht,
+der Wind ging still.
+"""
+
+
+def test_translate_by_sentence_hands_the_model_whole_sentences(tmp_path):
+    p = tmp_path / "verse.txt"
+    p.write_text(VERSE, encoding="utf-8")
+    seen = []
+
+    def spy(texts):
+        seen.extend(texts)
+        return [t.upper() for t in texts]
+    translators.register("de", spy)
+    spec = _spec(mode="verse", src_path=str(p), translate=True, translate_by="sentence")
+    chapters = pipeline._chapters_from_machine_translation(spec, lambda _m: None)
+    # Two lines run on into one unit (a semicolon closes it), so the model
+    # sees them as one.
+    assert "Der Mond stieg auf, und weiss war das Land;" in seen
+    beads = [b for ch in chapters for b in ch.beads]
+    # The original keeps its lines inside the bead; the English is one passage.
+    assert beads[0].src == ["Der Mond stieg auf,", "und weiss war das Land;"]
+    assert len(beads[0].tgt) == 1 and beads[0].lines
+
+
+def test_translate_by_line_is_still_the_default(tmp_path):
+    p = tmp_path / "verse.txt"
+    p.write_text(VERSE, encoding="utf-8")
+    translators.register("de", upper)
+    spec = _spec(mode="verse", src_path=str(p), translate=True)
+    chapters = pipeline._chapters_from_machine_translation(spec, lambda _m: None)
+    assert all(len(b.src) == 1 for ch in chapters for b in ch.beads)
+
+
+def test_sentence_groups_close_on_a_full_stop_and_respect_the_cap():
+    from book_creator import segment
+    lines = ["a,", "b;", "c,", "d,", "e,", "f."]
+    assert segment.sentence_groups(lines) == [["a,", "b;"], ["c,", "d,", "e,", "f."]]
+    assert segment.sentence_groups(["x,"] * 5, max_lines=2) == [["x,", "x,"], ["x,", "x,"], ["x,"]]

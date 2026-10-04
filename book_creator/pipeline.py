@@ -591,12 +591,18 @@ def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
         if segs:
             chapters.append(Chapter(title=title, src_segments=segs))
 
+    by_sentence = spec.mode == "verse" and spec.translate_by == "sentence"
+    # Per chapter, the runs of source lines that are translated as one unit.
+    # A unit is a single line unless the book translates by sentence.
+    units = [segment.sentence_groups(ch.src_segments) if by_sentence
+             else [[s] for s in ch.src_segments] for ch in chapters]
+
     # Translated across the whole book rather than per chapter, so the model is
     # loaded once and the count means something. mt_cache does the chunking and
     # the progress logging, and skips anything this model has already been
     # asked -- which is most of a rebuild, since a book gets rebuilt for reasons
     # that have nothing to do with its text.
-    flat = [seg for ch in chapters for seg in ch.src_segments]
+    flat = [" ".join(u) for ch_units in units for u in ch_units]
     log(f"• Machine-translating {len(flat)} segment(s) {spec.src_lang}→"
         f"{spec.tgt_lang} — this is the slow step.")
     english = mt_cache.translate(translator, flat, log=log)
@@ -605,13 +611,13 @@ def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
             f"translator returned {len(english)} items for {len(flat)} inputs")
 
     at = 0
-    for ch in chapters:
-        n = len(ch.src_segments)
+    for ch, ch_units in zip(chapters, units):
+        n = len(ch_units)
         ch.tgt_segments = english[at:at + n]
-        # One bead per segment: the correspondence is exact, so there is
-        # nothing for an aligner to find. Verse keeps its line breaks.
-        ch.beads = [Bead(src=[s], tgt=[t], lines=(spec.mode == "verse"))
-                    for s, t in zip(ch.src_segments, ch.tgt_segments)]
+        # One bead per unit: the correspondence is exact, so there is nothing
+        # for an aligner to find. Verse keeps its line breaks.
+        ch.beads = [Bead(src=list(u), tgt=[t], lines=(spec.mode == "verse"))
+                    for u, t in zip(ch_units, ch.tgt_segments)]
         at += n
 
     if not spec.translation_source_note:

@@ -321,6 +321,11 @@ class BookSpec:
     # translation -- and translation_pd_confirmed stops mattering, because no
     # third party holds copyright on it. See pipeline._chapters_from_machine_translation.
     translate: bool = False
+    # What `translate` is handed in verse mode: "line" (one verse line at a
+    # time, paired line for line) or "sentence" (the lines between full stops
+    # as one unit, printed as those lines followed by one English passage).
+    # A model that reads sentences does far better on enjambed verse that way.
+    translate_by: str = "line"
 
     # Verse mode only -- how the two sides are paired:
     #   "block"  — the whole original poem, then the whole translation (default)

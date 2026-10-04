@@ -1,0 +1,53 @@
+# Ronsard, La Franciade, books 1-4, French with a machine-made English.
+#
+# No public-domain English exists (Usher's 2010 version is in copyright), so
+# the English is generated, and disclosed as such on the copyright page.
+# The French is the 1858 Blanchemain edition; python fetch_franciade.py writes
+# input/franciade_fr.txt from it.
+#
+# A chat model rather than Opus-MT: on the same seven lines Opus-MT rendered
+# 'yvoire' as "yogurt" and 'sourci' as "the sour", because it reads modern
+# French only. Run with:  python make_book.py config/franciade.yaml
+
+translators:
+  fr:
+    ollama: "qwen3:14b"
+    batch: 12
+    context: >-
+      This is Pierre de Ronsard's La Franciade (1572), an epic in decasyllabic
+      couplets about Francus, son of Hector, founding the French nation.
+
+books:
+  - title: "La Franciade"
+    author: "Pierre de Ronsard"
+    src_lang: fr
+    tgt_lang: en
+    src_path: "input/franciade_fr.txt"
+    mode: verse
+    translate: true
+    first: src
+    trim: [6.0, 9.0]
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#6b2d2d"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The French text of Pierre de Ronsard
+        (1524&ndash;1585) is in the public domain; it is set from the 1858
+        Blanchemain edition, with variant readings omitted and OCR errors
+        uncorrected. Books 1&ndash;4 only: Ronsard completed four books of a
+        planned twenty-four. The English is a machine translation made for
+        this edition, not a published human translation, and will contain
+        errors.
+    cover:
+      paper: white
+      blurb: "Ronsard's unfinished national epic, the first four books, in the original French with a machine-made English translation."
+    epub: true

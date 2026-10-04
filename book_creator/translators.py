@@ -236,13 +236,105 @@ class HTTPTranslator:
         return out
 
 
+class OllamaTranslator:
+    """A chat model served by a local Ollama, prompted to translate verse.
+
+    Opus-MT reads modern French; on Ronsard it renders *yvoire* as "yogurt" and
+    *sourci* as "the sour". A general chat model reads the early-modern
+    spelling and returns sense, so for historical stages this is the better
+    adapter -- at roughly 2 s a line against Opus-MT's few milliseconds.
+
+    Segments go to the model several at a time as a numbered list, which
+    amortises the prompt and gives it the neighbouring lines as context. The
+    numbers are how the answer is split back apart: a reply that does not carry
+    every number is retried one segment at a time rather than trusted, because
+    a shifted line would pair every later line with the wrong English.
+    """
+
+    def __init__(self, model: str, src_lang: str = "fr", *,
+                 host: str = "http://localhost:11434", batch: int = 12,
+                 context: str = "", timeout: int = 600):
+        self.model_name = model
+        self.src_lang = src_lang
+        self.host = host.rstrip("/")
+        self.batch = batch
+        self.context = context
+        self.timeout = timeout
+
+    def _ask(self, numbered: str) -> str:
+        import requests
+
+        prompt = (
+            f"Translate these numbered lines of a historical {self.src_lang} poem into "
+            "plain, literal English. The spelling is unmodernised and the text "
+            "may contain OCR noise; read through it for the sense. "
+            + (self.context + " " if self.context else "")
+            + "Keep every number and give exactly one English line per "
+            "numbered line, in the form '<number>. <English>'. Output only the "
+            "translation.\n\n" + numbered)
+        resp = requests.post(
+            f"{self.host}/api/chat",
+            json={"model": self.model_name, "stream": False, "think": False,
+                  "messages": [{"role": "user", "content": prompt}],
+                  "options": {"temperature": 0.2}},
+            timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()["message"]["content"]
+
+    @staticmethod
+    def _parse(reply: str, n: int) -> list[str] | None:
+        import re
+
+        got: dict[int, str] = {}
+        for line in reply.splitlines():
+            m = re.match(r"\s*(\d+)[.)]\s*(.*)$", line)
+            if m:
+                got[int(m.group(1))] = m.group(2).strip()
+        if set(got) != set(range(1, n + 1)):
+            return None
+        return [got[i] for i in range(1, n + 1)]
+
+    def _numbered(self, lines: list[str]) -> list[str] | None:
+        """Ask for `lines` as one numbered list; None if the answer is short."""
+        numbered = "\n".join(f"{i}. {ln}" for i, ln in enumerate(lines, 1))
+        return self._parse(self._ask(numbered), len(lines))
+
+    def _one(self, text: str) -> str:
+        """One segment on its own, for when a batch came back misnumbered."""
+        parts = [ln for ln in text.splitlines() if ln.strip()]
+        for _ in range(2):
+            out = self._numbered(parts)
+            if out is not None:
+                return "\n".join(out)
+        raise ValueError(
+            f"{self.model_name} did not return {len(parts)} numbered lines "
+            f"for: {parts[0][:50]!r}")
+
+    def __call__(self, texts: list[str]) -> list[str]:
+        results: list[str] = [""] * len(texts)
+        todo = [i for i, t in enumerate(texts) if t.strip()]
+        for at in range(0, len(todo), self.batch):
+            idx = todo[at:at + self.batch]
+            # A multi-line segment cannot share a numbered list one-to-one, so
+            # a batch containing one goes segment by segment.
+            out = None
+            if all("\n" not in texts[i].strip() for i in idx):
+                out = self._numbered([texts[i].strip() for i in idx])
+            if out is None:
+                out = [self._one(texts[i]) for i in idx]
+            for i, t in zip(idx, out):
+                results[i] = t
+        return results
+
+
 def configure_from(mapping: dict) -> None:
     """Register translators from a config mapping. Each entry is either a
     served endpoint or a model run locally:
 
         {"la":  {"url": "http://localhost:8001/translate"},
          "de":  {"model": "Helsinki-NLP/opus-mt-de-en"},
-         "fr":  "local"}
+         "fr":  "local",
+         "fr":  {"ollama": "qwen3:14b"}}
 
     A bare string is a URL if it looks like one, "local" for this language's
     built-in model, and otherwise a model name.
@@ -263,8 +355,14 @@ def configure_from(mapping: dict) -> None:
                 timeout=int(cfg.get("timeout", 120)),
                 headers=cfg.get("headers"),
             ))
+        elif cfg.get("ollama"):
+            register(lang, OllamaTranslator(
+                cfg["ollama"], src_lang=_norm(lang),
+                host=cfg.get("host", "http://localhost:11434"),
+                batch=int(cfg.get("batch", 12)),
+                context=cfg.get("context", "")))
         elif "model" in cfg:
             use_local(lang, cfg["model"], device=cfg.get("device"), **common)
         else:
             raise ValueError(
-                f"Translator for {lang!r} names neither a 'url' nor a 'model'.")
+                f"Translator for {lang!r} names no 'url', 'ollama' model or 'model'.")

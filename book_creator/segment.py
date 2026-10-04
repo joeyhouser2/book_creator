@@ -326,6 +326,30 @@ def segment_verse(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
+def sentence_groups(lines: list[str], max_lines: int = 8) -> list[list[str]]:
+    """Group consecutive verse lines into sentences, for translation.
+
+    A translation model is trained on sentences. Handed one hexameter at a
+    time it gets half a clause -- the verb in one line, its object in the next
+    -- and invents the rest ("The old, new trembling shone"). Verse runs on, so
+    the unit that means something is the stretch between full stops.
+
+    A group closes on a line ending in . ? ! or ; and never runs past
+    `max_lines`: a long period is cut at the cap rather than handed to the
+    model whole, which it would summarise.
+    """
+    groups: list[list[str]] = []
+    cur: list[str] = []
+    for ln in lines:
+        cur.append(ln)
+        if re.search(r"[.?!;]['\"”’)]*\s*$", ln) or len(cur) >= max_lines:
+            groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+    return groups
+
+
 def segment(text: str, mode: str, lang: str = "default") -> list[str]:
     if mode == "verse":
         return segment_verse(text)
