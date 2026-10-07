@@ -43,6 +43,14 @@ def align(src: list[str], tgt: list[str], *, method: str = "auto",
             from .align_mt import mt_align
             return mt_align(src, tgt, translator=translator, log=log, band=band)
         if method == "mt":
+            # Latin and Greek have a fine-tuned model in the sibling latin repo;
+            # asking for the MT aligner by name is enough to use it.
+            from . import latin_translator
+            if src_lang in latin_translator.MODELS and latin_translator.available()[0]:
+                translator = latin_translator.register(src_lang)
+                note(f"• Aligner: MT-pivot with the latin repo's {translator.model_name}")
+                from .align_mt import mt_align
+                return mt_align(src, tgt, translator=translator, log=log, band=band)
             raise RuntimeError(
                 f"No translator registered for source language {src_lang!r}. "
                 "Register one via translators.register() (see book_creator/translators.py)."

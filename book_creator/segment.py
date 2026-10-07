@@ -334,7 +334,8 @@ def sentence_groups(lines: list[str], max_lines: int = 8) -> list[list[str]]:
     -- and invents the rest ("The old, new trembling shone"). Verse runs on, so
     the unit that means something is the stretch between full stops.
 
-    A group closes on a line ending in . ? ! or ; and never runs past
+    A group closes on a line ending in . ? ! ; or the Greek raised dot (a Greek question
+    mark is already ;) and never runs past
     `max_lines`: a long period is cut at the cap rather than handed to the
     model whole, which it would summarise.
     """
@@ -342,7 +343,7 @@ def sentence_groups(lines: list[str], max_lines: int = 8) -> list[list[str]]:
     cur: list[str] = []
     for ln in lines:
         cur.append(ln)
-        if re.search(r"[.?!;]['\"”’)]*\s*$", ln) or len(cur) >= max_lines:
+        if re.search(r"[.?!;··]['\"”’)]*\s*$", ln) or len(cur) >= max_lines:
             groups.append(cur)
             cur = []
     if cur:

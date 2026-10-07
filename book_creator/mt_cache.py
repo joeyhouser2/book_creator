@@ -19,6 +19,7 @@ other's translations. Slower is better than wrong.
 from __future__ import annotations
 
 import hashlib
+import re
 import sqlite3
 from pathlib import Path
 
@@ -32,6 +33,43 @@ CREATE TABLE IF NOT EXISTS translations (
     PRIMARY KEY (model, src_sha)
 );
 """
+
+
+def degenerate(text: str) -> bool:
+    """Whether a translation has collapsed into repeating itself.
+
+    A sequence-to-sequence model given an odd or damaged input will sometimes
+    loop -- "He can, he can, he can ...", "the one who is the way, the one who is
+    the path ..." -- until it runs out of tokens. About one unit in two hundred
+    did across a corpus of verse, and the book prints it as if it were a
+    translation. A loop is recognisable by how few distinct four-word runs it has.
+    """
+    words = re.findall(r"\w+", text.lower())
+    if len(words) < 24:
+        return False
+    grams = [tuple(words[i:i + 4]) for i in range(len(words) - 3)]
+    return len(set(grams)) < 0.45 * len(grams)
+
+
+def _pieces(text: str, size: int = 10) -> list[str]:
+    """`text` cut into runs of about `size` words, for translating a unit that
+    looped when given whole."""
+    words = text.split()
+    return [" ".join(words[i:i + size]) for i in range(0, len(words), size)] or [text]
+
+
+def _repair(translator, text: str, english: str) -> str:
+    """A translation that has not collapsed, if one can be had.
+
+    The same input gives the same loop, so the unit is translated again in short
+    pieces and the pieces joined. If that loops too, the piece is marked rather
+    than printed as if it were a translation."""
+    if not degenerate(english):
+        return english
+    out = []
+    for piece, eng in zip(_pieces(text), translator(_pieces(text))):
+        out.append("[not translated]" if degenerate(eng) else eng)
+    return " ".join(out)
 
 
 def translator_id(translator) -> str | None:
@@ -97,6 +135,7 @@ def translate(translator, texts: list[str], *, db_path: str | Path = DB_PATH,
             if len(got) != len(part):
                 raise ValueError(
                     f"translator returned {len(got)} items for {len(part)} inputs")
+            got = [_repair(translator, t, e) for t, e in zip(part, got)]
             conn.executemany(
                 "INSERT OR REPLACE INTO translations (model, src_sha, english) "
                 "VALUES (?, ?, ?)",

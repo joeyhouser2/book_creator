@@ -23,6 +23,10 @@ class Bead:
     # medieval rubric, set between two lines of verse. Printed centred and in
     # italic so it reads as a heading, not as two more lines of the poem.
     heading: bool = False
+    # How well the two sides match, 0-1, when the aligner can say (the MT-pivot
+    # aligner can). None for a bead from a backend that does not score, and for
+    # one-sided beads.
+    score: float | None = None
 
     @property
     def src_text(self) -> str:
@@ -322,10 +326,33 @@ class BookSpec:
     # third party holds copyright on it. See pipeline._chapters_from_machine_translation.
     translate: bool = False
     # What `translate` is handed in verse mode: "line" (one verse line at a
-    # time, paired line for line) or "sentence" (the lines between full stops
-    # as one unit, printed as those lines followed by one English passage).
+    # time, paired line for line), "sentence" (the lines between full stops
+    # as one unit) or "stanza" (each blank-line-separated block as one unit);
+    # a grouped unit is printed as its lines followed by one English passage.
     # A model that reads sentences does far better on enjambed verse that way.
     translate_by: str = "line"
+
+    # Where a published translation covers only part of the original, machine-
+    # translate the rest. Run after alignment: any bead that holds original and
+    # no translation (a lost page, a passage the translator skipped) is filled
+    # from the registered translator and marked with a dagger, and the copyright
+    # page says so. A reader can then tell a translator's words from a machine's,
+    # which a quietly filled gap would not let them do.
+    fill_missing: bool = False
+
+    # Verse with `verse_align: line` only: align blocks of this many lines rather
+    # than single lines (0 = single lines). A hexameter epic and its fourteener
+    # paraphrase do not correspond line to line, and one line is too few words
+    # for the MT-pivot aligner to match; a block of eight is enough. A missing
+    # page of the translation then leaves whole blocks of the original with no
+    # partner, which is exactly what `fill_missing` looks for.
+    align_block: int = 0
+
+    # With `fill_missing`: also treat a bead whose match score is below this as
+    # a hole -- the translation beside it is about something else, because the
+    # page that should be there is gone and the aligner paired the original with
+    # its neighbour. 0 turns it off. Only the MT-pivot aligner scores beads.
+    fill_below: float = 0.0
 
     # Verse mode only -- how the two sides are paired:
     #   "block"  — the whole original poem, then the whole translation (default)

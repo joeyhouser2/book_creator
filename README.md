@@ -739,6 +739,9 @@ Output PDFs land in `output/`.
 | `poem_titles` | verse only: also split on an isolated poem title with no numeral (see below) |
 | `verse_align` | verse only: `block` (default) or `stanza` — see [Verse pairing](#verse-block-or-stanza-pairing-verse_align) |
 | `translate` | machine-translate the missing English side, for an original with no published translation — see [No translation exists](#no-translation-exists-machine-translate-the-missing-side) |
+| `translate_by` | verse only, with `translate`: hand the model `line` (default), `sentence` (the lines between full stops) or `stanza` (each blank-line block) — see [Chat models and verse](#chat-models-and-verse) |
+| `align_block` | verse with `verse_align: line` and an MT-pivot aligner: align blocks of this many lines rather than single lines. A hexameter epic and its fourteener paraphrase do not pair line to line, and one line is too few words to score |
+| `fill_missing` | with two editions: machine-translate any original passage the published translation lacks, mark it †, and disclose it on the copyright page |
 | `translators` | top-level block registering a translation model or endpoint per language |
 | `aligner` | `auto` / `embed` / `gale-church` (see below) |
 | `first` | `src` = original first, `tgt` = translation first |
@@ -841,8 +844,9 @@ all — not a copyrighted one, **none**. Of the Franco-Germanic epics, Gutenberg
 has the Nibelungenlied's German beside three English translations and then
 essentially stops: Chastellain's *Le miroir de mort* (44162) and Hugo's *La
 Légende des siècles* (12137) are French with no English anywhere, and Theuerdank,
-Girart de Roussillon, Ronsard's *La Franciade* and Voltaire's *La Henriade* are
-absent in both languages.
+Girart de Roussillon and Voltaire's *La Henriade* are absent in both
+languages. (Ronsard's *La Franciade* turned out to be on archive.org in French; it is
+built here with a machine English — see below.)
 
 `translate: true` (or `--translate`) renders the original into English with a
 registered translation model and prints that beside it:
@@ -929,6 +933,40 @@ did for Latin. Needs `pip install -r requirements-translate.txt`.
 > `opus-mt-fr-en` works either way because it also publishes safetensors.
 > `LocalTranslator` raises `TranslatorUnavailable` naming which of the two
 > is missing, rather than a CVE notice that never mentions the model.
+
+### Chat models and verse
+
+Two things in `translators.py` exist because of what the built-in models did to
+real verse.
+
+**`OllamaTranslator`.** On Ronsard's 1572 French, Opus-MT rendered *yvoire* as
+"yogurt" and *sourci* as "the sour": it reads modern French only. A chat model run
+locally reads the early-modern spelling. Register one per language:
+
+```yaml
+translators:
+  fr:
+    ollama: "qwen3:14b"
+    batch: 12          # lines per request, sent as a numbered list
+    context: "This is Ronsard's La Franciade (1572), an epic about ..."
+```
+
+The lines go to the model as a numbered list and come back split on their
+numbers; a reply that is missing one is retried a segment at a time rather than
+trusted, because one shifted line pairs every later line with the wrong English.
+It costs about two seconds a line against Opus-MT's few milliseconds.
+
+**`translate_by`.** A model trained on sentences is handed half a clause when it is
+given one hexameter at a time: the verb is on one line and its object on the next.
+`translate_by: sentence` groups lines up to each full stop (capped at eight) and
+`translate_by: stanza` takes each blank-line block, so an octava or a sestet goes
+in whole. The book then prints the original's lines followed by one English
+passage, not line against line.
+
+`fill_missing` is the other way round: for a book that *has* a human translation
+with holes in it, only the holes are machine-translated, marked with a dagger.
+`config/ocland.yaml` is the worked example: Sharrock's 1585 English from a damaged
+microfilm, with the Latin that has no English beside it filled in.
 
 ## Segment review (local LLM QA pass)
 

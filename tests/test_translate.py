@@ -831,3 +831,134 @@ def test_sentence_groups_close_on_a_full_stop_and_respect_the_cap():
     lines = ["a,", "b;", "c,", "d,", "e,", "f."]
     assert segment.sentence_groups(lines) == [["a,", "b;"], ["c,", "d,", "e,", "f."]]
     assert segment.sentence_groups(["x,"] * 5, max_lines=2) == [["x,", "x,"], ["x,", "x,"], ["x,"]]
+
+
+def test_fill_missing_translates_only_beads_with_no_translation(tmp_path, monkeypatch):
+    from book_creator import mt_cache
+    from book_creator.model import Bead, Chapter
+    monkeypatch.setattr(mt_cache, "DB_PATH", str(tmp_path / "mt.db"))
+    translators.register("de", upper)
+    covered = Bead(src=["gedeckt"], tgt=["covered"])
+    gap = Bead(src=["eine luecke", "zweite zeile"], tgt=[])
+    spec = _spec(mode="prose", fill_missing=True)
+    pipeline._fill_missing_translation([Chapter(title="c", beads=[covered, gap])], spec,
+                                       lambda _m: None)
+    assert covered.tgt == ["covered"]                       # the translator's words are left alone
+    assert gap.tgt == [pipeline.FILL_MARK + " EINE LUECKE ZWEITE ZEILE"]
+    assert "machine translated" in spec.translation_source_note
+
+
+def test_fill_missing_is_off_by_default():
+    assert _spec().fill_missing is False
+
+
+
+def test_translate_by_stanza_hands_the_model_each_block(tmp_path):
+    p = tmp_path / "verse.txt"
+    p.write_text("Kapitel 1\n\nRose a\nRose b\n\nTulpe a\nTulpe b\n", encoding="utf-8")
+    seen = []
+
+    def spy(texts):
+        seen.extend(texts)
+        return [t.upper() for t in texts]
+    translators.register("de", spy)
+    spec = _spec(mode="verse", src_path=str(p), translate=True, translate_by="stanza")
+    chapters = pipeline._chapters_from_machine_translation(spec, lambda _m: None)
+    assert seen == ["Rose a Rose b", "Tulpe a Tulpe b"]
+    beads = [b for ch in chapters for b in ch.beads]
+    assert [b.src for b in beads] == [["Rose a", "Rose b"], ["Tulpe a", "Tulpe b"]]
+
+
+def test_align_block_aligns_blocks_and_puts_the_lines_back():
+    src = "\n".join(f"original line {i} with some words" for i in range(16))
+    tgt = "\n".join(f"translated line {i} with some words" for i in range(16))
+    spec = _spec(mode="verse", verse_align="line", aligner="gale-church", align_block=4)
+    chapters = pipeline._align_paired([(("", src), ("", tgt))], spec, lambda _m: None)
+    beads = chapters[0].beads
+    assert beads and all(b.lines for b in beads)
+    # Every line is still there, one per row, in order -- never a joined block.
+    assert [ln for b in beads for ln in b.src] == src.splitlines()
+    assert [ln for b in beads for ln in b.tgt] == tgt.splitlines()
+    assert all("\n" not in ln for b in beads for ln in b.src + b.tgt)
+
+
+def test_align_block_is_off_by_default():
+    assert _spec().align_block == 0
+
+
+def test_fill_below_treats_a_badly_matched_bead_as_a_hole(tmp_path, monkeypatch):
+    from book_creator import mt_cache
+    from book_creator.model import Bead, Chapter
+    monkeypatch.setattr(mt_cache, "DB_PATH", str(tmp_path / "mt.db"))
+    translators.register("de", upper)
+    good = Bead(src=["gut"], tgt=["good"], score=0.6)
+    stray = Bead(src=["verloren"], tgt=["something about a different page"], score=0.05)
+    unscored = Bead(src=["ohne"], tgt=["no score"])        # a backend that does not score
+    spec = _spec(mode="prose", fill_missing=True, fill_below=0.12)
+    pipeline._fill_missing_translation([Chapter(title="c", beads=[good, stray, unscored])],
+                                       spec, lambda _m: None)
+    assert good.tgt == ["good"] and unscored.tgt == ["no score"]
+    assert stray.tgt == [pipeline.FILL_MARK + " VERLOREN"]
+
+
+def test_the_mt_aligner_scores_each_bead():
+    from book_creator import align_mt
+
+    def echo(texts):
+        return list(texts)
+    beads = align_mt.mt_align(["the red fox runs", "a blue bird sings"],
+                              ["the red fox runs", "a blue bird sings"], translator=echo)
+    assert all(b.score is not None and b.score > 0.9 for b in beads)
+
+
+def test_ollama_translator_marks_a_unit_it_cannot_translate_and_goes_on():
+    import requests
+
+    tr = translators.OllamaTranslator("test-model", "grc", batch=2)
+    calls = {"n": 0}
+
+    def ask(numbered):
+        calls["n"] += 1
+        if "bad" in numbered:
+            raise requests.ReadTimeout("model looped")
+        return "\n".join(f"{i}. ok {i}" for i in range(1, numbered.count("\n") + 2))
+    tr._ask = ask
+    out = tr(["good one", "bad one", "good two"])
+    # The batch containing the bad unit is retried a unit at a time; only that
+    # unit is given up on, and the book still has the other two translated.
+    assert out[1] == "[not translated]"
+    assert out[0] != "[not translated]" and out[2] != "[not translated]"
+    assert tr.failures == 1
+
+
+def test_ollama_translator_joins_a_single_unit_the_model_split_into_sentences():
+    # Asked for one unit, the model sometimes numbers each sentence of its answer.
+    reply = "1. First sentence.\n2. Second sentence.\n3. Third."
+    assert translators.OllamaTranslator._parse(reply, 1) == ["First sentence. Second sentence. Third."]
+    # For a batch the numbers still mean one line each, and a gap is still refused.
+    assert translators.OllamaTranslator._parse("1. a\n3. c", 3) is None
+
+
+def test_a_looping_translation_is_recognised():
+    from book_creator import mt_cache
+    loop = "He can, " * 20
+    fine = "The sun rose over the hills and the shepherds drove their flocks down to the river."
+    assert mt_cache.degenerate(loop)
+    assert not mt_cache.degenerate(fine)
+    assert not mt_cache.degenerate("No, no, no.")          # short: a real answer can repeat
+
+
+def test_the_cache_translates_a_looping_unit_again_in_pieces(tmp_path):
+    from book_creator import mt_cache
+
+    class Looper:
+        model_name = "looper"
+
+        def __call__(self, texts):
+            # Whole units loop; short pieces translate.
+            return [("He can, " * 20) if len(t.split()) > 12 else "ok " + t.split()[0] for t in texts]
+
+    long_text = " ".join(f"w{i}" for i in range(30))
+    out = mt_cache.translate(Looper(), [long_text], db_path=tmp_path / "mt.db")
+    assert not mt_cache.degenerate(out[0])
+    assert out[0].startswith("ok w0") and "ok w10" in out[0]

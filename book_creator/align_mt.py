@@ -52,7 +52,10 @@ def mt_align(src: list[str], tgt: list[str], *, translator, log=None,
     if not tgt:
         return [Bead(src=[s], tgt=[]) for s in src]
 
-    mt = translator(list(src))  # rough English for each source segment
+    from . import mt_cache
+    # Rough English for each source segment. Cached: a rebuild with a changed
+    # alignment setting would otherwise re-translate the whole original.
+    mt = mt_cache.translate(translator, list(src), log=log)
     if len(mt) != len(src):
         raise ValueError(f"translator returned {len(mt)} items for {len(src)} inputs")
 
@@ -72,4 +75,8 @@ def mt_align(src: list[str], tgt: list[str], *, translator, log=None,
         return (1.0 - sim) + _MERGE_PENALTY * (ds + dt - 2)
 
     path = run_dp(len(src), len(tgt), cost_fn, steps=_STEPS, band=band)
-    return beads_from_path(src, tgt, path)
+    beads = beads_from_path(src, tgt, path)
+    for bead, (pi, pj, ds, dt) in zip(beads, path):
+        if ds and dt:
+            bead.score = _cosine(pooled(sv, pi, ds), pooled(tv, pj, dt))
+    return beads

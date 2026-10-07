@@ -253,13 +253,14 @@ class OllamaTranslator:
 
     def __init__(self, model: str, src_lang: str = "fr", *,
                  host: str = "http://localhost:11434", batch: int = 12,
-                 context: str = "", timeout: int = 600):
+                 context: str = "", timeout: int = 300):
         self.model_name = model
         self.src_lang = src_lang
         self.host = host.rstrip("/")
         self.batch = batch
         self.context = context
         self.timeout = timeout
+        self.failures = 0           # units given up on; see _one
 
     def _ask(self, numbered: str) -> str:
         import requests
@@ -276,7 +277,10 @@ class OllamaTranslator:
             f"{self.host}/api/chat",
             json={"model": self.model_name, "stream": False, "think": False,
                   "messages": [{"role": "user", "content": prompt}],
-                  "options": {"temperature": 0.2}},
+                  # A cap on the reply: damaged Greek has sent the model into a loop
+                  # that ran until the HTTP timeout and took the whole book with it.
+                  "options": {"temperature": 0.2,
+                              "num_predict": min(2500, 400 + len(numbered) // 2)}},
             timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()["message"]["content"]
@@ -290,14 +294,23 @@ class OllamaTranslator:
             m = re.match(r"\s*(\d+)[.)]\s*(.*)$", line)
             if m:
                 got[int(m.group(1))] = m.group(2).strip()
+        if n == 1 and got:
+            # One unit asked for: a model that renders a long unit as several
+            # sentences numbers each of them. They are all the one answer.
+            return [" ".join(got[k] for k in sorted(got) if got[k])]
         if set(got) != set(range(1, n + 1)):
             return None
         return [got[i] for i in range(1, n + 1)]
 
     def _numbered(self, lines: list[str]) -> list[str] | None:
         """Ask for `lines` as one numbered list; None if the answer is short."""
+        import requests
+
         numbered = "\n".join(f"{i}. {ln}" for i, ln in enumerate(lines, 1))
-        return self._parse(self._ask(numbered), len(lines))
+        try:
+            return self._parse(self._ask(numbered), len(lines))
+        except requests.RequestException:
+            return None             # a timeout is retried like a misnumbered reply
 
     def _one(self, text: str) -> str:
         """One segment on its own, for when a batch came back misnumbered."""
@@ -306,9 +319,15 @@ class OllamaTranslator:
             out = self._numbered(parts)
             if out is not None:
                 return "\n".join(out)
-        raise ValueError(
-            f"{self.model_name} did not return {len(parts)} numbered lines "
-            f"for: {parts[0][:50]!r}")
+        # Two tries and still no usable reply. One unit the model cannot read is
+        # not worth a whole book (it ended a 400-line build once), so it is marked
+        # as untranslated and counted, and the rest goes on.
+        import sys
+
+        self.failures += 1
+        print(f"  ! {self.model_name} gave no usable translation for: {parts[0][:50]!r}",
+              file=sys.stderr)
+        return "\n".join(["[not translated]"] * len(parts))
 
     def __call__(self, texts: list[str]) -> list[str]:
         results: list[str] = [""] * len(texts)

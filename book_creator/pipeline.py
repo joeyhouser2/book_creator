@@ -515,6 +515,44 @@ def _align_stanzas(src_body: str, tgt_body: str, spec: BookSpec,
     return beads
 
 
+def _machine_translator(spec: BookSpec, log):
+    """The translator for `spec.src_lang`: the one registered, else a built-in.
+
+    Shared by the translate-everything path and by `fill_missing`, which only
+    translates what the human translation does not cover."""
+    from . import translators
+
+    translator = translators.get(spec.src_lang)
+    if translator is None:
+        # Fall back to the built-in model for this language, so asking for a
+        # translation is one decision rather than two. The web UI has no way to
+        # register one, and on the command line --translate alone should work.
+        # Latin and Greek have no Opus-MT model worth the name, but the sibling
+        # latin repo has fine-tunes for exactly them -- see latin_translator.
+        if spec.src_lang in latin_translator.MODELS:
+            ok, why = latin_translator.available()
+            if ok:
+                translator = latin_translator.register(spec.src_lang)
+                log(f"• No translator registered for {spec.src_lang}; using the "
+                    f"latin repo's {translator.model} at {why}.")
+            else:
+                raise ValueError(
+                    f"translate is on for {spec.src_lang!r}, which needs the "
+                    f"latin repo's fine-tuned model, but: {why}")
+        elif not translators.has_local(spec.src_lang):
+            raise ValueError(
+                f"translate is on, but there is no translator for "
+                f"{spec.src_lang!r} and no built-in model for it either. Known: "
+                f"{', '.join(sorted(translators.LOCAL_MODELS))}. Register your "
+                "own — see book_creator/translators.py.")
+        elif translator is None:
+            translator = translators.use_local(spec.src_lang)
+            log(f"• No translator registered for {spec.src_lang}; using the "
+                f"built-in {translator.model_name} (downloaded once, ~300 MB). "
+                "It reads the modern language only.")
+    return translator
+
+
 def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
     """Generate the missing English side with a registered translator.
 
@@ -546,34 +584,7 @@ def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
             "translate is on, but no original was given — only a translation. "
             "The machine-translation path renders the ORIGINAL into English; "
             "it will not reconstruct a lost original from its translation.")
-    translator = translators.get(spec.src_lang)
-    if translator is None:
-        # Fall back to the built-in model for this language, so asking for a
-        # translation is one decision rather than two. The web UI has no way to
-        # register one, and on the command line --translate alone should work.
-        # Latin and Greek have no Opus-MT model worth the name, but the sibling
-        # latin repo has fine-tunes for exactly them -- see latin_translator.
-        if spec.src_lang in latin_translator.MODELS:
-            ok, why = latin_translator.available()
-            if ok:
-                translator = latin_translator.register(spec.src_lang)
-                log(f"• No translator registered for {spec.src_lang}; using the "
-                    f"latin repo's {translator.model} at {why}.")
-            else:
-                raise ValueError(
-                    f"translate is on for {spec.src_lang!r}, which needs the "
-                    f"latin repo's fine-tuned model, but: {why}")
-        elif not translators.has_local(spec.src_lang):
-            raise ValueError(
-                f"translate is on, but there is no translator for "
-                f"{spec.src_lang!r} and no built-in model for it either. Known: "
-                f"{', '.join(sorted(translators.LOCAL_MODELS))}. Register your "
-                "own — see book_creator/translators.py.")
-        elif translator is None:
-            translator = translators.use_local(spec.src_lang)
-            log(f"• No translator registered for {spec.src_lang}; using the "
-                f"built-in {translator.model_name} (downloaded once, ~300 MB). "
-                "It reads the modern language only.")
+    translator = _machine_translator(spec, log)
 
     log(f"• Fetching source ({spec.src_lang})…")
     divisions = fetch.load_divisions(path=spec.src_path, gid=spec.src_gutenberg_id,
@@ -584,18 +595,27 @@ def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
     log(f"• Divisions used: {len(divisions)}")
 
     chapters: list[Chapter] = []
+    bodies: list[str] = []
     for title, body in divisions:
         segs = segment.segment(body, spec.mode, spec.src_lang)
         if spec.clean:
             segs = clean.clean_segments(segs)
         if segs:
             chapters.append(Chapter(title=title, src_segments=segs))
+            bodies.append(body)
 
-    by_sentence = spec.mode == "verse" and spec.translate_by == "sentence"
     # Per chapter, the runs of source lines that are translated as one unit.
-    # A unit is a single line unless the book translates by sentence.
-    units = [segment.sentence_groups(ch.src_segments) if by_sentence
-             else [[s] for s in ch.src_segments] for ch in chapters]
+    # A unit is a single line unless the book translates by sentence (the lines
+    # between full stops) or by stanza (the blocks the source itself sets off).
+    verse = spec.mode == "verse"
+    if verse and spec.translate_by == "stanza":
+        units = [[list(st) for st in segment.stanzas(b)] for b in bodies]
+        for ch, ch_units in zip(chapters, units):
+            ch.src_segments = [ln for u in ch_units for ln in u]
+    elif verse and spec.translate_by == "sentence":
+        units = [segment.sentence_groups(ch.src_segments) for ch in chapters]
+    else:
+        units = [[[s] for s in ch.src_segments] for ch in chapters]
 
     # Translated across the whole book rather than per chapter, so the model is
     # loaded once and the count means something. mt_cache does the chunking and
@@ -629,6 +649,36 @@ def _chapters_from_machine_translation(spec: BookSpec, log) -> list[Chapter]:
     return chapters
 
 
+FILL_MARK = "†"      # dagger: this English is a machine's, not the translator's
+
+
+def _fill_missing_translation(chapters: list[Chapter], spec: BookSpec, log) -> None:
+    """Machine-translate every bead that has an original and no translation."""
+    from . import mt_cache
+
+    def is_hole(b: Bead) -> bool:
+        if not b.src:
+            return False
+        if not b.tgt_text.strip():
+            return True
+        return bool(spec.fill_below) and b.score is not None and b.score < spec.fill_below
+
+    todo = [b for ch in chapters for b in ch.beads if is_hole(b)]
+    if not todo:
+        log("• fill_missing: the translation covers every passage; nothing to fill.")
+        return
+    translator = _machine_translator(spec, log)
+    log(f"• fill_missing: machine-translating {len(todo)} passage(s) the published "
+        f"translation does not cover.")
+    english = mt_cache.translate(translator, [" ".join(b.src) for b in todo], log=log)
+    for bead, text in zip(todo, english):
+        bead.tgt = [f"{FILL_MARK} {text}".strip()]
+    note = (f"Passages marked {FILL_MARK} have no counterpart in the published translation "
+            "and were machine translated for this edition.")
+    if note not in (spec.translation_source_note or ""):
+        spec.translation_source_note = " ".join(filter(None, [spec.translation_source_note, note]))
+
+
 def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
     """Segment and align each already-paired division into beads.
 
@@ -656,9 +706,24 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
             if not verse_note_logged:
                 log("• Verse mode: pairing line against line.")
                 verse_note_logged = True
-            beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
-                                   src_lang=spec.src_lang, log=log,
-                                   band=max(64, abs(len(src_segs) - len(tgt_segs)) + 32))
+            n = spec.align_block
+            if n > 1:
+                # Align blocks of n lines, then put the lines back: the unit the
+                # aligner scores must be big enough to share words with its
+                # counterpart, but the page should still set verse as verse.
+                src_u = ["\n".join(src_segs[i:i + n]) for i in range(0, len(src_segs), n)]
+                tgt_n = max(1, round(n * len(tgt_segs) / max(1, len(src_segs))))
+                tgt_u = ["\n".join(tgt_segs[i:i + tgt_n]) for i in range(0, len(tgt_segs), tgt_n)]
+                beads = aligners.align(src_u, tgt_u, method=spec.aligner,
+                                       src_lang=spec.src_lang, log=log,
+                                       band=max(24, abs(len(src_u) - len(tgt_u)) + 24))
+                for bead in beads:
+                    bead.src = [ln for blk in bead.src for ln in blk.split("\n")]
+                    bead.tgt = [ln for blk in bead.tgt for ln in blk.split("\n")]
+            else:
+                beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
+                                       src_lang=spec.src_lang, log=log,
+                                       band=max(64, abs(len(src_segs) - len(tgt_segs)) + 32))
             for bead in beads:
                 bead.lines = True
         elif spec.mode == "verse" and spec.verse_align == "stanza":
@@ -692,6 +757,8 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
         chapters.append(Chapter(title=t_title or s_title, src_segments=src_segs,
                                 tgt_segments=tgt_segs, beads=beads))
 
+    if spec.fill_missing:
+        _fill_missing_translation(chapters, spec, log)
     total_beads = sum(len(c.beads) for c in chapters)
     log(f"• Aligned into {total_beads} bead(s) across {len(chapters)} chapter(s).")
     return chapters
