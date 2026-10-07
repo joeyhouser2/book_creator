@@ -1,0 +1,43 @@
+# Basinio da Parma, Meleagris, Latin with a machine English.
+#
+# No translation exists in the public domain (Smets's annotated English with
+# facing Latin is forthcoming from Brill), so the English is generated with the
+# latin repo's fine-tuned NLLB model and disclosed as such. The Latin is
+# Drudi's 1794 Rimini edition, from Google's own OCR text layer of the print;
+# python fetch_basinio.py writes input/meleagris_la.txt from the PDF.
+#
+# Run with:  python make_book.py config/meleagris.yaml
+
+books:
+  - title: "Meleagris"
+    author: "Basinio da Parma"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/meleagris_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence   # NLLB reads sentences; one line at a time it gets half a clause
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#3b4a2f"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Basinio da Parma
+        (c. 1425&ndash;1457) is in the public domain; it is set from Lorenzo
+        Drudi's 1794 Rimini edition, from machine-read text that has not been
+        proofread. The English is a machine translation made for this
+        edition, not a published human translation, and will contain errors.
+    cover:
+      paper: white
+      blurb: "Basinio's Latin epic of the Calydonian boar hunt, in three books &mdash; the Latin of Drudi's 1794 edition with a machine English translation."
+    epub: true

@@ -1,0 +1,55 @@
+# Ocland, Anglorum Praelia and Elizabetha (1580): Latin with Sharrock's 1585 English.
+#
+# Sharrock's English is the Text Creation Partnership transcription A08452,
+# public domain since 2015. It was keyed from damaged microfilm: 362 lines carry
+# an illegible word or part of one (shown as [...]), and several whole pages are
+# missing. Latin that has no English beside it after alignment is machine
+# translated by the latin repo's NLLB model, marked with a dagger and disclosed
+# on the copyright page (fill_missing). The Latin is the 1580 edition's OCR from
+# archive.org, corrected, from the poem's first line.
+#
+# python fetch_ocland.py writes the inputs. Run with:  python make_book.py config/ocland.yaml
+
+books:
+  - title: "Anglorum Praelia"
+    author: "Christopher Ocland"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/ocland_la_poem.txt"
+    tgt_path: "input/ocland_sharrock_en.txt"
+    mode: verse
+    verse_align: line
+    aligner: mt
+    fill_missing: true
+    align_block: 8        # blocks of eight lines: one line is too few words to match
+    fill_below: 0.15      # a block whose English is about something else: the page that belonged there is gone
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "John Sharrock, 1585 (EEBO-TCP A08452) — public domain."
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: baroque
+      color: "#4a2a1a"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "John Sharrock"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin of Christopher Ocland's
+        <i>Anglorum Praelia</i> and <i>Elizabetha</i> (1580) is in the public
+        domain; it is set from machine-read text that has not been proofread.
+        The English translation by John Sharrock (1585) is in the public
+        domain, from the Text Creation Partnership transcription of a damaged
+        microfilm: words it could not read are shown as [...], and passages for
+        which no English survives are marked &dagger; and were machine
+        translated for this edition.
+    cover:
+      paper: white
+      blurb: "Christopher Ocland's Latin epic of English victories from Edward III to Elizabeth, with John Sharrock's 1585 English verse translation facing it."
+    epub: true

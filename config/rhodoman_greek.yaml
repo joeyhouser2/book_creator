@@ -1,0 +1,734 @@
+# Rhodoman's Greek verse, one book per work, with a machine English.
+#
+# The Greek is from rhodomanologia.de (Gärtner and Weise's edition), original text
+# only: their German translation and apparatus are not taken. The English is made
+# by a local chat model (qwen3:14b), because the latin repo's Greek NLLB models,
+# trained on prose, turn Doric epic into nonsense. The licence of the site is
+# unresolved, so these are working builds, not for sale until the editors are asked.
+#
+# python fetch_rhodoman.py writes the inputs; python make_rhodoman_configs.py this file.
+# Run with:  python make_book.py config/rhodoman_greek.yaml
+
+translators:
+  grc:
+    ollama: "qwen3:14b"
+    batch: 6
+    context: >-
+      This is Greek verse by Laurentius Rhodoman (1546-1606), a German humanist,
+      written in imitation of Homer and the Homeric Hymns, often in Doric or Epic
+      dialect; Latin names are people and places.
+
+books:
+  - title: "Elegy to Rhodoman and Michael Neander"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/frei-eleg_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, an elegy dedicated to Rhodoman by Frey, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Letter-Poem from Matthaeus Gothus to Rhodoman"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/goth-rhod_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a verse letter to Rhodoman, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Arion"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-arion_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a Doric epyllion on the poet Arion's rescue by a dolphin, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Bioporikon"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-biop_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a poetic autobiography addressed to Martin Crusius, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Two Epicedia for Hermann Carstens"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-carst-1-2_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, two funeral poems, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Poem for Crusius' Turcograecia"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-crus-turc_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a prefatory poem, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Dedicatory Poem to Dio's Trojan Oration"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-dion-praef_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a dedicatory poem, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Letter-Poem to Martin Crusius, 1581"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-ep-crus-2_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a verse letter, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Letter-Poem to Martin Crusius, 1582"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-ep-crus-3_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a verse letter, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Letter-Poem to Christoph Frey"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-frei_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a verse letter, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Historia Ecclesiae"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-hist-eccl_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a verse history of the Church, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Hymnus Scholasticus"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-hym-schol_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a Greek-Latin school hymn, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Ilias Parva, Part I"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-il-parv-hom-1-24_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, Greek and Latin summaries of Homer's Iliad, 1604, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Ilias Parva, Part II"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-il-parv-quint-1-14_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, Greek and Latin summaries of Quintus of Smyrna, 1604, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Ilfelda Hercynica"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-ilf-herc_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a prize poem in praise of Ilfeld, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Lutherus"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-luth-1-2_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a hexametric didactic poem on Luther in two books, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Dorian Lament for Luther"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-luth-dor_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a Doric funeral lament, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Consolation for David Chytraeus"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-par-chytr_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a poem of consolation, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Poem for Reiner Reineccius"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-phil-rein_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a contribution and consolation poem, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Periochae to the Last Three Books of Quintus"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-quint-per-1-3_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, Greek and Latin summaries, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Dedicatory Preface to Quintus of Smyrna"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-quint-praef_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a poetic preface to the edition of the last three books, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Theologia Christiana"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-theol-christ_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a theological didactic poem, from a manuscript, in the original Greek with a machine English translation."
+    epub: true
+  - title: "Congratulatory Poem for Joachim Westphal"
+    author: "Laurentius Rhodoman"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-westph_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a congratulatory poem, in the original Greek with a machine English translation."
+    epub: true

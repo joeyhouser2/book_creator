@@ -148,7 +148,7 @@ Horrisono, fulgent auro, fulvoque orichalco.
 Qualis ubi sylvam in densam furit ignis anhelas
 Effundens late flammas, in montibus altis
 Apparet rubor, innumeris incendia lucem
-Sparsa locis tendunt, micat hine Vulcanus et illine:
+Sparsa locis tendunt, micat hine Vulcanus et illinc:
 Talis ab aere dabat radiis percussa coruscis
 Lumina Solis apex surgentis, et omnia juxta
 Complebat nova lux flammis geminata refusis.
@@ -379,7 +379,7 @@ Ausonidum, et longo committere praelia bello?
 Hos ne morae piguit? maneant, dum compleat orbem
 Luna semel, populi; bellis imponere finem
 Decretum Alphonso: Regem ne reddite vestrum
-Omnibus aeternum me dedecus esse faturis.
+Omnibus aeternum me dedecus esse futuris.
 Non tam arguerim vos, si mora longa fatigat,
 Hesperidae, multos quos Jupiter altus in annos
 Distulit, at patrios tamen hic rediisse penates
@@ -798,7 +798,7 @@ Munere servata est; non te Driopeïa Mater
 Eripuit duris scelerati faucibus Orci.
 Tum vero accelerant omnes, urbique propinquant,
 Clamoremque ferunt convexi ad sidera coeli
-Hinc Tyrrhena manus, illine Taraconia pubes.
+Hinc Tyrrhena manus, illinc Taraconia pubes.
 Tum procul horrifico strepitu cava concha tremendum
 Rauca dedit sonitum, crepuitque per aethera clangor:
 Nec minus incensi bellorum pectus amore
@@ -1083,7 +1083,7 @@ Hoc non magnanimi jecerunt turbine Graii
 Grandia saxa super periturae moenia Trojae;
 Hoc non Roma potens rerum, fortisque Saguntus,
 Non Poeni, non magnanimum Rex laetus equorum
-Maximus Acarides, cui tantum Epiros honorem
+Maximus Aeacides, cui tantum Epiros honorem
 Praestat adhuc, non Pellaeo stirps tanta Philippo
 Edita: verùm aliis inventum tale per oras
 Diversas jam tum, et totum compleverat Orbem.
@@ -3930,7 +3930,7 @@ Mergeret, aut pelagi diversâ bellua formâ
 Dentibus, atque avidam morsu conferret in alvum
 Delphini, aut magno versantia corpore Cete;
 Qualia monstrifero nascuntur multa profundo.
-Talia volventem fluctu gravis aestis amaro
+Talia volventem fluctu gravis aestus amaro
 Pertulit ad cautes, invisaque saxa, nec ante
 Agnita, quam tabulâ descendit in aequora fractâ,
 Nam Boreas magnis incumbens viribus undas
@@ -4142,7 +4142,7 @@ Sum genus Ausonides Malatestae a nomine Gentis;
 Sanguinis hujus enim laetor me ab stirpe creatum:
 Nomen Sismundus cunctis notissimus oris,
 Insignis bello, Patriae defensor avitae,
-Italian ex avidis Alphonsi faucibus unus
+Italiam ex avidis Alphonsi faucibus unus
 Qui rapui, et victos Tyrrheno in littore Celtas
 His oculis vidi. Dixit. Cui maximus aevo
 Retulit Hesperides: Italûm fortissime, salve,
@@ -6915,7 +6915,7 @@ Pectora, dura virum non ulli membra labori
 Subdita, non ferro, non cedere fortibus armis,
 Non unum a totâ superari classe: quis alter
 Alcides, Theseusve manu praestantior olli?
-Et taurum ingentem, et fulvuin traxere leonem,
+Et taurum ingentem, et fulvum traxere leonem,
 Indomitas impune feras: Tu tanta virorum
 Corpora cum magnâ traxisti, Lyde, carina.
 O dextram, indignum! crudeli vulnere raptam;

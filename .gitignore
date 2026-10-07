@@ -55,3 +55,7 @@ config/settings.json
 
 # Exported from the latin repo's corpus; rebuildable, 10 MB.
 cache/latin_vocab.tsv
+
+# Rhodoman: the site (rhodomanologia.de) states no licence, so its text is not redistributed.
+# python fetch_rhodoman.py regenerates it from cache/rhodoman/html/.
+input/rhodoman/

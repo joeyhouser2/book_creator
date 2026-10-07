@@ -1,0 +1,45 @@
+# Wolfram von Eschenbach, Parzival: Middle High German with Jessie Weston's 1894 English.
+#
+# The German is Bibliotheca Augustana's text (fetch_sources.py parzival), 24,812
+# verse lines in 16 books. Weston's English is prose in two Gutenberg volumes
+# (#47297, #47298), assembled into 16 clean books by fetch_parzival.py. Verse
+# cannot be paired line by line with prose, so each book is set block fashion:
+# the German, then the English.
+#
+# Run with:  python make_book.py config/parzival.yaml
+
+books:
+  - title: "Parzival"
+    author: "Wolfram von Eschenbach"
+    src_lang: de
+    tgt_lang: en
+    src_path: "input/parzival_mhg.txt"
+    tgt_path: "input/parzival_weston_en.txt"
+    mode: verse
+    verse_align: block
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "Jessie L. Weston, 1894 — public domain."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: medieval
+      color: "#5a2d82"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "Jessie L. Weston"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Middle High German text of Wolfram von
+        Eschenbach's <i>Parzival</i> (c. 1210) is in the public domain; it is set
+        from the Bibliotheca Augustana's transcription. The English translation by
+        Jessie L. Weston (1894) is in the public domain.
+    cover:
+      paper: white
+      blurb: "Wolfram von Eschenbach's Arthurian Grail romance in the original Middle High German, with Jessie Weston's 1894 English translation."
+    epub: true

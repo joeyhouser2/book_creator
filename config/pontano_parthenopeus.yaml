@@ -1,0 +1,43 @@
+# Giovanni Pontano, Parthenopeus, Latin with a machine English.
+#
+# No public-domain English translation is held here, so the English is generated with the
+# latin repo's fine-tuned NLLB model and disclosed as such. The Latin is
+# from the Poeti d'Italia in lingua latina database (poetiditalia.it);
+# python fetch_sources.py pontano writes it.
+#
+# Run with:  python make_book.py config/pontano_parthenopeus.yaml
+
+books:
+  - title: "Parthenopeus"
+    author: "Giovanni Pontano"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/pontano_parthenopeus_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence   # NLLB reads sentences; one line at a time it gets half a clause
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#7a1f2b"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Giovanni Pontano
+        (1426&ndash;1503) is in the public domain; it is taken from the
+        database <i>Poeti d'Italia in lingua latina</i> (poetiditalia.it) and has
+        not been proofread against a printed edition. The English is a machine
+        translation made for this edition, not a published human translation,
+        and will contain errors.
+    cover:
+      paper: white
+      blurb: "Pontano's <i>Parthenopeus</i>, his Latin love elegies to his Neapolitan circle &mdash; in Latin with a machine English translation."
+    epub: true

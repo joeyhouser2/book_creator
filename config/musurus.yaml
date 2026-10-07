@@ -1,0 +1,45 @@
+# Marcus Musurus, Ode to Plato (1513): the Greek with William Roscoe's 1805 English.
+#
+# The Greek is the poem as printed in Dijkstra & Hermans (Akroterion 60, 2015,
+# after Legrand 1885); only the poem is taken, not their translation or notes.
+# Roscoe's English (Life and Pontificate of Leo the Tenth, vol. 2) is a free
+# rhymed rendering of all 154 lines, so it is paired by block, not line by line.
+# It is a very short book. python fetch_musurus.py writes the inputs.
+#
+# Run with:  python make_book.py config/musurus.yaml
+
+books:
+  - title: "Ode to Plato"
+    author: "Marcus Musurus"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/musurus_grc.txt"
+    tgt_path: "input/musurus_en.txt"
+    mode: verse
+    verse_align: block
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "William Roscoe, 1805 — public domain."
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#1f3b57"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "William Roscoe"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek poem of Marcus Musurus (c.
+        1470&ndash;1517), printed in 1513 as the dedication of the Aldine
+        Plato, is in the public domain, as is Roscoe's English rendering
+        (1805), which follows the sense of the ode freely rather than line for
+        line.
+    cover:
+      paper: white
+      blurb: "The Cretan scholar Marcus Musurus' Homeric ode to Plato, prefixed to the 1513 Aldine edition, with William Roscoe's rhymed English."
+    epub: true

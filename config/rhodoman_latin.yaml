@@ -1,0 +1,289 @@
+# Rhodoman's Latin verse, one book per work, with a machine English.
+#
+# From rhodomanologia.de (Gärtner and Weise's edition), original text only. The
+# English is the latin repo's NLLB model, translated a sentence at a time. The
+# licence of the site is unresolved: working builds, not for sale until the editors
+# are asked.
+#
+# Run with:  python make_book.py config/rhodoman_latin.yaml
+
+books:
+  - title: "Thomas Mauer's Reply to Rhodoman"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/mau-rhod_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a reply poem, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Aspastikon"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-asp_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, an autobiographical poem on a change of post, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Two Occasional Poems"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-carm-1-3_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a wedding poem and another, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Two Poems for Koch's Jonah Paraphrase"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-coc-ion-1-2_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, two accompanying poems, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Epitaph for a Schwerin Court Preacher"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-inscr-burgg_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, an inscriptional epitaph, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Iter Lipsicum"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-it-lips_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a literary description of a journey to Leipzig, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Dedicatory Poem to the Lutherus"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-luth-epist_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a Latin dedicatory poem, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Friendship Poem to Thomas Mauer"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-mau_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a request for friendship, in the original Latin with a machine English translation."
+    epub: true
+  - title: "Poem for Moller's Sermons on Isaiah"
+    author: "Laurentius Rhodoman"
+    src_lang: la
+    tgt_lang: en
+    src_path: "input/rhodoman/rhod-moll_la.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#4a3a1f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Latin text of Laurentius Rhodoman
+        (1546&ndash;1606) is in the public domain; it is taken from the digital
+        edition at rhodomanologia.de, original text only. The English is a machine
+        translation made for this edition, not a published human translation, and
+        will contain errors.
+    cover:
+      paper: white
+      blurb: "Laurentius Rhodoman, a prefatory poem, in the original Latin with a machine English translation."
+    epub: true

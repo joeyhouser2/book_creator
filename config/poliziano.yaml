@@ -1,0 +1,53 @@
+# Poliziano, Greek epigrams (1470s), with a machine English.
+#
+# The Greek is from the 1553 Basel Opera (Getty Research Institute copy,
+# archive.org gri_33125008502938), pages 635-679, re-read with Tesseract's `grc`
+# model because the scan's own text layer is badly garbled (the Latin letters of its
+# OCR mix with the Greek). Even so it is partly damaged -- accents and breathings,
+# and the printer's ligatures, are misread -- and only lines with at least two common
+# Greek words are kept, so 411 lines of a longer section survive. The English is
+# made by a local chat model from that damaged Greek and will be wrong in places.
+#
+# Run with:  python make_book.py config/poliziano.yaml
+
+translators:
+  grc:
+    ollama: "qwen3:14b"
+    batch: 6
+    context: >-
+      These are Greek epigrams by the Italian humanist Angelo Poliziano (1454-1494),
+      many of them short elegiac poems, printed in 1553. The text was read by OCR
+      from the printed page and contains errors; give the most plausible reading.
+
+books:
+  - title: "Greek Epigrams"
+    author: "Angelo Poliziano"
+    src_lang: grc
+    tgt_lang: en
+    src_path: "input/poliziano_epigrammata_grc.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: GFSDidot
+    decorations:
+      margin: corners
+      chapter: classical
+      color: "#3b4a2f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Greek epigrams of Angelo Poliziano
+        (1454&ndash;1494) are in the public domain; the text is read by machine from
+        a 1553 printing and has not been proofread, and about a fifth of the
+        epigram section survives the reading. The English is a machine translation
+        made for this edition from that damaged text, and will contain errors.
+    cover:
+      paper: white
+      blurb: "Poliziano's Greek epigrams, in the original Greek (machine-read from the 1553 Basel edition) with a machine English translation."
+    epub: true
