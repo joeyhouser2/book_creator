@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -1109,7 +1110,9 @@ def _pair_by_embedding(lines, rubrics, numbers, idx, ss):
 # the embedding aligner could only get the stanza right. Answers are cached,
 # so a rebuild asks again only about blocks whose text has changed.
 LLM_MODEL = "qwen3:14b"
-LLM_HOST = "http://localhost:11434"
+# CHANDOS_LLM_HOST points the pairing at another Ollama -- e.g. one pinned to
+# the GPU the other jobs are not using.
+LLM_HOST = os.environ.get("CHANDOS_LLM_HOST", "http://localhost:11434")
 LLM_CACHE = Path("cache") / "chandos-pairing.json"
 
 
