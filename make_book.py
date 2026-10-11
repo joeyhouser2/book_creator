@@ -200,6 +200,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--edition-year", type=int, help="Edition year for the copyright page.")
     p.add_argument("--isbn", default="", help="ISBN for the copyright page.")
     p.add_argument("--translator", default="", help="Translator name (public-domain credit).")
+    p.add_argument("--source-credit", default="",
+                   help="Where the original text came from, for the copyright page "
+                        "(default: Project Gutenberg).")
     p.add_argument("--cover", action="store_true",
                    help="Also generate a wraparound cover PDF (<slug>-cover.pdf).")
     p.add_argument("--cover-style", choices=cover.ALL_COVER_STYLES,
@@ -441,6 +444,7 @@ def main(argv: list[str] | None = None) -> int:
                 year=args.edition_year,
                 isbn=args.isbn,
                 translator=args.translator,
+                source=args.source_credit,
             ),
             split_long_divisions=args.split_sections,
             cover=CoverSpec(enabled=args.cover, style=args.cover_style,

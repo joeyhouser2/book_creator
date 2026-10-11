@@ -39,6 +39,7 @@ def _parse_copyright(raw) -> CopyrightSpec:
         isbn=str(raw.get("isbn", "")),
         translator=raw.get("translator", ""),
         rights=raw.get("rights"),
+        source=raw.get("source", ""),
     )
 
 

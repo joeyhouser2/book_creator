@@ -108,6 +108,7 @@ class CopyrightSpec:
     isbn: str = ""
     translator: str = ""       # translator name, for the public-domain credit
     rights: str | None = None  # full override of the generated rights text
+    source: str = ""           # where the original text came from; default is Project Gutenberg
 
 
 @dataclass
