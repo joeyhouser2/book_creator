@@ -101,6 +101,7 @@ class VerseLine:
     manuscript: str         # left column, as the scribe wrote it
     normalised: str         # right column, as the editors printed it
     page: int | None = None  # page of the scan it was read from, 1-based
+    read: bool = False       # manuscript column checked against the page by eye
 
 
 # --------------------------------------------------------------------------- #
@@ -656,7 +657,39 @@ def _manuscript(text: str) -> str:
     # Every such token goes except a lone siglum, which the next step turns
     # into the ⁊ it stands for.
     text = re.sub(r"^(?:(?![%4+*¢^]\s)[^\sA-Za-z]+\s+)+", "", text.strip())
+    text = _QUE_SIGN.sub(lambda m: next(g for g in m.groups() if g) + "qꝫ", text)
+    text = _MON_SIGN.sub(r"\1onꝑ", text)
+    # A lone "p" is never a word: it is the herald's p with a stroke through
+    # the stem (par, per), and so is the p of "pmy" (parmy).
+    text = _BAR_P.sub(lambda m: "Ꝑ" if m[0] == "P" else "ꝑ", text)
+    text = _BAR_PMY.sub(lambda m: ("Ꝑ" if m[1] == "P" else "ꝑ") + "my", text)
+    text = _SLIPS.sub(lambda m: _SLIP_FIX[m[0]], text)
     return re.sub(r"\s+", " ", _TIRONIAN.sub("⁊", text)).strip()
+
+
+# Words OCR gets the same wrong way every time: m read as "in" or "rn", the
+# macron'd n of "nre" as "ii", u as "ii". Each was checked against the page
+# or the editors' normalised line, and none is a word of the poem as spelt.
+_SLIP_FIX = {"hoine": "home", "hoines": "homes", "horn": "hōm", "iire": "nrē",
+             "fiiist": "fuist", "Prnce": "Pnce", "datainnes": "dataines",
+             "reueaiix": "reueaux"}
+_SLIPS = re.compile(r"\b(?:" + "|".join(_SLIP_FIX) + r")\b")
+
+
+# Two more signs the page prints and OCR cannot decide between. After "oues",
+# "dus" and "fors" the edition prints q with a 3-shaped sign -- ouesqꝫ,
+# "avoecques" -- which comes through as "ouescj", "oues(5", "ouesc^", "ouesg",
+# "ouesqs" and a dozen others; every one of the fifty-odd instances sits
+# opposite "avoec(ques)" in the normalised column. And "mon" before a name
+# is the herald's abbreviated "monseignour", a p-shaped sign OCR gives as
+# "monp", "monf" or "mon^". Both signs exist in Cardo.
+_QUE_SIGN = re.compile(
+    r"\b([Oo]ues|[Dd]us|[Ff]+ors)"
+    r"(?:qe|q[jgs]?|c[jgp^]|g|\(5|<5|\^)(?=\s|$|[,.;:|])"
+    r"|\b([Tt]an|[Aa]don|[Ss]i)(?:q[jg]|c[jg])(?=\s|$)")
+_MON_SIGN = re.compile(r"\b([Mm])on(?:[pf^]|jj)(?=\s)")
+_BAR_P = re.compile(r"(?<![\w'’])[pP](?![\w'’])")
+_BAR_PMY = re.compile(r"\b([pP])my\b")
 
 
 def number_lines(lines: list[VerseLine]) -> list[int]:
@@ -691,6 +724,20 @@ def _clean_english(piece: str) -> str:
     piece = re.sub(r"^\s*THE\s*$|\(Translation\)", " ", piece)
     piece = re.sub(r"(?<=[A-Za-z])\^(?=[a-z])", "é", piece)
     piece = re.sub(r"(?<!\S)['\"’]?\d{1,4}['\"’]?[a-z]?(?!\S)", " ", piece)
+    # Marginal numbers the pass above cannot read as numbers: "S94", "2S79",
+    # "2£43", "217?", "35.'i9", "^°'5", "S7?" -- a digit, with the S, ^, °, £,
+    # ' or ? OCR makes of a numeral's neighbours. "14th" has none of those, so
+    # a real ordinal stays. Found by scanning every printed bead for digits.
+    piece = re.sub(r"(?<!\S)(?=\S*\d)(?=\S*[S^°£'?’])\S+(?!\S)", " ", piece)
+    # A marginal number read as letters and carets ("looking n^^" -- 1249),
+    # a running head with a stop in it ("BLA.CK PRINCE ^"), the column rule,
+    # and the odd bullet and stray capital the scan leaves between words.
+    piece = re.sub(r"(?<!\S)\w?\^+(?!\S)", " ", piece)
+    piece = re.sub(r"\bBLA\.?CK\s+PRINCE\b", " ", piece)
+    piece = re.sub(r"(?<=[A-Za-z])\^+", "", piece)
+    piece = re.sub(r"[|•]", " ", piece)
+    piece = re.sub(r"(?<= )[UVX](?= [a-zA-Z]|$)", " ", piece)
+    piece = piece.replace("P6rigueux", "Périgueux").replace("Angoul€me", "Angoulême")
     return re.sub(r"\s{2,}", " ", piece).strip()
 
 
@@ -898,7 +945,9 @@ def _sentences(english: str) -> list[tuple[int, str]]:
     out, at = [], 0
     for s in segment.segment_prose(english, "en"):
         s = s.strip()
-        if not s:
+        # A lone stop or a scrap of marginalia is not a sentence: it would be
+        # printed as the English of a passage of verse.
+        if not re.search(r"[A-Za-z]{3}", s):
             continue
         found = english.find(s[:40], at)
         at = found if found != -1 else at
@@ -1227,7 +1276,8 @@ def proofread(lines: list[VerseLine], chapters) -> str:
 
     # 2. Manuscript lines that still look misread.
     suspect = [(numbers[k], l) for k, l in enumerate(lines)
-               if l.manuscript != LACUNA and _MISREAD.search(_manuscript(l.manuscript))]
+               if l.manuscript != LACUNA and not l.read
+               and _MISREAD.search(_manuscript(l.manuscript))]
     out += ["", f"## Manuscript lines that look misread ({len(suspect)})", "",
             "Each shows the line as printed in this book, then the editors' "
             "normalised reading of it, which is usually enough to see the fix.",
@@ -1464,7 +1514,11 @@ def apply_supplied(lines: list[VerseLine], rubrics: dict[int, str],
             for r in [r for r in rubrics if window[0] <= r <= window[-1]]:
                 if _same_line(text, rubrics[r]) >= MATCH:
                     dropped.add(r)
-        inserts += [(k, VerseLine(None, text, text, page)) for k, text in chosen]
+        # A row of dots typed in is a line the manuscript left blank.
+        inserts += [(k, VerseLine(None, LACUNA, LACUNA, page)
+                     if re.fullmatch(r"[\s.·•]{5,}", text)
+                     else VerseLine(None, text, text, page))
+                    for k, text in chosen]
         print(f"  supplied lines {first}–{last}: {len(chosen)} inserted"
               + (f" ({'; '.join(c[1][:30] for c in chosen)})" if chosen else ""))
     if not inserts:
@@ -1475,13 +1529,171 @@ def apply_supplied(lines: list[VerseLine], rubrics: dict[int, str],
     out: list[VerseLine] = []
     moved: dict[int, str] = {}
     for k, line in enumerate(lines):
+        here = before_line.get(k, [])
+        # A blank line of the manuscript closes the section before the
+        # heading ("Line 4000 left blank in the MS."), so it goes ahead of it.
+        out.extend(v for v in here if v.manuscript == LACUNA)
         if k in rubrics and k not in dropped:
             # A heading before this line stays before what is now inserted
             # ahead of it: the missing line belongs to the section it opens.
             moved[len(out)] = rubrics[k]
-        out.extend(before_line.get(k, []))
+        out.extend(v for v in here if v.manuscript != LACUNA)
         out.append(line)
     return out, moved
+
+
+def read_readings(path: Path) -> list[tuple[int, str]]:
+    """(line number, text) for each manuscript line read off the page by eye.
+
+    From the "Manuscript lines read from the page" section of the corrections
+    file: "- **274**: Ouesqꝫ monꝑ Godemard". The text is the line as the
+    manuscript column prints it, abbreviation signs and all.
+    """
+    if not path.exists():
+        return []
+    out: list[tuple[int, str]] = []
+    section = False
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if raw.startswith("## "):
+            section = raw.startswith("## Manuscript lines read")
+            continue
+        m = re.match(r"^- \*\*(\d+)\*\*[^:]*:\s*(.+?)\s*$", raw)
+        if section and m:
+            out.append((int(m[1]), m[2]))
+    return out
+
+
+def read_rubric_readings(path: Path) -> list[tuple[int, str]]:
+    """(number of the line the heading stands before, heading) from the
+    "Rubrics read from the page" section, typed as the page prints them."""
+    if not path.exists():
+        return []
+    out: list[tuple[int, str]] = []
+    section = False
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if raw.startswith("## "):
+            section = raw.startswith("## Rubrics read")
+            continue
+        m = re.match(r"^- \*\*(\d+)\*\*:\s*(.+?)\s*$", raw)
+        if section and m:
+            out.append((int(m[1]), m[2]))
+    return out
+
+
+def apply_rubric_readings(lines: list[VerseLine], rubrics: dict[int, str],
+                          readings) -> None:
+    """Replace each heading's text with the reading made from the page.
+
+    Headings are located by the number of the verse line they precede, then
+    confirmed by sharing a word with the extracted text, so a number a line
+    out cannot overwrite a neighbouring heading.
+    """
+    if not readings:
+        return
+    numbers = number_lines(lines)
+    by_num = {}
+    for k in rubrics:
+        by_num.setdefault(numbers[k], k)
+    words = lambda s: set(re.findall(r"[a-z]{4,}", s.lower()))
+    done = 0
+    for num, text in readings:
+        k = next((by_num[n] for n in (num, num - 1, num + 1, num - 2, num + 2)
+                  if n in by_num and (words(text) & words(rubrics[by_num[n]])
+                                      or n == num)), None)
+        if k is None:
+            print(f"  !  heading before line {num} matches nothing: {text[:40]}")
+            continue
+        rubrics[k] = text
+        done += 1
+    print(f"  headings read from the page: {done} of {len(rubrics)}")
+
+
+# How like the extracted line a reading must be. The printed line numbers
+# find the line, but they are OCR'd too and a reading must never be written
+# over a neighbour, so the text itself has to agree.
+READING_MATCH = 0.45
+
+
+def apply_readings(lines: list[VerseLine], readings) -> list[VerseLine]:
+    """Replace misread manuscript lines with what the page shows."""
+    if not readings:
+        return lines
+    numbers = number_lines(lines)
+    by_number: dict[int, list[int]] = {}
+    for k, n in enumerate(numbers):
+        by_number.setdefault(n, []).append(k)
+    done = skipped = 0
+    for num, text in readings:
+        best, score = None, 0.0
+        # The line itself, or its neighbours: the numbers can be a line out
+        # where the scan lost one, and the text settles which it is.
+        for n in (num, num - 1, num + 1):
+            for k in by_number.get(n, []):
+                s = max(_same_line(text, lines[k].manuscript),
+                        _same_line(text, lines[k].normalised or ""))
+                if n != num:
+                    s -= 0.05
+                if s > score:
+                    best, score = k, s
+        if best is None or score < READING_MATCH:
+            print(f"  !  reading for line {num} matches nothing "
+                  f"(best {score:.2f}): {text[:40]}")
+            skipped += 1
+            continue
+        lines[best].manuscript = text
+        lines[best].read = True
+        done += 1
+    print(f"  read from the page: {done} lines corrected"
+          + (f", {skipped} unmatched" if skipped else ""))
+    return lines
+
+
+def kdp_check(pdf: Path) -> list[str]:
+    """What KDP would object to in the interior, measured on the file itself.
+
+    Page count in range, every font embedded, nothing printed within 0.25in
+    of the trim (there is no bleed), and the inside margin at least the
+    minimum for this page count. Measured from the PDF's own text and
+    drawings, not from the layout's settings: the point is to catch the two
+    disagreeing.
+    """
+    from book_creator import render_pdf
+
+    doc = fitz.open(pdf)
+    pages = len(doc)
+    out: list[str] = []
+    if not 24 <= pages <= 828:
+        out.append(f"{pages} pages is outside KDP's 24-828")
+    unembedded = {f[3] for pg in doc for f in pg.get_fonts(full=True)
+                  if f[1] in ("", "n/a")}
+    if unembedded:
+        out.append(f"fonts not embedded: {sorted(unembedded)}")
+    safe = 0.25 * 72
+    gutter = render_pdf._gutter_for_page_count(pages)
+    worst_edge = worst_gutter = 1e9
+    for n, pg in enumerate(doc, 1):
+        boxes = [fitz.Rect(s["bbox"]) for b in pg.get_text("dict")["blocks"]
+                 for ln in b.get("lines", []) for s in ln["spans"]
+                 if s["text"].strip()]
+        boxes += [fitz.Rect(d["rect"]) for d in pg.get_drawings()
+                  if d.get("rect") is not None]
+        if not boxes:
+            continue
+        ink = fitz.Rect(boxes[0])
+        for b in boxes[1:]:
+            ink |= b
+        w, h = pg.rect.width, pg.rect.height
+        # Gutter side: left on a recto (odd page), right on a verso.
+        outer = w - ink.x1 if n % 2 else ink.x0
+        worst_edge = min(worst_edge, ink.y0, h - ink.y1, outer)
+        worst_gutter = min(worst_gutter, ink.x0 if n % 2 else w - ink.x1)
+    if worst_edge < safe - 0.5:
+        out.append(f"ink comes within {worst_edge / 72:.2f}in of the trim "
+                   f"(0.25in needed)")
+    if worst_gutter < gutter - 0.5:
+        out.append(f"inside margin {worst_gutter / 72:.3f}in is under the "
+                   f"{gutter / 72:.3f}in KDP needs for {pages} pages")
+    return out
 
 
 TITLE = "The Life of the Black Prince"
@@ -1502,6 +1714,8 @@ def build(doc, *, out_dir: Path) -> int:
 
     lines, rubrics = read_poem_cached(doc)
     lines, rubrics = apply_supplied(lines, rubrics, read_supplied(CORRECTIONS))
+    lines = apply_readings(lines, read_readings(CORRECTIONS))
+    apply_rubric_readings(lines, rubrics, read_rubric_readings(CORRECTIONS))
     print(f"  {len(lines)} verse lines, {len(rubrics)} rubrics")
     english, anchors = translation_stream(doc)
     print(f"  {len(english.split()):,} words of translation, "
@@ -1511,7 +1725,11 @@ def build(doc, *, out_dir: Path) -> int:
     print(f"  {len(chapters)} chapters, {beads} beads")
 
     font = FontSpec(family="Cardo")
-    decor = DecorSpec(margin="none", chapter="medieval")
+    # A ruled frame and the Prince's badge at each chapter head. All of it is
+    # line art kept clear of the trim by the layout's own reserve (the text
+    # gives up the room, so nothing is drawn nearer than KDP's 0.25in), and in
+    # near-black so a black-and-white interior stays black and white.
+    decor = DecorSpec(margin="frame", chapter="feathers", color="#2b2b2b")
     copyright = CopyrightSpec(
         holder="Joey Houser", year=2026,
         translator="Mildred K. Pope and Eleanor C. Lodge",
@@ -1530,12 +1748,22 @@ def build(doc, *, out_dir: Path) -> int:
     pdf = out_dir / f"{SLUG}.pdf"
     chars = sum(len(b.src_text) + len(b.tgt_text) for c in chapters for b in c.beads)
     print(f"Rendering PDF -> {pdf}")
-    _, pages = render_pdf.render(
-        chapters, out_path=str(pdf), title=TITLE, author=AUTHOR,
-        src_lang="xno", tgt_lang="en", trim=(6.0, 9.0), first="src",
-        estimated_pages=max(24, chars // 1400), font_spec=font, decor=decor,
-        copyright=copyright, include_toc=True, edition_line=edition_line)
+    estimate = max(24, chars // 1400)
+    # The inside margin KDP requires grows with the page count, and the count
+    # is only known once the book is laid out. Lay it out again if the first
+    # estimate set the gutter for a shorter book than this turned out to be.
+    for _ in range(4):
+        _, pages = render_pdf.render(
+            chapters, out_path=str(pdf), title=TITLE, author=AUTHOR,
+            src_lang="xno", tgt_lang="en", trim=(6.0, 9.0), first="src",
+            estimated_pages=estimate, font_spec=font, decor=decor,
+            copyright=copyright, include_toc=True, edition_line=edition_line)
+        if render_pdf._gutter_for_page_count(pages) <=                 render_pdf._gutter_for_page_count(estimate):
+            break
+        estimate = pages
     print(f"  {pages} pages")
+    for note in kdp_check(pdf) or ["KDP interior checks: all passed"]:
+        print(f"  {note}")
 
     from book_creator import cover
     wrap = out_dir / f"{SLUG}-cover.pdf"

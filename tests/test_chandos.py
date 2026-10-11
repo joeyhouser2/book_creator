@@ -327,3 +327,57 @@ def test_verse_without_english_joins_its_neighbour_but_not_across_a_rubric():
     # A rubric opens line 6: that bare line cannot join the passage before it.
     out = bc._join_untranslated(pieces, {6: "Coment..."})
     assert out == [([0, 1, 2, 3], ["S1."]), ([4, 5], ["S2."]), ([6, 7, 8], ["S3."])]
+
+
+# --------------------------------------------------------------------------- #
+# Readings from the page, signs, and the KDP interior check
+# --------------------------------------------------------------------------- #
+def test_que_sign_is_one_spelling_however_ocr_read_it():
+    for noisy in ("Ouescj", "Oues(5", "ouesc^", "Ouesg", "Ouesqe"):
+        assert bc._manuscript(f"{noisy} lui").lower() == "ouesqꝫ lui"
+    # a plain word that merely starts the same way is left alone
+    assert bc._manuscript("Ouesque le noble") == "Ouesque le noble"
+
+
+def test_word_slips_are_whole_words_only():
+    assert bc._manuscript("Qe hoine ne ferroit") == "Qe home ne ferroit"
+    assert bc._manuscript("Thorne et Chorne") == "Thorne et Chorne"
+
+
+def test_readings_replace_the_matching_line_not_a_neighbour():
+    lines = [bc.VerseLine(n, f"line {n} text", f"line {n} text", 1)
+             for n in (5, None, None, None, None, 10)]
+    lines[1].manuscript = "Ouescj monf Godemard"
+    lines[1].normalised = "Avoec monseignour Godemart"
+    out = bc.apply_readings(lines, [(7, "Ouesqꝫ monꝑ Godemard")])
+    assert out[1].manuscript == "Ouesqꝫ monꝑ Godemard" and out[1].read
+    assert not any(l.read for k, l in enumerate(out) if k != 1)
+
+
+def test_a_reading_that_matches_nothing_is_not_applied(capsys):
+    lines = [bc.VerseLine(5, "alpha beta gamma", "alpha beta gamma", 1),
+             bc.VerseLine(None, "delta epsilon", "delta epsilon", 1)]
+    bc.apply_readings(lines, [(6, "zzzz qqqq xxxx")])
+    assert lines[1].manuscript == "delta epsilon" and not lines[1].read
+
+
+def test_the_corrections_file_parses_all_three_sections():
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "input" / "chandos-corrections.md"
+    if not p.exists():
+        pytest.skip("corrections file not present")
+    assert len(bc.read_readings(p)) >= 150
+    assert len(bc.read_rubric_readings(p)) >= 115
+    assert any("Ouesqꝫ" in t for _, t in bc.read_readings(p))
+
+
+def test_kdp_check_flags_ink_near_the_trim(tmp_path):
+    from reportlab.pdfgen import canvas
+    pdf = tmp_path / "t.pdf"
+    c = canvas.Canvas(str(pdf), pagesize=(432, 648))
+    for _ in range(24):
+        c.drawString(5, 300, "too close")       # 5pt from the trim
+        c.showPage()
+    c.save()
+    notes = bc.kdp_check(pdf)
+    assert any("trim" in n for n in notes)

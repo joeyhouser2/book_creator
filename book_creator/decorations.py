@@ -832,6 +832,33 @@ class OrnamentFlowable(Flowable):
         c.restoreState()
 
 
+def _prince_badge(c, cx: float, y: float, color: str) -> None:
+    """The Black Prince's badge: three ostrich feathers through a scroll, with
+    his motto set beneath. `y` is the bottom of the motto line.
+
+    Drawn by the cover's emblem routine so the two cannot drift apart, in
+    outline only -- it prints as clean line art in a black-and-white
+    interior, and needs no resolution of its own.
+    """
+    from . import cover
+
+    size = 58.0
+    motto_gap = 13.0
+    cy = y + motto_gap + 0.47 * size
+    cover._feathers(c, cx, cy, size, HexColor(color))
+    c.saveState()
+    c.setFillColor(HexColor(color))
+    t = c.beginText()
+    t.setFont(getattr(c, "_fontname", "Times-Roman"), 7.0)
+    t.setCharSpace(2.2)
+    text = "ICH DIEN"
+    w = c.stringWidth(text, getattr(c, "_fontname", "Times-Roman"), 7.0) + 2.2 * (len(text) - 1)
+    t.setTextOrigin(cx - w / 2.0, y + 1.0)
+    t.textOut(text)
+    c.drawText(t)
+    c.restoreState()
+
+
 def chapter_ornament(style: str, color: str, width_hint: float = 2.4 * inch,
                      image: str | None = None) -> OrnamentFlowable | None:
     if image:
@@ -896,6 +923,12 @@ def chapter_ornament(style: str, color: str, width_hint: float = 2.4 * inch,
         def _draw(c, aw, h):
             _asterism(c, aw / 2.0, h / 2.0, min(width_hint, aw * 0.5))
         return OrnamentFlowable(22, _draw, color)
+    if style == "feathers":
+        # A badge for one book, not a general ornament: kept out of
+        # ALL_CHAPTER_STYLES so `chapter: random` never hands it to another.
+        def _draw(c, aw, h):
+            _prince_badge(c, aw / 2.0, 0.0, color)
+        return OrnamentFlowable(78, _draw, color)
     return None
 
 
