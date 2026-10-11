@@ -1156,7 +1156,7 @@ def _llm_starts(verse: list[tuple[int, str]], sentences: list[str]) -> list:
     # is full -- one block ran for more than twenty minutes that way.
     reply = requests.post(f"{LLM_HOST}/api/chat", json={
         "model": LLM_MODEL, "stream": False, "format": "json", "think": False,
-        "options": {"temperature": 0, "num_ctx": 16384,
+        "options": {"temperature": 0, "num_ctx": int(os.environ.get("CHANDOS_NUM_CTX", 16384)),
                     "num_predict": 24 + 14 * len(sentences)},
         "messages": [{"role": "user", "content": prompt}]}, timeout=900).json()
     content = reply["message"]["content"]
