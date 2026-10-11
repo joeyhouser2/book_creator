@@ -137,6 +137,11 @@ def henriade() -> None:
         body = lines[blob + 2:]                 # +2 also drops the heading line
         cut = next((i for i, l in enumerate(body) if l.startswith("↑")), len(body))
         body = [l for l in body[:cut] if not re.match(r"(?i)^(variantes|◄|►)", l)]
+        # Wikisource's own slips: chant 1's "ARGUMENT." carries a stop none of the
+        # others have (so it is translated as a sentence -- "It's been a long
+        # time."), and chant 3's summary says "Chartes IX".
+        body = ["ARGUMENT" if l == "ARGUMENT." else l.replace("Chartes IX", "Charles IX")
+                for l in body]
         parts.append(f"Chant {ROMAN[n - 1]}\n\n" + "\n".join(body))
         time.sleep(0.4)
     _write("henriade_fr.txt", parts, "La Henriade (French)")

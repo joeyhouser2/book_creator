@@ -86,6 +86,7 @@ class _BookDoc(BaseDocTemplate):
         # book this tool has made.
         self._page_font = page_font
         kw.setdefault("initialFontName", page_font)
+        kw.setdefault("title", title)    # else the PDF is titled "(anonymous)"
         self.decor = decor or DecorSpec()
         # First body page. Pages before it (title, copyright, contents) get no
         # margin art and no page number. Set by afterFlowable (or directly when
@@ -269,7 +270,8 @@ def copyright_text(cr: CopyrightSpec, *, title: str, author: str,
             f"The original {lang} text by {_esc(author)} is in the public domain."
             + trans + " No copyright is claimed on these public-domain texts."
         )
-        src_line = "Source texts: Project Gutenberg (www.gutenberg.org)."
+        src_line = ("Source texts: " + _esc(cr.source) if cr.source
+                    else "Source texts: Project Gutenberg (www.gutenberg.org).")
         if translation_note:
             src_line += " Translation: " + _esc(translation_note)
         paras.append(src_line)
