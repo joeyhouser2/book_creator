@@ -34,13 +34,16 @@ script.
 
 ---
 
-## 2. Basinio — the rest of the poems
+## 2. Basinio — the lyric poems
 
 All four poems in Drudi's volume are built (*Hesperis*, *Astronomicon*,
-*Meleagris*, *Argonauticon*). Only the first three books of the *Argonauticon* are
-in that volume; the rest, and the *Isottaeus* and other works, are in the other
-tome of the 1794 edition (`bub_gb_ALAHuNBQHwoC` and its three siblings on
-archive.org hold the commentary volume, not the poems). No English exists for any.
+*Meleagris*, *Argonauticon*). The *Argonauticon* is complete as it stands: the
+1794 commentary says it "was not finished, owing to the author's death", and the
+text breaks off at Medea falling in love. The other 1794 volumes on archive.org
+(`bub_gb_41MxnrlFrlAC`, `bub_gb_ALAHuNBQHwoC` and their twins) are *Tomus II*,
+biography and documents, with no verse. What remains is Ferri's 1925 edition of
+the *Isottaeus*, *Cyris* and minor poems (HathiTrust `mdp.39015013279883`, full view
+in the US; the same text is on poetiditalia.it). No English exists for any.
 
 ---
 
@@ -89,7 +92,10 @@ translation, if one surfaces, would replace it.
   (2010) is in copyright.
 - **La Araucana** — the same. Lancaster & Manchester's (1945) is in copyright.
   Hayley's 1782 *Essay on Epic Poetry* carries excerpts, which is not enough for
-  a facing text.
+  a facing text. Walter Owen's *Araucaniad* (Vanderbilt, 1945) is the first complete
+  English verse and is listed by HathiTrust as in copyright (search-only), so it
+  cannot be used either. Sir George Carew's partial Elizabethan version survives
+  only in manuscript at Lambeth Palace.
 
 The Araucana is built in full: part 1 from the 1911 edition (cantos 1–15) and parts
 2–3 from the 1803 Sancha edition's second volume (cantos 16–37), whose old spelling

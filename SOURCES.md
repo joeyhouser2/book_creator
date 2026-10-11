@@ -37,7 +37,7 @@ copyright or language.
 | **Basinio, *Hesperis*** | dual 429 pp, 13 books | machine, `nllb-latin`, a sentence at a time |
 | **Basinio, *Astronomicon*** | dual 79 pp, 2 books | machine, `nllb-latin` |
 | **Basinio, *Meleagris*** | dual 146 pp, 3 books | machine, `nllb-latin` |
-| **Basinio, *Argonauticon*** | dual 126 pp, books 1–3 (all Drudi's volume holds) | machine, `nllb-latin` |
+| **Basinio, *Argonauticon*** | dual 126 pp, books 1–3, all there is: Basinio died before finishing it | machine, `nllb-latin` |
 | **Pontano, *Urania*** | dual 299 pp, 5 books | machine, `nllb-latin` |
 | **Pontano, *Parthenopeus*** | dual 85 pp | machine, `nllb-latin` |
 | **Pontano, *De hortis Hesperidum*** | dual 60 pp | machine, `nllb-latin` |
