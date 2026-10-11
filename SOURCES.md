@@ -170,7 +170,7 @@ intact.
 | **Germain de Brie, *Chordigerae navis conflagratio*** | Gallica [bpt6k715617](https://gallica.bnf.fr/ark:/12148/bpt6k715617) (1513), 45 page images and OCR in [`ocr-texts/`](ocr-texts/). **73.2% of words in the Latin vocabulary** | a Latinist's proofread. The correction pass cannot help: it fixed **0 tokens**, refusing 440 ambiguous and 305 candidate-less ones. A better recogniser or a human, not more passes |
 | **Chastellain, *Le miroir de mort*** | PG 44162, Middle French | an English translation. Machine translation of Middle French fails badly — *"Il fault laisser voz haulx actours"* → *"It fails to leave voz haulx actours"* |
 | **Pontano, *De bello Neapolitano*** | Google Books scans | a text. Also **prose history, not verse** — often miscatalogued |
-| **Voltaire's other epics**, **Theuerdank**, **Girart de Roussillon**, **Raoul de Cambrai**, **the Dietrich cycle**, **Willehalm** | — | nothing digitised in either language |
+| **Voltaire's other epics**, **Girart de Roussillon**, **Raoul de Cambrai**, **the Dietrich cycle**, **Willehalm** | — | nothing digitised in either language |
 
 ---
 
@@ -252,3 +252,21 @@ For Greek, Kraken models from
 [AjaxMultiCommentary](https://github.com/AjaxMultiCommentary/OCR-kraken-models)
 are downloaded to `cache/kraken/` but unused — Kraken itself is not installed,
 and it brings its own torch stack.
+
+## OCR of Fraktur: re-read, not repaired
+
+The Internet Archive's text layer for Haltaus's 1836 *Theuerdank*
+(`bub_gb_UDhTAAAAcAAJ`) reads the Fraktur as Latin type: every long s is an `f`
+and every `st` ligature a `ß`, so *schwert* is `fchwert` and *ist* is `iß`. A
+repair has to guess, because `f` is also a real letter and `fein` is both
+*sein* and *fein*. Re-reading the page images with Tesseract's `Fraktur` model
+(`ocr_theuerdank.py`, 184 pages at 600 dpi in about three minutes) gets the long
+s right outright, and keeps the two columns of each page apart under `--psm 3`.
+
+What still goes wrong, and is not worth chasing: the model draws the
+superscript *e* of an umlaut as `æ`/`œ` (normalised to `ä`/`ö`); about 17 pages
+fuse one row of the left column with the same row of the right, which
+misplaces a single verse; one damaged page near chapter XLV is scrambled; and
+two chapter headings are lost, so those chapters run on into the one before.
+Chapters are found from their rubric (a run of 45–55-character lines among
+verse that is 32 wide), checked against the verse numbers starting again at 5.

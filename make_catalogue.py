@@ -103,6 +103,8 @@ DATA = {
                              "Cantos 1–15 of the Araucanian war, written by a soldier who fought in it and admired the enemy."),
     "la-araucana-parts-two-and-three": ("Alonso de Ercilla", "1578, 1589", "machine",
                                         "Cantos 16–37, including Caupolicán's death and Ercilla's own disillusion."),
+    "theuerdank": ("Emperor Maximilian I", "1517", "machine",
+                   "The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts."),
     "la-franciade": ("Pierre de Ronsard", "1572", "machine",
                      "France descended from a surviving son of Hector: the national epic Ronsard abandoned after four books."),
     "la-henriade": ("Voltaire", "1723", "machine",

@@ -157,7 +157,7 @@ man who is lame"* failure that made us abandon multi-source Opus-MT for Latin.
 French retelling via Belloc, not Gottfried. No Middle High German original
 anywhere I looked.
 
-**Theuerdank, Girart de Roussillon, Raoul de Cambrai, the Dietrich cycle,
-Willehalm** — checked against the 79,288-book Gutenberg catalogue and the usual
+**Girart de Roussillon, Raoul de Cambrai, the Dietrich cycle, Willehalm** —
+checked against the 79,288-book Gutenberg catalogue and the usual
 German and French archives. Nothing in either language. These are genuinely
 undigitised rather than merely hard to reach.

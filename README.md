@@ -843,10 +843,11 @@ Most of what is worth printing as a parallel text has no English translation at
 all — not a copyrighted one, **none**. Of the Franco-Germanic epics, Gutenberg
 has the Nibelungenlied's German beside three English translations and then
 essentially stops: Chastellain's *Le miroir de mort* (44162) and Hugo's *La
-Légende des siècles* (12137) are French with no English anywhere, and Theuerdank,
-Girart de Roussillon and Voltaire's *La Henriade* are absent in both
-languages. (Ronsard's *La Franciade* turned out to be on archive.org in French; it is
-built here with a machine English — see below.)
+Légende des siècles* (12137) are French with no English anywhere, and Girart de
+Roussillon and Voltaire's *La Henriade* are absent in both languages.
+(Ronsard's *La Franciade* turned out to be on archive.org in French, and
+Theuerdank is there in Haltaus's 1836 edition of the 1517 text; both are built
+here with a machine English — see below.)
 
 `translate: true` (or `--translate`) renders the original into English with a
 registered translation model and prints that beside it:
@@ -909,8 +910,10 @@ copyright page is the tool's default and should stay that way.
 These read the **modern** form of each language, and that is the real limit on
 this feature — not the code. Hugo (1859), Voltaire (1723) and Klopstock (18th c.)
 are within reach. Middle High German (Kudrun, Willehalm, Gottfried's *Tristan*),
-Old French (Girart de Roussillon) and Early New High German (Theuerdank) are not.
-Chastellain's Middle French shows what that failure looks like:
+and Old French (Girart de Roussillon) are not. Early New High German
+(Theuerdank, 1517) sits in between: a chat model reads it, where Opus-MT does
+not, so it is built with `translators: de: ollama: qwen3:14b` — see
+`config/theuerdank.yaml`. Chastellain's Middle French shows what that failure looks like:
 
 ```
 Il fault laisser voz haulx actours   ->  It fails to leave voz haulx actours

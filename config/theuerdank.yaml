@@ -1,0 +1,68 @@
+# Theuerdank (1517), Early New High German with a machine-made English.
+#
+# No English translation exists in the public domain, so the English is generated
+# and disclosed as such on the copyright page. The German is Haltaus's 1836
+# edition of the 1517 first printing (archive.org bub_gb_UDhTAAAAcAAJ), whose
+# own text layer read the Fraktur as Latin type -- every long s an "f", every
+# "st" an "ß". ocr_theuerdank.py therefore re-reads the page images with
+# Tesseract's Fraktur model, and fetch_theuerdank.py cleans that into the poem:
+# 116 of its 118 chapters, with the editor's variant readings and notes dropped.
+#
+# The 1517 spelling is kept (vnd, nit, Er for "he", Sy for "she"), which is why
+# the chat model is told so: Opus-MT reads modern German only.
+#
+# Sentence by sentence, because the verse runs on across its rhymed couplets.
+#
+#   python ocr_theuerdank.py && python fetch_theuerdank.py
+#   python make_book.py config/theuerdank.yaml
+
+translators:
+  de:
+    ollama: "qwen3:14b"
+    batch: 12
+    context: >-
+      This is Theuerdank (1517), Emperor Maximilian I's allegorical chivalric
+      poem in rhymed couplets, in Early New High German with the spelling
+      unmodernised (vnd is und, nit is nicht, Er is "he", Sy is "she" or
+      "they"). The hero Tewrdannck (Theuerdank) is led into peril after peril by
+      three captains, Fürwittig (Fürwittig, "Rashness"), Vnfalo (Unfalo,
+      "Misfortune") and Neydelhart ("Envy"), on his journey to marry Queen
+      Ernreich (Ehrenreich); his herald is the Ernhold.
+
+books:
+  - title: "Theuerdank"
+    author: "Emperor Maximilian I"
+    src_lang: de
+    tgt_lang: en
+    src_path: "input/theuerdank_de.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: medieval
+      color: "#5b2a2a"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. <i>Theuerdank</i> (1517), written by Emperor
+        Maximilian I with Melchior Pfintzing and Marx Treitzsaurwein, is in the
+        public domain. The German is set from Karl Haltaus's 1836 edition,
+        which keeps the 1517 spelling; it was read from page images by machine
+        and has not been proofread, the long s is printed as s, and the editor's
+        variant readings, notes and the closing key to the persons are omitted.
+        Two of the poem's 118 chapters are not marked off and run on into the
+        one before. The English is a machine translation made for this edition,
+        not a published human translation, and will contain errors.
+    cover:
+      paper: white
+      blurb: "Maximilian's allegorical romance of the knight Theuerdank, who rides through a hundred perils to win his bride, in the Early New High German of the 1517 first printing with a machine-made English translation."
+    epub: true
