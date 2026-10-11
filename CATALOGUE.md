@@ -4,7 +4,7 @@ Every finished book in `output/`, with its author, the date of the original
 work, and what it is. Page counts are read from the PDFs themselves, so they
 are what KDP would see.
 
-**82 books, 18,803 pages.** Development scraps are listed at the
+**83 books, 19,236 pages.** Development scraps are listed at the
 end and are not books.
 
 The division that matters commercially is **who made the English**. A book with
@@ -58,6 +58,7 @@ translation exists at all, in or out of copyright.
 | **De modo usurarum liber** | Claudius Salmasius | 1588–1653 | 822 | A vast humanist treatise arguing that lending at interest is lawful — Salmasius against a thousand years of canon law. English only. |
 | **La Araucana, Parts Two and Three** | Alonso de Ercilla | 1578, 1589 | 580 | Cantos 16–37, including Caupolicán's death and Ercilla's own disillusion. |
 | **La Franciade** | Pierre de Ronsard | 1572 | 444 | France descended from a surviving son of Hector: the national epic Ronsard abandoned after four books. |
+| **Der letzte Ritter, with the Murtenlied** | Anastasius Grün; Veit Weber | 1830; 1476 | 433 | Der letzte Ritter with Weber's Murtenlied appended: one volume, the Romanzen in machine English and the song in Felton's 1845 ballad. |
 | **Hesperis** | Basinio da Parma | c. 1455 | 424 | Sigismondo Malatesta's wars in 13 Virgilian books: the first large-scale Neo-Latin epic ever finished, never before in English. |
 | **Der letzte Ritter** | Anastasius Grün | 1830 | 415 | Twenty Romanzen on Maximilian I from his cradle to his funeral at Wels: the cycle that made Grün's name, and the last-knight myth as Vormärz Austria wanted it. |
 | **La Légende des siècles** | Victor Hugo | 1859–83 | 411 | History as a succession of visions from Eve to the Day of Judgement. |
