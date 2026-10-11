@@ -1,0 +1,59 @@
+# Klopstock, Der Messias: German with G. H. C. Egestorff's English verse, one volume.
+#
+# The German is zeno.org's text of the 1879 Berlin edition (fetch_sources.py
+# messias): 19,479 lines in 20 cantos. Egestorff's English is the 1826 blank-verse
+# translation, complete, read from the page scans of the archive.org copies
+# klopstocksmessi00klopgoog and klopstocksmessi01klopgoog by Tesseract
+# (fetch_egestorff.py). It replaces a machine translation made a line at a time,
+# which dropped one sentence of every German line that held two.
+#
+# Egestorff runs about 1.5 English lines to each German line, so there is no line
+# for line pairing: blocks of six German lines are aligned by meaning (LaBSE)
+# against the English that carries them, and each pair is set German then English.
+#
+# Two volumes' worth of text in one: 8.5 x 11 in. with "tight" line spacing is what
+# brings it under KDP's 828-page limit.
+#
+# python fetch_egestorff.py, then:  python make_book.py config/messias.yaml
+
+books:
+  - title: "Der Messias"
+    author: "Friedrich Gottlieb Klopstock"
+    src_lang: de
+    tgt_lang: en
+    src_path: "input/messias_de.txt"
+    tgt_path: "input/messias_en_egestorff.txt"
+    mode: verse
+    verse_align: line
+    aligner: embed
+    align_block: 6
+    first: src
+    trim: [8.5, 11.0]
+    density: tight
+    translation_pd_confirmed: true
+    translation_source_note: "G. H. C. Egestorff, 1826 — public domain."
+    font: Cardo
+    decorations:
+      margin: none
+      chapter: fleuron
+      color: "#3b3a52"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "G. H. C. Egestorff"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The German text of Klopstock's <i>Der
+        Messias</i> is in the public domain; it is set from zeno.org's transcription
+        of the Berlin edition of 1879. The English verse translation by G. H. C.
+        Egestorff (1826) is in the public domain; it is set from machine-read
+        scans of the first edition, in which a language model has repaired words
+        the scan misread and which have not been proofread, and Egestorff
+        does not follow Klopstock line for line, so the English is placed beside
+        the German it renders by meaning, in blocks of about six lines.
+    cover:
+      paper: white
+      blurb: "Klopstock's twenty-canto epic of the Passion, the German Paradise Lost whose hexameters remade German as a poetic language, with G. H. C. Egestorff's 1826 English verse translation set beside it, complete in one volume."
+    epub: true

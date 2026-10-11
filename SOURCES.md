@@ -24,6 +24,7 @@ copyright or language.
 | **Os Lusíadas** | dual 481 pp · English-only 249 pp | Burton, **human**, PD |
 | **Gerusalemme Liberata** | dual 2 vols (415 + 426 pp) · English-only 430 pp | Fairfax 1600, **human**, PD |
 | **The Battle of Maldon** | dual 23 pp | Garnett, **human**, PD |
+| **Klopstock, *Der Messias*** | dual 773 pp, 20 cantos, 8.5 × 11 in. `tight` | Egestorff 1826, **human**, PD — blank verse, re-read from the page scans with Tesseract (part 2) and Google's OCR (part 1), aligned by meaning in 6-line blocks |
 | **Kudrun** | dual 501 pp, 1,705 strophes in 32 Aventiuren | Nichols 1889, **human**, PD |
 | **Mistral, *Mirèio*** | dual 324 pp, 12 cantos | Preston 1872, **human**, PD |
 | **Cantar de Mio Cid** | dual 231 pp, 3 cantares | Rose 1919, **human**, PD |
@@ -32,7 +33,6 @@ copyright or language.
 | **Ocland, *Anglorum Praelia* and *Elizabetha*** | dual 235 pp | Sharrock 1585, **human**, PD — 7 blocks with no matching English filled by machine and marked † |
 | **La Légende des siècles** | dual 411 pp · English-only 257 pp | machine |
 | **La Henriade** | dual 312 pp | machine |
-| **Der Messias** | dual 2 vols (593 + 773 pp) | machine |
 | **Africa** | dual 386 pp | machine, via the `latin` repo's `nllb-latin` |
 | **Basinio, *Hesperis*** | dual 429 pp, 13 books | machine, `nllb-latin`, a sentence at a time |
 | **Basinio, *Astronomicon*** | dual 79 pp, 2 books | machine, `nllb-latin` |

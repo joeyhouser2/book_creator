@@ -276,3 +276,47 @@ def test_every_emblem_draws(tmp_path):
     for lang, draw in cover._EMBLEMS.items():
         draw(c, 200, 400, 80, HexColor("#1e1b18"))
     assert "xno" in cover._EMBLEMS
+
+
+# --------------------------------------------------------------------------- #
+# KDP's gutter depends on the *final* page count, not the estimate
+# --------------------------------------------------------------------------- #
+# Kept separate from render_pdf._gutter_for_page_count on purpose: this is
+# KDP's published table, and the test must not agree with a wrong copy of it.
+_KDP_GUTTER_IN = ((150, 0.375), (300, 0.5), (500, 0.625), (700, 0.75), (828, 0.875))
+
+
+def _kdp_gutter(pages):
+    return next(g for n, g in _KDP_GUTTER_IN if pages <= n)
+
+
+def test_gutter_follows_the_real_page_count_not_the_estimate(tmp_path):
+    """La Henriade was estimated at ~288 pages, built at 311, and KDP rejected
+    every page: 0.5in gutter where 0.625in is required over 300 pages.
+
+    Here the estimate says 100 pages (0.375in) and the book runs past 150
+    (0.5in), so a render that trusts the estimate leaves every page short.
+    """
+    out = tmp_path / "gutter.pdf"
+    _, pages = render_pdf.render(
+        _book(n_chapters=3, beads=330),
+        out_path=str(out), title="T", author="A", src_lang="la",
+        tgt_lang="en", trim=(6.0, 9.0), estimated_pages=100,
+        include_toc=False,
+    )
+    assert pages > 150, "fixture too short to cross the 150-page boundary"
+    need = _kdp_gutter(pages) * inch
+
+    doc = fitz.open(out)
+    assert len(doc) == pages
+    for i, page in enumerate(doc):
+        ink, scale = _page_ink(page, dpi=100)
+        cols = np.where(ink.any(axis=0))[0]
+        if not len(cols):
+            continue
+        left = cols.min() / scale
+        right = page.rect.width - (cols.max() + 1) / scale
+        gutter = left if (i + 1) % 2 else right
+        assert gutter >= need - 1, (
+            f"page {i + 1}: gutter {gutter / inch:.3f}in, KDP needs "
+            f"{need / inch:.3f}in for {pages} pages")

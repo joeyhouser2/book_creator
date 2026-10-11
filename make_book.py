@@ -163,6 +163,11 @@ def main(argv: list[str] | None = None) -> int:
                         "translator); 'auto' picks the best available.")
     p.add_argument("--first", choices=["src", "tgt"], default="src",
                    help="Which language prints first in each pair.")
+    p.add_argument("--density", choices=["normal", "compact", "tight"],
+                   default="normal",
+                   help="Body line spacing and size. 'compact' and 'tight' "
+                        "pack more lines on a page, for a long parallel poem "
+                        "that would otherwise exceed KDP's page limit.")
     p.add_argument("--sides", choices=["both", "src", "tgt"], default="both",
                    help="Which languages to include. 'both' (default) is the "
                         "parallel text; 'src' prints a monolingual edition of "
@@ -424,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
             src_path=args.src_path, tgt_path=args.tgt_path,
             mode=args.mode, poem_titles=args.poem_titles, aligner=args.aligner,
             verse_align=args.verse_align, translate=args.translate,
-            first=args.first, sides=args.sides,
+            first=args.first, sides=args.sides, density=args.density,
             toc=not args.no_toc, clean=not args.no_clean, restyle=not args.no_restyle,
             src_range=_parse_range(args.src_range),
             tgt_range=_parse_range(args.tgt_range),

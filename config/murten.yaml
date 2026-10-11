@@ -1,0 +1,56 @@
+# The Battle of Murten (Morat), 22 June 1476: Veit Weber's Murtenlied with C. C.
+# Felton's English ballad.
+#
+# German: Veit Weber, "Von dem strit von Murten", 32 six-line strophes, as
+# Liliencron prints it (Die historischen Volkslieder der Deutschen, vol. 2, no.
+# 142; Leipzig 1866), from Diebold Schilling's Berner Chronik. Read off the page
+# images of the Google scan (bub_gb_3DMWAAAAYAAJ, pp. 92-95) with Tesseract's
+# Fraktur model and corrected against the page by eye.
+#
+# English: "The Battle of Murten", translated by C. C. Felton for Longfellow's
+# The Poets and Poetry of Europe (Philadelphia, 1845), pp. 930-931. Felton worked
+# from a modernised text, restoring Weber's wording in places, and renders it in
+# 4-line stanzas (about 19 against Weber's 32) with some strophes dropped, so
+# the two are not stanza for stanza. Stanzas are paired by meaning (LaBSE), several
+# of Weber's against the English stanzas that carry them.
+#
+# python make_book.py config/murten.yaml
+
+books:
+  - title: "The Battle of Murten"
+    author: "Veit Weber"
+    src_lang: de
+    tgt_lang: en
+    src_path: "input/murten_gsw.txt"
+    tgt_path: "input/murten_en_felton.txt"
+    mode: verse
+    verse_align: stanza
+    aligner: embed
+    first: src
+    trim: [5.5, 8.5]
+    translation_pd_confirmed: true
+    translation_source_note: "C. C. Felton, 1845 — public domain."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: medieval
+      color: "#5a2f2f"
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "C. C. Felton"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. Veit Weber's song of 1476 is in the public
+        domain; it is set from R. von Liliencron's edition (1866), read from the
+        page images by machine and checked by eye. The English ballad by C. C.
+        Felton (1845) is in the public domain; he translated a modernised text of
+        the song, so it is shorter than Weber's and does not follow it strophe
+        for strophe. The English is therefore placed beside the German it renders
+        by meaning, in blocks of about six lines.
+    cover:
+      paper: white
+      blurb: "Veit Weber, a minstrel who fought in the ranks, sang the Swiss victory over Charles the Bold at Murten in 1476. His Alemannic song faces C. C. Felton's English ballad, as printed in Longfellow's anthology."
+    epub: true

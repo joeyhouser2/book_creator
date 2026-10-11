@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from . import (aligners, audio, clean, corpus, cover, fetch, latin_translator,
+from . import (align_refine, aligners, audio, clean, corpus, cover, fetch, latin_translator,
                mt_cache, music,
                pg_catalog, render_epub, render_pdf, restylers, reviewer, segment)
 from .model import Bead, BookSpec, Chapter
@@ -720,6 +720,9 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
                 for bead in beads:
                     bead.src = [ln for blk in bead.src for ln in blk.split("\n")]
                     bead.tgt = [ln for blk in bead.tgt for ln in blk.split("\n")]
+                # The aligner places each cut to within a few lines; names, which
+                # are the same word in both languages, say where it really falls.
+                beads = align_refine.refine(beads)
             else:
                 beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
                                        src_lang=spec.src_lang, log=log,
@@ -992,6 +995,7 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
         tgt_lang=spec.tgt_lang,
         trim=spec.trim,
         first=spec.first,
+        density=spec.density,
         estimated_pages=pages,
         font_spec=spec.font,
         decor=spec.decor,

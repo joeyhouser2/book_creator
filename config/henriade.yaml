@@ -1,0 +1,54 @@
+# Voltaire, La Henriade, French with a machine-made English.
+#
+# The first edition of this book was Opus-MT, a line at a time. It reads modern
+# French only and has no view past the end of a line, which in alexandrines that
+# run on is a long way short of a sentence: it truncated lines ("Il quitte le
+# pillage. Henri, plein de l'ardeur" came out as "He's leaving the looting."),
+# rendered "trépas" as "trip" and "tison" as "lion", and anglicised the names.
+# A chat model given the poem's subject and batches of lines does better on all
+# three. Run with:  python make_book.py config/henriade.yaml
+#
+# input/henriade_fr.txt is written by: python fetch_sources.py henriade
+
+translators:
+  fr:
+    ollama: "qwen3:14b"
+    batch: 12
+    context: >-
+      This is Voltaire's La Henriade (1723), an epic in ten chants in
+      alexandrine couplets on Henri IV and the French wars of religion, ending
+      with the Saint Bartholomew's Day massacre and the siege of Paris. Names
+      are those of the sixteenth-century court: the Guises, Joyeuse, Épernon,
+      Quélus, Saint-Mégrin, Mayenne, Turenne, Mornay, Gabrielle d'Estrées,
+      Jacques Clément. Keep proper names in their French form. Each line is one
+      verse; a sentence often runs across several, so translate for the sense
+      but keep one English line to each French line.
+
+books:
+  - title: "La Henriade"
+    author: "Voltaire"
+    src_lang: fr
+    tgt_lang: en
+    src_path: "input/henriade_fr.txt"
+    mode: verse
+    verse_align: line
+    translate: true
+    first: src
+    trim: [6.0, 9.0]
+    font: Cardo
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      source: "fr.wikisource.org (La Henriade, Chants I&ndash;X)"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The French text of Voltaire's <i>La
+        Henriade</i> is in the public domain; it is set from fr.wikisource.org.
+        The English is a machine translation made for this edition, not a
+        published human translation, and will contain errors.
+    cover:
+      paper: white
+      blurb: "Voltaire's epic of Henri IV and the wars of religion, in ten chants, in the original French with a machine-made English translation."
+    epub: true

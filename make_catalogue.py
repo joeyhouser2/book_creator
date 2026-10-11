@@ -30,8 +30,12 @@ OUT = REPO / "output"
 # "machine" as translator means an NLLB/Opus-MT rendering made for the edition.
 DATA = {
     # ---- human translation, paired with a published English ----
+    "der-messias": ("Friedrich Gottlieb Klopstock", "1748–73", "G. H. C. Egestorff, 1826",
+                    "The German Paradise Lost, all twenty cantos in one volume, in hexameters that remade German as a poetic language."),
     "parzival": ("Wolfram von Eschenbach", "c. 1200–10", "Jessie L. Weston, 1894",
                  "The Grail romance: Parzival's long education from naive boy to Grail king, the fullest Arthurian poem in German."),
+    "the-battle-of-murten": ("Veit Weber", "1476", "C. C. Felton, 1845",
+                             "A minstrel who fought in the ranks sings the Swiss victory over Charles the Bold, in his own Alemannic; Felton's English is from Longfellow's anthology."),
     "kudrun": ("Anonymous", "c. 1230–40", "Arthur Nichols, 1889",
                "A Hegelingen princess abducted and held for years, who endures rather than avenges — the Nibelungenlied's answer poem, and far gentler."),
     "das-nibelungenlied": ("Anonymous", "c. 1200", "George Henry Needler, 1904",
@@ -103,16 +107,14 @@ DATA = {
                              "Cantos 1–15 of the Araucanian war, written by a soldier who fought in it and admired the enemy."),
     "la-araucana-parts-two-and-three": ("Alonso de Ercilla", "1578, 1589", "machine",
                                         "Cantos 16–37, including Caupolicán's death and Ercilla's own disillusion."),
+    "der-letzte-ritter": ("Anastasius Grün", "1830", "machine",
+                          "Twenty Romanzen on Maximilian I from his cradle to his funeral at Wels: the cycle that made Grün's name, and the last-knight myth as Vormärz Austria wanted it."),
     "theuerdank": ("Emperor Maximilian I", "1517", "machine",
                    "The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts."),
     "la-franciade": ("Pierre de Ronsard", "1572", "machine",
                      "France descended from a surviving son of Hector: the national epic Ronsard abandoned after four books."),
     "la-henriade": ("Voltaire", "1723", "machine",
                     "Henri IV ending the wars of religion, Voltaire's bid to give France its Aeneid."),
-    "der-messias-band-1": ("Friedrich Gottlieb Klopstock", "1748–73", "machine",
-                           "Cantos 1–10 of the German Paradise Lost, in hexameters that remade German as a poetic language."),
-    "der-messias-band-2": ("Friedrich Gottlieb Klopstock", "1748–73", "machine",
-                           "Cantos 11–20, through the passion to the resurrection."),
     "la-legende-des-siecles": ("Victor Hugo", "1859–83", "machine",
                                "History as a succession of visions from Eve to the Day of Judgement."),
     "de-modo-usurarum-liber": ("Claudius Salmasius", "1588–1653", "machine",
@@ -207,8 +209,6 @@ TITLES = {
     "la-legende-des-siecles-en": "La Légende des siècles",
     "das-nibelungenlied-en": "Das Nibelungenlied",
     "de-modo-usurarum-liber": "De modo usurarum liber",
-    "der-messias-band-1": "Der Messias, Band 1",
-    "der-messias-band-2": "Der Messias, Band 2",
     "warsofmarlboroug01tayl-facsimile": "The Wars of Marlborough, Volume I",
     "warsofmarlboroug02tayl-facsimile": "The Wars of Marlborough, Volume II",
 }
@@ -375,8 +375,8 @@ for s, n in sorted(over, key=lambda kv: -kv[1]):
     t = title_of(s)
     A(f"- **{t}** — {n} pp, {n - 828} over")
 A("")
-A("Each needs splitting with `--src-range`, the way Gerusalemme Liberata and Der")
-A("Messias already are, which also gives every volume a printable spine.")
+A("Each needs splitting with `--src-range`, the way Gerusalemme Liberata already")
+A("is, which also gives every volume a printable spine.")
 A("")
 A("**Empty output directories**: `pale-fire-la-audio` and")
 A("`warsofmarlboroug01tayl-la-audio` — abandoned audio runs.")

@@ -303,6 +303,9 @@ class BookSpec:
 
     # Which side prints first in each bead: "src" (original first) or "tgt".
     first: str = "src"
+    # Line spacing of the body text: "normal", "compact" or "tight". A long
+    # parallel poem is two books' worth of lines; this is how it fits one volume.
+    density: str = "normal"
 
     # Which sides to include at all:
     #   "both" — the parallel text (default)

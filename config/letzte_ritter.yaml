@@ -1,0 +1,60 @@
+# Anastasius Grün, Der letzte Ritter (1830), German with a machine-made English.
+#
+# No English translation exists in the public domain that I could find, so the
+# English is generated and disclosed as such on the copyright page. The German is
+# Projekt Gutenberg-DE's transcription of the 7th edition (Stuttgart 1830s):
+# a verse preface and 19 Romanzen on the life of Maximilian I, in 1,520
+# four-line stanzas. python fetch_letzte_ritter.py writes
+# input/letzte_ritter_de.txt (the author's prose notes are dropped).
+#
+# Sentence by sentence, because the sentences run across the rhymed lines.
+#
+#   python fetch_letzte_ritter.py && python make_book.py config/letzte_ritter.yaml
+
+translators:
+  de:
+    ollama: "qwen3:14b"
+    batch: 12
+    context: >-
+      This is Anastasius Grün's Der letzte Ritter (1830), a cycle of Romanzen in
+      four-line stanzas on the life of Emperor Maximilian I ("the last knight"):
+      his birth at Wiener Neustadt, his marriage to Mary of Burgundy after the
+      death of her father Charles the Bold at Nancy, the Martinswand legend, the
+      Reichstag at Worms, the Swabian and Landshut wars, the poem Theuerdank,
+      and his death at Wels in 1519. Grün was an Austrian liberal, so the poem
+      keeps contrasting the old chivalric order with his own time.
+
+books:
+  - title: "Der letzte Ritter"
+    author: "Anastasius Grün"
+    src_lang: de
+    tgt_lang: en
+    src_path: "input/letzte_ritter_de.txt"
+    mode: verse
+    translate: true
+    translate_by: sentence
+    first: src
+    trim: [6.0, 9.0]
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: medieval
+      color: "#5b2a2a"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. <i>Der letzte Ritter</i> (1830) by Anastasius
+        Grün (Anton Alexander, Count von Auersperg, 1806&ndash;1876) is in the
+        public domain; the German is set from the transcription at Projekt
+        Gutenberg-DE, and the author's prose notes are omitted. The English is a
+        machine translation made for this edition, not a published human
+        translation, and will contain errors.
+    cover:
+      paper: white
+      blurb: "Anastasius Grün's cycle of Romanzen on Emperor Maximilian I, the last knight, from his cradle in Wiener Neustadt to his funeral at Wels, in German with a machine-made English translation."
+    epub: true

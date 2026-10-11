@@ -177,17 +177,29 @@ class _BookDoc(BaseDocTemplate):
         canvas.restoreState()
 
 
-def _styles(fonts: tuple[str, str, str], first: str, opener_font: str | None = None):
+# (original size, original leading, gap after it, translation size,
+#  translation leading, gap after the pair, translation indent)
+_DENSITY = {
+    "normal":  (10.5, 14.0, 2.0, 10.0, 13.5, 8.0, 14),
+    "compact": (9.5, 11.5, 1.0, 9.0, 11.0, 4.5, 10),
+    "tight":   (9.0, 10.5, 0.5, 8.5, 10.0, 3.0, 8),
+}
+
+
+def _styles(fonts: tuple[str, str, str], first: str, opener_font: str | None = None,
+            density: str = "normal"):
     font, italic, bold = fonts
+    s_size, s_lead, s_gap, t_size, t_lead, t_gap, t_ind = _DENSITY.get(
+        density, _DENSITY["normal"])
     src_color = HexColor("#1a1a1a")
     tgt_color = HexColor("#555555")
     src = ParagraphStyle(
-        "src", fontName=font, fontSize=10.5, leading=14, textColor=src_color,
-        spaceBefore=0, spaceAfter=2,
+        "src", fontName=font, fontSize=s_size, leading=s_lead, textColor=src_color,
+        spaceBefore=0, spaceAfter=s_gap,
     )
     tgt = ParagraphStyle(
-        "tgt", fontName=italic, fontSize=10, leading=13.5,
-        textColor=tgt_color, leftIndent=14, spaceBefore=0, spaceAfter=8,
+        "tgt", fontName=italic, fontSize=t_size, leading=t_lead,
+        textColor=tgt_color, leftIndent=t_ind, spaceBefore=0, spaceAfter=t_gap,
     )
     if opener_font:
         src_open = ParagraphStyle(
@@ -307,9 +319,15 @@ def _esc(text: str) -> str:
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
-def _music_flowables(image_paths: list[str], caption: str, st, max_width: float) -> list:
+def _music_flowables(image_paths: list[str], caption: str, st, max_width: float,
+                     max_height: float = 0.0) -> list:
     """Grand-staff page images (see music.py), scaled to fit the text column,
-    each followed by a small attribution caption."""
+    each followed by a small attribution caption.
+
+    `max_height` is the room the frame really has: an image taller than its
+    frame is a hard ReportLab failure ("too large on page N"), not a clipped
+    page, and it took a 427-page build down once the wider gutter shrank the
+    frame by a few points."""
     flows: list = []
     for idx, path in enumerate(image_paths):
         try:
@@ -319,6 +337,8 @@ def _music_flowables(image_paths: list[str], caption: str, st, max_width: float)
         # LilyPond rendered these at 300 dpi.
         pt_w, pt_h = px_w / 300.0 * 72.0, px_h / 300.0 * 72.0
         scale = min(1.0, max_width / pt_w) if pt_w else 1.0
+        if max_height and pt_h:
+            scale = min(scale, max_height / pt_h)
         img = Image(path, width=pt_w * scale, height=pt_h * scale)
         img.hAlign = "CENTER"
         flows.append(img)
@@ -329,7 +349,7 @@ def _music_flowables(image_paths: list[str], caption: str, st, max_width: float)
     return flows
 
 
-def render(
+def _render_once(
     chapters: list[Chapter],
     *,
     out_path: str,
@@ -346,6 +366,7 @@ def render(
     translation_note: str = "",
     include_toc: bool = True,
     edition_line: str | None = None,
+    density: str = "normal",
 ) -> str:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     decor = decor or DecorSpec()
@@ -353,7 +374,7 @@ def render(
     font = _register_font(font_spec)
     gutter = _gutter_for_page_count(estimated_pages)
     opener_font = fonts.register(decor.opener_font)[0] if decor.opener_font else None
-    st = _styles(font, first, opener_font)
+    st = _styles(font, first, opener_font, density)
     text_width = trim[0] * inch - gutter - 0.5 * inch  # matches _BookDoc's text_w
 
     # A TOC is only meaningful when there are at least two titled divisions.
@@ -362,6 +383,11 @@ def render(
 
     doc = _BookDoc(out_path, trim, gutter, title, decor, author=author,
                    page_font=font[0])
+
+    # What a frame really holds, less its 6pt padding and room for the caption.
+    frame = doc.pageTemplates[0].frames[0]
+    text_width = min(text_width, frame._width - 12)
+    music_height = frame._height - 12 - 40
 
     story = []
     # --- Title page (recto) ---
@@ -425,13 +451,36 @@ def render(
             _render_bead(story, bead, st, first, opener=(i == 0 and opener_font))
         if ch.music_images:
             story.append(Spacer(1, 6))
-            story.extend(_music_flowables(ch.music_images, ch.music_caption, st, text_width))
+            story.extend(_music_flowables(ch.music_images, ch.music_caption, st,
+                                          text_width, music_height))
 
     if want_toc:
         doc.multiBuild(story)   # extra passes resolve TOC page numbers
     else:
         doc.build(story)
     return out_path, doc.page   # doc.page is the final page count
+
+
+def render(chapters: list[Chapter], *, estimated_pages: int = 200, **kw):
+    """Render, then re-render if the real page count needs a wider gutter.
+
+    The gutter KDP requires depends on the final page count, but the layout
+    that produces that count depends on the gutter. The character-count
+    estimate is only approximate, so a book that lands just over a bracket
+    boundary (La Henriade: estimated under 300, built at 311) is printed with
+    the narrower gutter and rejected. Page count only grows as the gutter
+    widens, so iterating converges in at most a few passes.
+    """
+    pages = estimated_pages
+    for _ in range(4):
+        out, actual = _render_once(chapters, estimated_pages=pages, **kw)
+        if _gutter_for_page_count(actual) <= _gutter_for_page_count(pages):
+            return out, actual
+        pages = actual
+    # Never hand back an interior KDP will reject for its gutter.
+    raise RuntimeError(
+        f"gutter did not settle after 4 passes (last page count {actual}); "
+        "the book sits on a KDP page-count boundary")
 
 
 def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):
