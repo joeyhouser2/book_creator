@@ -261,6 +261,9 @@ def correct(lines: list[str], lex: Lexicon, helpers: list[list[str]] | None = No
     votes = [vote_sources(lines, h) for h in (helpers or [])]
     out: list[str] = []
     for li, line in enumerate(lines):
+        if line.startswith("["):
+            out.append(line)         # an editorial marker, not verse
+            continue
         cur = line
         pos = 0
         while True:

@@ -329,6 +329,8 @@ def main() -> int:
         built.append({"n": n, "rubric": tidy(rubric), "verses": verses})
     patch_damaged(built)
     for ch in built:
+        ch["verses"] = [v for v in (strip_notes(v) for v in ch["verses"]) if v]
+    for ch in built:
         out.append(f"Kapitel {ch['n']}")
         out.append(ch["rubric"])
         out.extend(ch["verses"])
@@ -365,6 +367,25 @@ DAMAGED = {
           ["Sy hette In thun erwelen", "Zü sandt Iörgen rays als ein Man,",
            "Der Tewr wer, dorsft solchs nemen an."]),
 }
+
+
+NOTE = re.compile(r"Ueberschrift|Einleitung|Gedichte?|Seiten|gelasscnen|Folge sind|Ausgabe|"
+                  r"Handschrift|Exemplar")
+
+
+def strip_notes(v: str) -> str:
+    """An editor's note that the page extraction left in a verse line.
+
+    Haltaus's notes are in 1836 German ("Ueberschrift", "Einleitung"); the poem
+    never uses those words. A line that opens with a note and ends in verse
+    keeps what follows the note's last full stop; any other is dropped.
+    """
+    if not NOTE.search(v):
+        return v
+    m = re.search(r"^.*(?:Stelle|Seiten|Einleitung|Ausgabe|Folge|Exemplar)\.\s+(?=[A-Z])", v)
+    if m and m.end() < len(v):
+        return v[m.end():]
+    return ""
 
 
 def patch_damaged(built: list[dict]) -> None:

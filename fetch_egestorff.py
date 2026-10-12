@@ -21,6 +21,7 @@ What the OCR leaves around the verse, and how it is told apart:
 
 Writes input/messias_en_egestorff.txt, 'Canto N' heading per division.
 """
+import os
 import re
 import sys
 from pathlib import Path
@@ -181,13 +182,41 @@ def clean_line(raw: str) -> str | None:
 SPECKS = re.compile(r"[\^~|_°}{\[\]¢¥£©•■@=+<>\\$«»#]")
 
 
+
+# Short words that really occur in verse; a line made only of other short
+# tokens ("ee ee ee eee") is a smear the OCR has read as letters.
+COMMON_SHORT = set("""a i o am an as at be by do go he if in is it me my no of oh on or so to
+up us we ye all and are but can day did die ere eye far few for god had has her him his how
+its lay let lie lo man may men new nor not now off old one our out own pay see she sin son
+sun the thy too two use was way who why yet you yea thou thee than that them then they this
+thus unto upon with when what whom whose will wilt hath doth dost art him ill lord love
+life soul sky sea ray air arm bed boy cry dew end eve fly fit gay hue joy key law led low
+mad mid mix nay oak odd oft pit pry row sad sat set sit sow spy tho tie toe ton top try
+vow war wed win woe won yes wit wan wax""".split())
+
+
+def is_junk(s: str) -> bool:
+    toks = re.findall(r"[A-Za-z]+", s)
+    if len(toks) >= 3 and max(len(t) for t in toks) <= 3:
+        return sum(t.lower() in COMMON_SHORT for t in toks) < 0.75 * len(toks)
+    if len(toks) <= 3 and max((len(t) for t in toks), default=0) <= 3:
+        return not all(t.lower() in COMMON_SHORT for t in toks)
+    if len(toks) <= 2 and sum(len(t) for t in toks) <= 5:
+        return not any(t.lower() in COMMON_SHORT or t[:1].isupper() for t in toks)
+    return False
+
+
 def finish_line(s: str) -> str | None:
     """Last pass over a verse line: print specks the page scan read as marks.
 
     A '*' at the end of a line is the full stop or comma the scan lost; inside
     a line it is a speck. The rest are never part of this text.
     """
-    if re.search(r"(?i)\bklopstock", s):
+    if s.startswith("[about "):
+        return s                                  # a marker we put there
+    if (re.search(r"(?i)\bc[a-z]{2,4}[ .,-]*[xvk][xvil1k|]{0,5}\W", s)
+            and re.search(r"(?i)opst|epst|stock|stoch|steck|essia", s)):
+
         return None                               # a running head that got through
     s = re.sub(r"\*+(?=\s*$)", ".", s)
     s = re.sub(r"(?<=\w)\*+(?=[.,;:!?])", "", s)
@@ -199,6 +228,8 @@ def finish_line(s: str) -> str | None:
     s = re.sub(r"(?<=\w)[.,;:]{2,}$", ".", s)
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r"\s+([,.;:!?])", r"\1", s)
+    if is_junk(s):
+        return None
     return s if re.search(r"[A-Za-z]{2}", s) else None
 
 
@@ -211,14 +242,75 @@ def cantos(ident: str, numbers, google: bool) -> dict[int, list[str]]:
     for k, (n, a) in enumerate(order):
         b = order[k + 1][1] if k + 1 < len(order) else len(lines)
         body = []
+        anchors = []         # (cleaned lines so far, the number printed on that line)
+        rejected = []        # (cleaned lines so far, rejected lines in this run)
+        run = 0
         for i in range(a + 1, b):
-            if STOP.match(re.sub(r"\s+", " ", lines[i].strip())):
+            raw = lines[i]
+            if STOP.match(re.sub(r"\s+", " ", raw.strip())):
                 break
-            c = clean_line(lines[i])
+            c = clean_line(raw)
             if c:
+                if run >= 5:
+                    rejected.append((len(body), run))
+                run = 0
                 body.append(c)
-        res[n] = body
+                m = PRINTED_NUMBER.search(re.sub(r"\s+", " ", raw))
+                if m and int(m.group(1)) % 5 == 0:
+                    anchors.append((len(body), int(m.group(1))))
+            elif raw.strip():
+                run += 1
+        res[n] = mark_gaps(body, anchors, rejected, n)
     return res
+
+
+# Egestorff numbers every fifth line of each canto. The number says where the
+# line stands in the *English*, so it cannot place a cut against the German; what
+# it can do is show that lines are missing. A smeared page in the scan reads as
+# a page of debris, the debris is rightly discarded, and every later line then
+# slides up the page against its German with no sign anything was lost.
+PRINTED_NUMBER = re.compile(r"\s(\d{1,4})[.,]?\s*$")
+
+
+def find_gaps(anchors: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """(cleaned lines before the gap, lines lost) wherever the printed numbers
+    jump further than the lines we hold. Needs runs of agreeing numbers on both
+    sides, because one misread digit makes a jump of its own."""
+    runs, cur = [], []
+    for i, v in anchors:
+        if cur and abs((v - i) - cur[-1][2]) <= 1:
+            cur.append((i, v, v - i))
+        else:
+            if len(cur) >= 3:
+                runs.append(cur)
+            cur = [(i, v, v - i)]
+    if len(cur) >= 3:
+        runs.append(cur)
+    gaps = []
+    for a, b in zip(runs, runs[1:]):
+        lost = b[0][2] - a[-1][2]
+        if 8 <= lost <= 90:
+            gaps.append((a[-1][0], lost))
+    return gaps
+
+
+def mark_gaps(body: list[str], anchors, rejected, canto: int) -> list[str]:
+    """Insert a visible marker where the scan lost lines, at the discarded run
+    of debris nearest the printed-number gap."""
+    out = list(body)
+    for before, lost in sorted(find_gaps(anchors), reverse=True):
+        # Egestorff's numbering has slips of its own (a line printed 1290 for
+        # 1200, and every number after it 90 high). Those jump with the text
+        # unbroken. A real loss leaves a page of debris right at the jump.
+        near = [r for r in rejected if before - 25 <= r[0] <= before + 40 and r[1] >= 8]
+        if not near:
+            print(f"  canto {canto}: numbers jump by {lost} near line {before}, "
+                  "but the text is unbroken: a numbering slip, not a loss")
+            continue
+        spot = max(near, key=lambda r: r[1])[0]
+        out.insert(spot, f"[about {lost} lines lost: this page is illegible in the scan]")
+        print(f"  canto {canto}: ~{lost} lines lost near line {spot}")
+    return out
 
 
 def english_corpus() -> list[str]:
@@ -253,7 +345,140 @@ def finish_existing() -> None:
     print(f"finished {OUT}")
 
 
+def abbyy_lines(ident: str) -> list[str] | None:
+    """ABBYY FineReader's reading of the same pages, a third opinion, when its
+    archive is cached. It is large, so each line is pulled out of the XML in a
+    single pass rather than parsing the document."""
+    import gzip
+    path = CACHE / f"{ident}_abbyy.gz"
+    if not path.exists():
+        return None
+    import html
+    xml = gzip.open(path).read().decode("utf-8", "replace")
+    out = []
+    for ln in re.finditer(r"<line[^>]*>(.*?)</line>", xml, flags=re.S):
+        chars = re.findall(r"<charParams[^>]*>(.*?)</charParams>", ln.group(1), flags=re.S)
+        out.append(html.unescape("".join(chars)))
+    return out
+
+
+def canto_lines_from(lines: list[str], numbers) -> dict[int, list[str]]:
+    begin = starts(lines, numbers)
+    order = sorted(begin.items())
+    res = {}
+    for k, (n, a) in enumerate(order):
+        b = order[k + 1][1] if k + 1 < len(order) else len(lines)
+        body = []
+        for i in range(a + 1, b):
+            if STOP.match(re.sub(r"\s+", " ", lines[i].strip())):
+                break
+            c = clean_line(lines[i])
+            if c:
+                body.append(c)
+        res[n] = body
+    return res
+
+
+def proofread_existing() -> None:
+    """Swap in another engine's reading where the language model prefers it.
+    Works on the text already written, so it follows the repair run."""
+    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(ROOT / "cache" / "pylib"))
+    from book_creator import ocr_english, proofread_english
+    text = OUT.read_text(encoding="utf-8")
+    sections = re.split(r"\n(?=Canto [IVXL]+\n)", text)
+    heads = [s.split(NL)[0] for s in sections]
+    nums = [ROMAN.index(h.split()[1]) + 1 for h in heads]
+    held = {n: s.split(NL)[1:] for n, s in zip(nums, sections)}
+
+    readings: dict[int, list[list[str]]] = {n: [] for n in held}
+    for ident, numbers, google in PARTS:
+        other = cantos_raw(ident, numbers, not google)
+        for n, ls in other.items():
+            readings[n].append(ls)
+        ab = abbyy_lines(ident)
+        if ab:
+            try:
+                for n, ls in canto_lines_from(ab, numbers).items():
+                    readings[n].append(ls)
+            except SystemExit as exc:
+                print(f"  ABBYY text of {ident} not used: {exc}")
+    part1 = NL.join(NL.join(v) for n, v in held.items() if n <= 10)
+    german = (ROOT / "input" / "messias_de.txt").read_text(encoding="utf-8")
+    lex = ocr_english.default_lexicon(english_corpus(), names_from=part1, german=german,
+                                      english_all=NL.join(NL.join(v) for v in held.values()))
+    scorer = ocr_english.LMScorer("Qwen/Qwen2.5-0.5B-Instruct")
+    # Below this many nats the model's preference is closer to a coin than a reading:
+    # at 2.5, 'bis' became 'us' and 'her' became 'bar'; at 4.0 those go to review.
+    margin = float(os.environ.get("PROOFREAD_MARGIN", "4.0"))
+    only = [int(x) for x in sys.argv if x.isdigit()]
+    changes_all, unsure_all = [], []
+    for n in sorted(held):
+        if only and n not in only:
+            continue
+        body = [x for x in held[n] if x.strip()]
+        ch, un = [], []
+        out = proofread_english.proofread(body, lex, readings[n], scorer, margin=margin,
+                                          changes=ch, unsure=un)
+        held[n] = out
+        changes_all += [(n, body[li], *rest) for li, *rest in ch]
+        unsure_all += [(n, body[li], *rest) for li, *rest in un]
+        print(f"Canto {ROMAN[n - 1]:<5} {len(ch):4d} readings swapped, {len(un):4d} left unsure",
+              flush=True)
+    report = CACHE / "proofread_changes.tsv"
+    with report.open("w", encoding="utf-8") as fh:
+        fh.write("status\tcanto\tfrom\tto\tgain\tline\n")
+        for n, line, tok, new, gain in changes_all:
+            fh.write(f"swapped\t{n}\t{tok}\t{new}\t{gain}\t{line}\n")
+        for n, line, tok, new, gain in unsure_all:
+            fh.write(f"unsure\t{n}\t{tok}\t{new}\t{gain}\t{line}\n")
+    OUT.write_text(NL2.join(heads[i] + NL + NL.join(held[nums[i]])
+                            for i in range(len(heads))) + NL, encoding="utf-8")
+    print(f"wrote {OUT}; report {report}")
+
+
+def cantos_raw(ident: str, numbers, google: bool) -> dict[int, list[str]]:
+    """Another engine's cleaned lines for each canto (no repair, no markers)."""
+    return canto_lines_from(fetch(ident, google_ocr=google), numbers)
+
+
+def mark_existing() -> None:
+    """Put the lost-page markers into the text already written, without
+    re-running the repair: each is placed after the line that precedes it,
+    found in the written text by similarity."""
+    from rapidfuzz import fuzz
+    fresh = {}
+    for ident, numbers, google in PARTS:
+        fresh.update(cantos(ident, numbers, google))
+    text = OUT.read_text(encoding="utf-8")
+    sections = re.split(r"\n(?=Canto [IVXL]+\n)", text)
+    by_canto = {ROMAN.index(s.split(NL)[0].split()[1]) + 1: s.split(NL) for s in sections}
+    added = 0
+    for n, body in fresh.items():
+        marks = [i for i, ln in enumerate(body) if ln.startswith("[about ")]
+        lines = by_canto[n]
+        if any(ln.startswith("[about ") for ln in lines):
+            continue                                   # already marked
+        for m in sorted(marks, reverse=True):
+            prev = body[m - 1]
+            lo, hi = max(1, m - 60), min(len(lines), m + 60)
+            best = max(range(lo, hi), key=lambda j: fuzz.ratio(prev, lines[j]))
+            lines.insert(best + 1, body[m])
+            added += 1
+            print(f"  canto {n}: marker placed after {lines[best][:60]!r}")
+    for k in by_canto:
+        while by_canto[k] and not by_canto[k][-1].strip():
+            by_canto[k].pop()
+    OUT.write_text(NL2.join(NL.join(by_canto[k]) for k in sorted(by_canto)) + NL,
+                   encoding="utf-8")
+    print(f"{added} marker(s) added")
+
+
 def main() -> None:
+    if "--proofread" in sys.argv:
+        return proofread_existing()
+    if "--mark-gaps-only" in sys.argv:
+        return mark_existing()
     if "--finish-only" in sys.argv:
         return finish_existing()
     sys.path.insert(0, str(ROOT))
