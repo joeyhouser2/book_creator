@@ -94,7 +94,13 @@ PROMPT = (
     "yet, dieweil = while, darumb = therefore. The hero is Tewrdannck (Theuerdank); "
     "his enemies are the three captains Fürwittig (Rashness), Vnfalo (Misfortune) "
     "and Neydelhart (Envy); the Ernhold is his herald and Ernreich the queen. The "
-    "text has OCR noise; read through it for the sense.\n\n"
+    "text has OCR noise; read through it for the sense. Terms: gemahel = wife or "
+    "husband (consort); werber = suitors; geferlicheit/geuerlicheit = peril or danger; "
+    "Gembs/Gembsen = chamois; Clausen/Klause = a fortified mountain pass; pass = "
+    "pass or checkpoint; Fürwitz = rashness; Held = hero; leyd = grief; trew = "
+    "faithful; pot/potten = messenger(s); herr/herre = lord; Künigin = queen; "
+    "tochter = daughter; rat/Rät = council/counsellors; Ritter = knight. Translate "
+    "what the text says; do not embellish and do not invent.\n\n"
     "{context}"
     "Translate ONLY the passage below, into complete natural English sentences, "
     "with no German words left in it (names excepted), no brackets and no notes. "
@@ -110,6 +116,81 @@ def ask(model: str, host: str, prompt: str, timeout: int = 300) -> str:
     return r.json()["message"]["content"].strip()
 
 
+PASS2 = Path("cache/theuerdank_pass2.jsonl")
+
+
+def context_for(us: list[str], i: int) -> str:
+    ctx = ""
+    if i > 0:
+        ctx += f"The sentence before it (for context only): {us[i - 1]}\n"
+    if i + 1 < len(us):
+        ctx += f"The sentence after it (for context only): {us[i + 1]}\n"
+    return ctx + "\n" if ctx else ""
+
+
+def run_all(a) -> int:
+    """Every unit again, one at a time. Appends to PASS2 and resumes from it,
+    so an interrupted run (or a GPU someone else wants) loses nothing."""
+    import json
+
+    us = units()
+    done = set()
+    if PASS2.exists():
+        for line in PASS2.read_text(encoding="utf-8").splitlines():
+            done.add(json.loads(line)["i"])
+    todo = [i for i in range(len(us)) if i not in done][:a.limit]
+    print(f"{len(us)} units, {len(done)} done, {len(todo)} to go", file=sys.stderr)
+    t0 = time.time()
+    with open(PASS2, "a", encoding="utf-8") as out:
+        for n, i in enumerate(todo, 1):
+            try:
+                new = ask(a.model, a.host,
+                          PROMPT.format(context=context_for(us, i), text=us[i]))
+            except requests.RequestException as e:
+                print(f"  ! {i}: {e}", file=sys.stderr)
+                continue
+            new = re.sub(r"^(PASSAGE|English|Translation)\s*:\s*", "", new).strip()
+            out.write(json.dumps({"i": i, "sha": mt_cache._sha(us[i]), "new": new},
+                                 ensure_ascii=False) + "\n")
+            out.flush()
+            if n % 50 == 0:
+                rate = (time.time() - t0) / n
+                print(f"  … {n}/{len(todo)}  {rate:.1f}s each, "
+                      f"~{rate * (len(todo) - n) / 60:.0f} min left", file=sys.stderr, flush=True)
+    return 0
+
+
+def apply_all() -> int:
+    """Put the second pass into the cache wherever it is acceptable.
+
+    Accepted when it is not empty, has not looped, carries no German or odd
+    spelling, and is within a sensible length of the first pass; anything else
+    keeps the first pass. The first pass is kept in PASS2 beside the choice."""
+    import json
+
+    us = units()
+    conn = sqlite3.connect(DB)
+    took = kept = 0
+    for line in PASS2.read_text(encoding="utf-8").splitlines():
+        r = json.loads(line)
+        u, new = us[r["i"]], r["new"]
+        row = conn.execute("SELECT english FROM translations WHERE model=? AND src_sha=?",
+                           (CACHE_MODEL, r["sha"])).fetchone()
+        old = row[0] if row else ""
+        ok = (new and not mt_cache.degenerate(new) and not flagged(u, new)
+              and 0.6 * len(old) <= len(new) <= 1.8 * max(len(old), 20)
+              and new.strip() != old.strip())
+        if ok:
+            conn.execute("INSERT OR REPLACE INTO translations (model, src_sha, english) "
+                         "VALUES (?, ?, ?)", (CACHE_MODEL, r["sha"], new))
+            took += 1
+        else:
+            kept += 1
+    conn.commit()
+    print(f"second pass taken for {took} units, first pass kept for {kept}", file=sys.stderr)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--scan", action="store_true")
@@ -118,7 +199,15 @@ def main() -> int:
     ap.add_argument("--model", default="qwen3:14b")
     ap.add_argument("--host", default="http://localhost:11434")
     ap.add_argument("--show", type=int, default=0)
+    ap.add_argument("--all", action="store_true",
+                    help="translate every unit again, into cache/theuerdank_pass2.jsonl")
+    ap.add_argument("--apply", action="store_true",
+                    help="write the accepted results of --all into the cache")
     a = ap.parse_args()
+    if a.all:
+        return run_all(a)
+    if a.apply:
+        return apply_all()
 
     us = units()
     conn = sqlite3.connect(DB)
