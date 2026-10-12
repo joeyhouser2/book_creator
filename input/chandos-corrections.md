@@ -392,3 +392,39 @@ each. Typed as the page prints them: one paragraph, line breaks closed up.
 - **1669**: Coment apres la bataille en Britaigne monꝑ Bertrem Claykyn trahist hors de roialme de ffraunce la gnde compaignie ⁊ plusours altres chiualers ⁊ esquiers pur fair vne voiage es parties Despaigne a cause de guerre qauoit longement dure entre Espaigne ⁊ Aragon ⁊ pur fair paix entre les deux Roys ꝑ gree du Pape.
 - **2049**: Coment le Prince se departi de Burdeaux ⁊ la tresnoble dame la Pncesse fist amers dolours ⁊ complaintz a cause de son departir | ⁊ le Prince conforta la dame moult noblement | ⁊ bien tost apres la tresnoble dame enfaunta vn filtz qe fust nomez Richard ⁊ ly Prince ⁊ maint gent enauoient gnt ioie.
 - **3473**: Du temps quant ceste bataille estoit.
+
+## English assigned to passages
+
+The pairing puts a passage's English beside the verse the aligner thought it
+translated; a few sentences land one passage early or late. Each entry gives
+the English a passage prints, keyed by the number of its first verse line,
+and found by reading the verse against the 1910 translation. `(none)` leaves
+the verse with no English of its own, because the passage before covers it.
+
+- **56**: (none)
+- **63**: This noble Prince of whom I speak, from the day of his birth cherished no thought but loyalty, nobleness, valour, and goodness, and was endued with prowess. Of such nobleness was the Prince that he wished all the days of his life to set his whole intent on maintaining justice and right, and therein was he nurtured from his childhood up ; from his generous and noble disposition he drew the doctrine of bounty, for gaiety and nobleness were in his heart perfectly from the first beginnings of his life and youth.
+- **533**: One day he said to the King his father and to the Queen his mother : ' Sire,' quoth he, ' for God's sake, you know well that thus it is, that in Gascony the noble and valiant knights cherish you so greatly that they suffer great pain for your war and to gain you honour, and yet they have no leader of your blood. Therefore if you were so advised as to send one of your sons they would be the bolder.'
+- **547**: And every one said that he spoke truly.
+- **676**: When all were thus lodged, the good Chandos and Audeley, with the noble Captal,
+- **681**: went to camp in the open. There they remained a long time.
+- **688**: Thereafter they returned all up the river
+- **691**: and went to take Périgueux, a city of great fame. There they camped a great part of the winter. Right noble was their sojourn, for many an assault and many an attack they made against the castle, for there was naught but a little meadow between the castle and the town.
+- **718**: (none)
+- **719**: Thereafter he rode into Berry, and through Gascony also, and up to Tours in Tourayne. Then the tidings came to King John, whereat he made great lamentation, and said that he would lightly esteem himself if he did not take great vengeance.
+- **729**: Then he assembled his forces from all the realm of France. There remained neither duke nor earl, nor baron of account, that he did not have summoned, and, as I have heard tell, the muster was held at Chartres.
+- **1788**: And the Bastard was no fool ; he rode through Castile ; not a city remained of which he did not get possession ; there were neither earls nor barons that did not do him homage, saving only one reputed sage,
+- **1795**: Fernandez de Castro, they that knew him called him—and right valiant and noble was he, and he vowed, so God aided him, that never for a day would he forsake him who was king by right, and if they all would do it—those who had the power—yet could not he suffer a bastard to hold a kingdom.
+- **1805**: But all the others of the country were altogether agreed that Henry should remain king of Castile and of Toledo and Seville, and Cordova, and of Leon.
+- **1810**: By the accord of all the barons was Castile thus conquered, and by the power and emprise of Sir Bertrand du Guesclin. Now you will be able to hear the end, how it fortuned after this day, not a score of years ago.
+- **2499**: If good befalls me, it shall be for him, so please God, as much as for myself. I have no other counsel.'
+- **2502**: Thereupon he bade the army make ready to set out in the early morning.
+- **2753**: They slew his horse under him, but Sir William Felton defended himself stoutly on foot, like a lion-hearted man ; albeit his defence availed him little, for he was slain. God have mercy on him.
+- **2759**: And the others joined together on a mountain which they took ; there the Spaniards made many an onslaught on them, fiercely attacking them without cessation, and hurling at them spears and darts and strong, sharp archegays.
+- **2769**: And they, who were very courageous, gave proof of their prowess like men of valour, for more than a hundred times that day they descended without ceasing, their sharp lances in their hands, and by force made them give way. Nor would the Castilians have been able to harm them, by casting lance or dart, had it not been for the French and Bretons, the Normans, Picards, and Burgundians, who came up a valley with Marshal d'Audrehem and Sir Jehan de Neufville.
+- **3241**: With him he had his two sons and other knights of renown, who did their duty stoutly; and there was the right noble lord of Rays. There might one see the companions coming, all close together, banners and pennons.
+- **3249**: Each in hand, and they made fierce onslaught
+- **3251**: to attack their enemies and the archers kept on shooting, and the crossbow-men on the other side, who were with the Bastard ; but all advanced so far on foot that they met together with Bertrand's division, which caused them much mischief.
+- **3659**: (none)
+- **3663**: And the Prince also took Amusco first, and was at Medina del Campo, and abode in the fields until he had provisions from the town, or he would have given them battle. Likewise the Great Company took several towns in Spain, but nevertheless, of a truth, they suffered great hardships while awaiting King Pedro.
+- **4039**: Thereat he was blithe and glad,
+- **4043**: for there were Roger de Beaufort, who made boast of holding it. Sir Jean de Villemur, who said he would keep the wall, and good men-at-arms, without the burgesses therein.

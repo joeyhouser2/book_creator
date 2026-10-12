@@ -958,7 +958,8 @@ def _sentences(english: str) -> list[tuple[int, str]]:
 
 
 def build_chapters(lines: list[VerseLine], rubrics: dict[int, str],
-                   english: str, anchors: list[tuple[int, int]]):
+                   english: str, anchors: list[tuple[int, int]],
+                   assigned: dict[int, str] | None = None):
     """Beads of manuscript verse, each over the English that translates it.
 
     The printed line numbers fix the pairing to within a block of forty-odd
@@ -1000,10 +1001,10 @@ def build_chapters(lines: list[VerseLine], rubrics: dict[int, str],
             f"{len(lost)} verse line(s) would not be printed, e.g. "
             f"{[lines[k].manuscript for k in lost[:3]]}; "
             f"{len(placed) - len(set(placed))} would be printed twice")
-    return _chapters_from_units(lines, rubrics, numbers, units)
+    return _chapters_from_units(lines, rubrics, numbers, units, assigned)
 
 
-def _chapters_from_units(lines, rubrics, numbers, units):
+def _chapters_from_units(lines, rubrics, numbers, units, assigned=None):
     """Beads and chapters from (line indexes, English) runs, in poem order.
 
     A rubric stands in the manuscript between two lines of verse, so it prints
@@ -1027,6 +1028,7 @@ def _chapters_from_units(lines, rubrics, numbers, units):
         for p, part in enumerate(parts):
             pieces.append((part, eng if p == longest else []))
     pieces = _join_untranslated(pieces, rubrics)
+    pieces = _assign_english(pieces, numbers, assigned or {})
 
     chapters: list[Chapter] = []
     beads: list[Bead] = []
@@ -1045,6 +1047,30 @@ def _chapters_from_units(lines, rubrics, numbers, units):
     if beads:
         chapters.append(Chapter(title=f"Lines {start}–{numbers[-1]}", beads=beads))
     return chapters
+
+
+def _assign_english(pieces, numbers, assigned):
+    """Print the English read off the page for the passages that name it.
+
+    The aligner is right to within a sentence; the passages in `assigned`
+    were found a sentence early or late by reading verse against translation,
+    and each carries the English it should print. Keyed by the number of the
+    passage's first verse line. An entry that finds no passage is reported,
+    not skipped silently: it means the passages have been cut differently.
+    """
+    if not assigned:
+        return pieces
+    out, used = [], set()
+    for part, eng in pieces:
+        n = numbers[part[0]]
+        if n in assigned:
+            text = assigned[n]
+            eng = [] if text.strip() == "(none)" else [text]
+            used.add(n)
+        out.append((part, eng))
+    for n in sorted(set(assigned) - used):
+        print(f"  !  English assigned to line {n} matches no passage")
+    return out
 
 
 def _join_untranslated(pieces: list[tuple[list[int], list[str]]],
@@ -1583,6 +1609,22 @@ def read_rubric_readings(path: Path) -> list[tuple[int, str]]:
     return out
 
 
+def read_assigned(path: Path) -> dict[int, str]:
+    """{first verse line: English} from "English assigned to passages"."""
+    if not path.exists():
+        return {}
+    out: dict[int, str] = {}
+    section = False
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if raw.startswith("## "):
+            section = raw.startswith("## English assigned")
+            continue
+        m = re.match(r"^- \*\*(\d+)\*\*:\s*(.+?)\s*$", raw)
+        if section and m:
+            out[int(m[1])] = m[2]
+    return out
+
+
 def apply_rubric_readings(lines: list[VerseLine], rubrics: dict[int, str],
                           readings) -> None:
     """Replace each heading's text with the reading made from the page.
@@ -1723,7 +1765,8 @@ def build(doc, *, out_dir: Path) -> int:
     english, anchors = translation_stream(doc)
     print(f"  {len(english.split()):,} words of translation, "
           f"{len(anchors) - 2} line-number anchors")
-    chapters = build_chapters(lines, rubrics, english, anchors)
+    chapters = build_chapters(lines, rubrics, english, anchors,
+                              read_assigned(CORRECTIONS))
     beads = sum(len(c.beads) for c in chapters)
     print(f"  {len(chapters)} chapters, {beads} beads")
 

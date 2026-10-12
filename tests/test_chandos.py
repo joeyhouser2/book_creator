@@ -381,3 +381,24 @@ def test_kdp_check_flags_ink_near_the_trim(tmp_path):
     c.save()
     notes = bc.kdp_check(pdf)
     assert any("trim" in n for n in notes)
+
+
+def test_assigned_english_replaces_a_passages_sentence_by_first_line():
+    pieces = [([0, 1], ["old one"]), ([2], ["old two"]), ([3], ["keep"])]
+    numbers = [10, 11, 12, 13]
+    out = bc._assign_english(pieces, numbers, {10: "new one", 12: "(none)"})
+    assert out == [([0, 1], ["new one"]), ([2], []), ([3], ["keep"])]
+
+
+def test_assigned_english_that_matches_nothing_is_reported(capsys):
+    bc._assign_english([([0], ["x"])], [5], {99: "lost"})
+    assert "line 99" in capsys.readouterr().out
+
+
+def test_assigned_section_parses_from_the_corrections_file():
+    from pathlib import Path
+    p = Path(__file__).parent.parent / "input" / "chandos-corrections.md"
+    if not p.exists():
+        pytest.skip("corrections file not present")
+    got = bc.read_assigned(p)
+    assert got.get(56) == "(none)" and "Chandos" in got[676] + got[681]
