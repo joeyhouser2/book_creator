@@ -767,23 +767,8 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
     return chapters
 
 
-def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
-               on_log=None, artifacts: dict | None = None,
-               on_progress=None, should_stop=None) -> str:
-    """Build one book. Returns the interior PDF path.
-
-    `artifacts`, if given, is filled in with every file produced (pdf, cover,
-    epub, review, audio) so a caller like the web UI can offer them all without
-    re-deriving the names.
-    """
-    def log(msg: str) -> None:
-        if verbose:
-            print(msg)
-        if on_log is not None:
-            on_log(msg)
-
-    out = artifacts if artifacts is not None else {}
-
+def chapters_for_spec(spec: BookSpec, log=print) -> list[Chapter]:
+    """The aligned chapters a spec describes, before any rendering."""
     if spec.corpus.doc_id:
         chapters = _chapters_from_corpus(spec, log)
     elif spec.perseus.work_id:
@@ -824,6 +809,27 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
     if not chapters:
         raise ValueError(
             f"Nothing left to print: sides='{spec.sides}' removed every bead.")
+    return chapters
+
+
+def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
+               on_log=None, artifacts: dict | None = None,
+               on_progress=None, should_stop=None) -> str:
+    """Build one book. Returns the interior PDF path.
+
+    `artifacts`, if given, is filled in with every file produced (pdf, cover,
+    epub, review, audio) so a caller like the web UI can offer them all without
+    re-deriving the names.
+    """
+    def log(msg: str) -> None:
+        if verbose:
+            print(msg)
+        if on_log is not None:
+            on_log(msg)
+
+    out = artifacts if artifacts is not None else {}
+
+    chapters = chapters_for_spec(spec, log)
 
     slug = spec.slug or _slugify(spec.title)
     # A monolingual edition is a different book from the parallel text, so it
@@ -891,6 +897,26 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
             out["review"] = review_path
         except reviewer.ReviewerError as exc:
             log(f"  ⚠  Review skipped: {exc}")
+
+    if spec.proofread:
+        from . import proofread_pairs
+        log(f"• Proofreading pairs on the GPU ({spec.proofread_model})…")
+        try:
+            findings, scanned = proofread_pairs.check_chapters(
+                chapters, src_lang=spec.src_lang, tgt_lang=spec.tgt_lang,
+                model=spec.proofread_model, max_beads=spec.proofread_sample, log=log)
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            proof_path = str(Path(out_dir) / f"{slug}-proofread.md")
+            Path(proof_path).write_text(
+                proofread_pairs.format_report(findings, scanned=scanned,
+                                              model=spec.proofread_model),
+                encoding="utf-8")
+            high = sum(1 for f in findings if f.severity == "high")
+            log(f"• Proofread flagged {len(findings)} of {scanned} pair(s) "
+                f"({high} high) → {proof_path}")
+            out["proofread"] = proof_path
+        except proofread_pairs.ProofreadError as exc:
+            log(f"  ⚠  Proofreading skipped: {exc}")
 
     out_path = ""
     if spec.audio_only:

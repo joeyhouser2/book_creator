@@ -993,6 +993,48 @@ never edits content or blocks the build, and needs `ollama serve` running
 locally; if it can't reach Ollama, the build logs a warning and continues
 without a report.
 
+## Pair proofreading (measured, on your GPU)
+
+`--review` asks a chat model for an opinion. `--proofread` *measures*, with no
+server and no API: every two-sided bead is scored four ways and only the ones
+that are unusual **for that book** are reported.
+
+```bash
+python make_book.py config/books.yaml --proofread
+# or: --proofread-model <hf id> --proofread-sample 500
+```
+
+or `proofread: true` (plus `proofread_model`, `proofread_sample`) in a config
+entry. It writes `output/<slug>-proofread.md`.
+
+| Signal | Catches |
+|---|---|
+| LaBSE similarity of the two sides | two sides that are not the same sentence |
+| …against the neighbouring beads | alignment drift (an off-by-one run) |
+| length ratio vs the book's norm | omitted or added clauses |
+| translation-model PMI, source→target and target→source | text the other side does not support, and **which words** |
+
+PMI is `log P(token | source) − log P(token | no source)` under a translation
+model (default `Unbabel/TowerInstruct-7B-v0.2`, trained to translate). Added
+text has PMI near zero exactly where it was added; a missing clause shows in
+the reverse direction. The report quotes the worst-supported span and, for the
+most suspect beads, the model's own reading beside the book's.
+
+Notes:
+
+- **Memory.** Tower-7B in half precision is ~14 GB: it needs the 16 GB card.
+  The scorer runs in a subprocess with `CUDA_VISIBLE_DEVICES` cleared and
+  picks the card with the most memory. If it still will not fit it falls back to
+  4-bit (needs `bitsandbytes`), then to CPU offload. The first run downloads
+  the model (~13.5 GB).
+- **Languages.** Tower covers en/de/fr/es/it/pt/nl/ru/zh/ko. For Latin, Middle
+  High German and the like it reads poorly, so the target→source direction is
+  skipped and thresholds are relative to the book; expect a ranking worth
+  skimming, not a verdict. Treat "MODEL READS" for those languages as a hint.
+- Advisory only, like `--review`: it never edits a bead.
+- Any causal LM with a chat template works as `--proofread-model`; a small one
+  (e.g. `Qwen/Qwen2.5-0.5B-Instruct`) is fine for a quick drift check.
+
 ## Fonts
 
 Fonts are **auto-discovered** from `fonts/`: drop a font's `.ttf` files in and the
