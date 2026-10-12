@@ -181,13 +181,41 @@ def clean_line(raw: str) -> str | None:
 SPECKS = re.compile(r"[\^~|_°}{\[\]¢¥£©•■@=+<>\\$«»#]")
 
 
+
+# Short words that really occur in verse; a line made only of other short
+# tokens ("ee ee ee eee") is a smear the OCR has read as letters.
+COMMON_SHORT = set("""a i o am an as at be by do go he if in is it me my no of oh on or so to
+up us we ye all and are but can day did die ere eye far few for god had has her him his how
+its lay let lie lo man may men new nor not now off old one our out own pay see she sin son
+sun the thy too two use was way who why yet you yea thou thee than that them then they this
+thus unto upon with when what whom whose will wilt hath doth dost art him ill lord love
+life soul sky sea ray air arm bed boy cry dew end eve fly fit gay hue joy key law led low
+mad mid mix nay oak odd oft pit pry row sad sat set sit sow spy tho tie toe ton top try
+vow war wed win woe won yes wit wan wax""".split())
+
+
+def is_junk(s: str) -> bool:
+    toks = re.findall(r"[A-Za-z]+", s)
+    if len(toks) >= 3 and max(len(t) for t in toks) <= 3:
+        return sum(t.lower() in COMMON_SHORT for t in toks) < 0.75 * len(toks)
+    if len(toks) <= 3 and max((len(t) for t in toks), default=0) <= 3:
+        return not all(t.lower() in COMMON_SHORT for t in toks)
+    if len(toks) <= 2 and sum(len(t) for t in toks) <= 5:
+        return not any(t.lower() in COMMON_SHORT or t[:1].isupper() for t in toks)
+    return False
+
+
 def finish_line(s: str) -> str | None:
     """Last pass over a verse line: print specks the page scan read as marks.
 
     A '*' at the end of a line is the full stop or comma the scan lost; inside
     a line it is a speck. The rest are never part of this text.
     """
-    if re.search(r"(?i)\bklopstock", s):
+    if s.startswith("[about "):
+        return s                                  # a marker we put there
+    if (re.search(r"(?i)\bc[a-z]{2,4}[ .,-]*[xvk][xvil1k|]{0,5}\W", s)
+            and re.search(r"(?i)opst|epst|stock|stoch|steck|essia", s)):
+
         return None                               # a running head that got through
     s = re.sub(r"\*+(?=\s*$)", ".", s)
     s = re.sub(r"(?<=\w)\*+(?=[.,;:!?])", "", s)
@@ -199,6 +227,8 @@ def finish_line(s: str) -> str | None:
     s = re.sub(r"(?<=\w)[.,;:]{2,}$", ".", s)
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r"\s+([,.;:!?])", r"\1", s)
+    if is_junk(s):
+        return None
     return s if re.search(r"[A-Za-z]{2}", s) else None
 
 
@@ -211,14 +241,75 @@ def cantos(ident: str, numbers, google: bool) -> dict[int, list[str]]:
     for k, (n, a) in enumerate(order):
         b = order[k + 1][1] if k + 1 < len(order) else len(lines)
         body = []
+        anchors = []         # (cleaned lines so far, the number printed on that line)
+        rejected = []        # (cleaned lines so far, rejected lines in this run)
+        run = 0
         for i in range(a + 1, b):
-            if STOP.match(re.sub(r"\s+", " ", lines[i].strip())):
+            raw = lines[i]
+            if STOP.match(re.sub(r"\s+", " ", raw.strip())):
                 break
-            c = clean_line(lines[i])
+            c = clean_line(raw)
             if c:
+                if run >= 5:
+                    rejected.append((len(body), run))
+                run = 0
                 body.append(c)
-        res[n] = body
+                m = PRINTED_NUMBER.search(re.sub(r"\s+", " ", raw))
+                if m and int(m.group(1)) % 5 == 0:
+                    anchors.append((len(body), int(m.group(1))))
+            elif raw.strip():
+                run += 1
+        res[n] = mark_gaps(body, anchors, rejected, n)
     return res
+
+
+# Egestorff numbers every fifth line of each canto. The number says where the
+# line stands in the *English*, so it cannot place a cut against the German; what
+# it can do is show that lines are missing. A smeared page in the scan reads as
+# a page of debris, the debris is rightly discarded, and every later line then
+# slides up the page against its German with no sign anything was lost.
+PRINTED_NUMBER = re.compile(r"\s(\d{1,4})[.,]?\s*$")
+
+
+def find_gaps(anchors: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """(cleaned lines before the gap, lines lost) wherever the printed numbers
+    jump further than the lines we hold. Needs runs of agreeing numbers on both
+    sides, because one misread digit makes a jump of its own."""
+    runs, cur = [], []
+    for i, v in anchors:
+        if cur and abs((v - i) - cur[-1][2]) <= 1:
+            cur.append((i, v, v - i))
+        else:
+            if len(cur) >= 3:
+                runs.append(cur)
+            cur = [(i, v, v - i)]
+    if len(cur) >= 3:
+        runs.append(cur)
+    gaps = []
+    for a, b in zip(runs, runs[1:]):
+        lost = b[0][2] - a[-1][2]
+        if 8 <= lost <= 90:
+            gaps.append((a[-1][0], lost))
+    return gaps
+
+
+def mark_gaps(body: list[str], anchors, rejected, canto: int) -> list[str]:
+    """Insert a visible marker where the scan lost lines, at the discarded run
+    of debris nearest the printed-number gap."""
+    out = list(body)
+    for before, lost in sorted(find_gaps(anchors), reverse=True):
+        # Egestorff's numbering has slips of its own (a line printed 1290 for
+        # 1200, and every number after it 90 high). Those jump with the text
+        # unbroken. A real loss leaves a page of debris right at the jump.
+        near = [r for r in rejected if before - 25 <= r[0] <= before + 40 and r[1] >= 8]
+        if not near:
+            print(f"  canto {canto}: numbers jump by {lost} near line {before}, "
+                  "but the text is unbroken: a numbering slip, not a loss")
+            continue
+        spot = max(near, key=lambda r: r[1])[0]
+        out.insert(spot, f"[about {lost} lines lost: this page is illegible in the scan]")
+        print(f"  canto {canto}: ~{lost} lines lost near line {spot}")
+    return out
 
 
 def english_corpus() -> list[str]:
@@ -253,7 +344,41 @@ def finish_existing() -> None:
     print(f"finished {OUT}")
 
 
+def mark_existing() -> None:
+    """Put the lost-page markers into the text already written, without
+    re-running the repair: each is placed after the line that precedes it,
+    found in the written text by similarity."""
+    from rapidfuzz import fuzz
+    fresh = {}
+    for ident, numbers, google in PARTS:
+        fresh.update(cantos(ident, numbers, google))
+    text = OUT.read_text(encoding="utf-8")
+    sections = re.split(r"\n(?=Canto [IVXL]+\n)", text)
+    by_canto = {ROMAN.index(s.split(NL)[0].split()[1]) + 1: s.split(NL) for s in sections}
+    added = 0
+    for n, body in fresh.items():
+        marks = [i for i, ln in enumerate(body) if ln.startswith("[about ")]
+        lines = by_canto[n]
+        if any(ln.startswith("[about ") for ln in lines):
+            continue                                   # already marked
+        for m in sorted(marks, reverse=True):
+            prev = body[m - 1]
+            lo, hi = max(1, m - 60), min(len(lines), m + 60)
+            best = max(range(lo, hi), key=lambda j: fuzz.ratio(prev, lines[j]))
+            lines.insert(best + 1, body[m])
+            added += 1
+            print(f"  canto {n}: marker placed after {lines[best][:60]!r}")
+    for k in by_canto:
+        while by_canto[k] and not by_canto[k][-1].strip():
+            by_canto[k].pop()
+    OUT.write_text(NL2.join(NL.join(by_canto[k]) for k in sorted(by_canto)) + NL,
+                   encoding="utf-8")
+    print(f"{added} marker(s) added")
+
+
 def main() -> None:
+    if "--mark-gaps-only" in sys.argv:
+        return mark_existing()
     if "--finish-only" in sys.argv:
         return finish_existing()
     sys.path.insert(0, str(ROOT))

@@ -4,7 +4,7 @@ Every finished book in `output/`, with its author, the date of the original
 work, and what it is. Page counts are read from the PDFs themselves, so they
 are what KDP would see.
 
-**83 books, 19,236 pages.** Development scraps are listed at the
+**83 books, 19,922 pages.** Development scraps are listed at the
 end and are not books.
 
 The division that matters commercially is **who made the English**. A book with
@@ -23,7 +23,7 @@ No disclosure, sellable as they stand.
 | **Parzival** | Wolfram von Eschenbach | c. 1200–10 | Jessie L. Weston, 1894 | 1253 | The Grail romance: Parzival's long education from naive boy to Grail king, the fullest Arthurian poem in German. |
 | **Notre-Dame de Paris** | Victor Hugo | 1831 | Isabel F. Hapgood, 1888 | 1240 | Quasimodo, Esmeralda and Frollo around the cathedral Hugo wrote the book to save. |
 | **Le Rouge et le Noir** | Stendhal | 1830 | Horace B. Samuel, 1916 | 1124 | A carpenter's son climbs through seminary and salon by calculation and sincerity in turn, and is destroyed by both. |
-| **Der Messias** | Friedrich Gottlieb Klopstock | 1748–73 | G. H. C. Egestorff, 1826 | 773 | The German Paradise Lost, all twenty cantos in one volume, in hexameters that remade German as a poetic language. |
+| **Der Messias** | Friedrich Gottlieb Klopstock | 1748–73 | G. H. C. Egestorff, 1826 | 770 | The German Paradise Lost, all twenty cantos in one volume, in hexameters that remade German as a poetic language. |
 | **Le Père Goriot** | Honoré de Balzac | 1835 | Ellen Marriage, 1896 | 725 | A retired merchant ruins himself for two daughters who will not be seen with him. |
 | **Das Nibelungenlied** | Anonymous | c. 1200 | George Henry Needler, 1904 | 574 | Siegfried's murder and Kriemhild's annihilating revenge: the central German heroic epic. |
 | **Anabasis** | Xenophon | c. 370 BC | unnamed on the copyright page | 537 | Ten thousand Greek mercenaries stranded in Persia march home — the original account of a fighting retreat. |
@@ -56,6 +56,7 @@ translation exists at all, in or out of copyright.
 | Work | Author | Written | Pages | Summary |
 |---|---|---|---:|---|
 | **De modo usurarum liber** | Claudius Salmasius | 1588–1653 | 822 | A vast humanist treatise arguing that lending at interest is lawful — Salmasius against a thousand years of canon law. English only. |
+| **Theuerdank** | Emperor Maximilian I | 1517 | 689 | The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts. |
 | **La Araucana, Parts Two and Three** | Alonso de Ercilla | 1578, 1589 | 580 | Cantos 16–37, including Caupolicán's death and Ercilla's own disillusion. |
 | **La Franciade** | Pierre de Ronsard | 1572 | 444 | France descended from a surviving son of Hector: the national epic Ronsard abandoned after four books. |
 | **Der letzte Ritter, with the Murtenlied** | Anastasius Grün; Veit Weber | 1830; 1476 | 433 | Der letzte Ritter with Weber's Murtenlied appended: one volume, the Romanzen in machine English and the song in Felton's 1845 ballad. |
@@ -72,7 +73,6 @@ translation exists at all, in or out of copyright.
 | **Astronomicon** | Basinio da Parma | c. 1450s | 79 | A didactic poem on the constellations and planets, after Manilius. |
 | **De hortis Hesperidum** | Giovanni Pontano | 1501 | 59 | On growing citrus: a Virgilian georgic for the orange groves of Campania. |
 | **Greek Epigrams** | Angelo Poliziano | 1470s | 32 | The first book of original ancient-style Greek verse composed in the West. |
-| **Theuerdank** | Emperor Maximilian I | 1517 | 0 | The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts. |
 
 ## Laurentius Rhodoman — 32 books, 829 pages
 
