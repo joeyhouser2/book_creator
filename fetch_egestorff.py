@@ -21,6 +21,7 @@ What the OCR leaves around the verse, and how it is told apart:
 
 Writes input/messias_en_egestorff.txt, 'Canto N' heading per division.
 """
+import os
 import re
 import sys
 from pathlib import Path
@@ -344,6 +345,103 @@ def finish_existing() -> None:
     print(f"finished {OUT}")
 
 
+def abbyy_lines(ident: str) -> list[str] | None:
+    """ABBYY FineReader's reading of the same pages, a third opinion, when its
+    archive is cached. It is large, so each line is pulled out of the XML in a
+    single pass rather than parsing the document."""
+    import gzip
+    path = CACHE / f"{ident}_abbyy.gz"
+    if not path.exists():
+        return None
+    import html
+    xml = gzip.open(path).read().decode("utf-8", "replace")
+    out = []
+    for ln in re.finditer(r"<line[^>]*>(.*?)</line>", xml, flags=re.S):
+        chars = re.findall(r"<charParams[^>]*>(.*?)</charParams>", ln.group(1), flags=re.S)
+        out.append(html.unescape("".join(chars)))
+    return out
+
+
+def canto_lines_from(lines: list[str], numbers) -> dict[int, list[str]]:
+    begin = starts(lines, numbers)
+    order = sorted(begin.items())
+    res = {}
+    for k, (n, a) in enumerate(order):
+        b = order[k + 1][1] if k + 1 < len(order) else len(lines)
+        body = []
+        for i in range(a + 1, b):
+            if STOP.match(re.sub(r"\s+", " ", lines[i].strip())):
+                break
+            c = clean_line(lines[i])
+            if c:
+                body.append(c)
+        res[n] = body
+    return res
+
+
+def proofread_existing() -> None:
+    """Swap in another engine's reading where the language model prefers it.
+    Works on the text already written, so it follows the repair run."""
+    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(ROOT / "cache" / "pylib"))
+    from book_creator import ocr_english, proofread_english
+    text = OUT.read_text(encoding="utf-8")
+    sections = re.split(r"\n(?=Canto [IVXL]+\n)", text)
+    heads = [s.split(NL)[0] for s in sections]
+    nums = [ROMAN.index(h.split()[1]) + 1 for h in heads]
+    held = {n: s.split(NL)[1:] for n, s in zip(nums, sections)}
+
+    readings: dict[int, list[list[str]]] = {n: [] for n in held}
+    for ident, numbers, google in PARTS:
+        other = cantos_raw(ident, numbers, not google)
+        for n, ls in other.items():
+            readings[n].append(ls)
+        ab = abbyy_lines(ident)
+        if ab:
+            try:
+                for n, ls in canto_lines_from(ab, numbers).items():
+                    readings[n].append(ls)
+            except SystemExit as exc:
+                print(f"  ABBYY text of {ident} not used: {exc}")
+    part1 = NL.join(NL.join(v) for n, v in held.items() if n <= 10)
+    german = (ROOT / "input" / "messias_de.txt").read_text(encoding="utf-8")
+    lex = ocr_english.default_lexicon(english_corpus(), names_from=part1, german=german,
+                                      english_all=NL.join(NL.join(v) for v in held.values()))
+    scorer = ocr_english.LMScorer("Qwen/Qwen2.5-0.5B-Instruct")
+    # Below this many nats the model's preference is closer to a coin than a reading:
+    # at 2.5, 'bis' became 'us' and 'her' became 'bar'; at 4.0 those go to review.
+    margin = float(os.environ.get("PROOFREAD_MARGIN", "4.0"))
+    only = [int(x) for x in sys.argv if x.isdigit()]
+    changes_all, unsure_all = [], []
+    for n in sorted(held):
+        if only and n not in only:
+            continue
+        body = [x for x in held[n] if x.strip()]
+        ch, un = [], []
+        out = proofread_english.proofread(body, lex, readings[n], scorer, margin=margin,
+                                          changes=ch, unsure=un)
+        held[n] = out
+        changes_all += [(n, body[li], *rest) for li, *rest in ch]
+        unsure_all += [(n, body[li], *rest) for li, *rest in un]
+        print(f"Canto {ROMAN[n - 1]:<5} {len(ch):4d} readings swapped, {len(un):4d} left unsure",
+              flush=True)
+    report = CACHE / "proofread_changes.tsv"
+    with report.open("w", encoding="utf-8") as fh:
+        fh.write("status\tcanto\tfrom\tto\tgain\tline\n")
+        for n, line, tok, new, gain in changes_all:
+            fh.write(f"swapped\t{n}\t{tok}\t{new}\t{gain}\t{line}\n")
+        for n, line, tok, new, gain in unsure_all:
+            fh.write(f"unsure\t{n}\t{tok}\t{new}\t{gain}\t{line}\n")
+    OUT.write_text(NL2.join(heads[i] + NL + NL.join(held[nums[i]])
+                            for i in range(len(heads))) + NL, encoding="utf-8")
+    print(f"wrote {OUT}; report {report}")
+
+
+def cantos_raw(ident: str, numbers, google: bool) -> dict[int, list[str]]:
+    """Another engine's cleaned lines for each canto (no repair, no markers)."""
+    return canto_lines_from(fetch(ident, google_ocr=google), numbers)
+
+
 def mark_existing() -> None:
     """Put the lost-page markers into the text already written, without
     re-running the repair: each is placed after the line that precedes it,
@@ -377,6 +475,8 @@ def mark_existing() -> None:
 
 
 def main() -> None:
+    if "--proofread" in sys.argv:
+        return proofread_existing()
     if "--mark-gaps-only" in sys.argv:
         return mark_existing()
     if "--finish-only" in sys.argv:
