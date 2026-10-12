@@ -461,6 +461,10 @@ def _render_once(
                     held += [Spacer(1, 6), pic, Spacer(1, 8)]
                 story.extend(held)
                 continue
+            if bead.image:
+                story.extend(_plate_flowables(bead, st, first, text_width,
+                                              opener=(i == 0 and opener_font)))
+                continue
             _render_bead(story, bead, st, first, opener=(i == 0 and opener_font))
         if ch.music_images:
             story.append(Spacer(1, 6))
@@ -511,7 +515,11 @@ def _chapter_picture(path: str, width: float, *, color: bool = False):
     try:
         src = Path(path)
         px = max(300, int(width / 72.0 * 450))
-        dst = _PICTURE_CACHE / f"{src.stem}-{'c' if color else 'g'}{px}.jpg"
+        # Keyed on the whole path as well as the name: two plates called
+        # print-gray.jpg in different folders once shared one cached file.
+        import hashlib
+        key = hashlib.sha1(str(src.resolve()).encode()).hexdigest()[:8]
+        dst = _PICTURE_CACHE / f"{src.stem}-{key}-{'c' if color else 'g'}{px}.jpg"
         if not dst.exists():
             _PICTURE_CACHE.mkdir(parents=True, exist_ok=True)
             im = PILImage.open(src)
@@ -527,6 +535,31 @@ def _chapter_picture(path: str, width: float, *, color: bool = False):
     img = Image(str(dst), width=width, height=width * h / w)
     img.hAlign = "CENTER"
     return img
+
+
+def _plate_flowables(bead: Bead, st, first: str, text_width: float,
+                     opener: bool = False) -> list:
+    """A bead followed by its plate, kept on one page.
+
+    The plate is the bead's own: a rubric with a picture under it must not be
+    left alone at the foot of a page with the picture on the next. A bead with
+    no text (a tailpiece) is just the picture and its caption.
+    """
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import KeepTogether
+
+    held: list = []
+    _render_bead(held, bead, st, first, opener=opener)
+    pic = _chapter_picture(bead.image, text_width * bead.image_width)
+    if pic is None:
+        return held
+    held += [Spacer(1, 6), pic]
+    if bead.image_caption:
+        cap = ParagraphStyle("plate_caption", parent=st["rubric"], fontSize=8.5,
+                             leading=11, spaceBefore=3, spaceAfter=0)
+        held.append(Paragraph(_esc(bead.image_caption), cap))
+    held.append(Spacer(1, 8))
+    return [KeepTogether(held)]
 
 
 def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):

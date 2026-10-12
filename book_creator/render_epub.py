@@ -94,6 +94,9 @@ h1.chapter-title {{ text-align: center; font-size: 1.4em; margin: 1.4em 0 0.2em;
 hr.orn-rule {{ width: 35%; margin: 1.2em auto; border: none; border-top: 1px solid {decor.color}; }}
 p.src {{ margin: 0 0 0.15em 0; text-align: justify; }}
 p.rubric {{ margin: 0.9em 1.5em 0.6em 1.5em; text-align: center; font-style: italic; }}
+figure.plate {{ margin: 0.8em 0 1em 0; text-align: center; }}
+figure.plate img {{ height: auto; }}
+figure.plate figcaption {{ font-size: 0.85em; font-style: italic; margin-top: 0.3em; }}
 p.tgt {{ margin: 0 0 0.9em 1.2em; font-style: italic; color: #555555; font-size: 0.95em; text-align: justify; }}
 """)
     if opener_family:
@@ -292,6 +295,15 @@ def render(
                 if i > 0 and sep:
                     parts.append(sep)
                 parts.append(_bead_html(bead, first, opener=(i == 0 and bool(decor.opener_font))))
+                if getattr(bead, "image", None) and Path(bead.image).exists():
+                    uid = f"plate-{idx}-{i}"
+                    fn = _add_image_item(book, bead.image, uid)
+                    cap = (f"<figcaption>{_esc(bead.image_caption)}</figcaption>"
+                           if bead.image_caption else "")
+                    parts.append(
+                        f'<figure class="plate"><img src="{fn}" alt="" '
+                        f'style="max-width:{int(bead.image_width * 100)}%"/>'
+                        f"{cap}</figure>")
             if ch.music_images:
                 parts.append(_music_html(book, ch.music_images, ch.music_caption, f"music-{idx}"))
 

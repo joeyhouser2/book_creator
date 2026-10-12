@@ -402,3 +402,59 @@ def test_assigned_section_parses_from_the_corrections_file():
         pytest.skip("corrections file not present")
     got = bc.read_assigned(p)
     assert got.get(56) == "(none)" and "Chandos" in got[676] + got[681]
+
+
+def test_plates_attach_to_headings_and_a_tailpiece_ends_the_book(tmp_path, monkeypatch):
+    img = tmp_path / "p.jpg"
+    from PIL import Image
+    Image.new("L", (40, 30), 128).save(img)
+    monkeypatch.setattr(bc, "PLATE_DIR", tmp_path)
+    monkeypatch.setattr(bc, "PLATES", {20: ("p.jpg", 0.5, "A plate.")})
+    monkeypatch.setattr(bc, "TAILPIECE", ("p.jpg", 0.3, "A ring."))
+    lines = [bc.VerseLine(n, f"l{n}", f"l{n}", 1) for n in (10, 11, 20, 21)]
+    ch = bc._chapters_from_units(lines, {2: "Heading"}, [10, 11, 20, 21],
+                                 [([0, 1], ["e"]), ([2, 3], ["f"])])
+    beads = ch[0].beads
+    head = next(b for b in beads if b.heading)
+    assert head.image == str(tmp_path / "p.jpg") and head.image_caption == "A plate."
+    assert beads[-1].image and beads[-1].src == [] and beads[-1].image_caption == "A ring."
+
+
+def test_a_plate_whose_file_is_missing_is_left_out(tmp_path, monkeypatch):
+    monkeypatch.setattr(bc, "PLATE_DIR", tmp_path)
+    assert bc._plate(("nope.jpg", 0.5, "x")) is None
+
+
+def test_plates_print_inside_the_text_block_and_clear_of_the_trim(tmp_path):
+    import fitz
+    from PIL import Image
+    img = tmp_path / "plate.jpg"
+    Image.new("L", (1400, 900), 90).save(img)
+    chapters = [Chapter(title="One", beads=[
+        Bead(src=["Heading"], heading=True, image=str(img), image_width=0.9,
+             image_caption="A caption."),
+        Bead(src=["verse line"], tgt=["English"], lines=True),
+        Bead(src=[], tgt=[], image=str(img), image_width=0.3)])]
+    out = tmp_path / "t.pdf"
+    from book_creator.model import DecorSpec
+    render_pdf.render(chapters, out_path=str(out), title="T", author="A",
+                      src_lang="xno", tgt_lang="en", trim=(6.0, 9.0),
+                      estimated_pages=100, decor=DecorSpec(margin="frame"))
+    doc = fitz.open(out)
+    placed = [(pg.rect, im) for pg in doc for im in pg.get_image_info()]
+    assert len(placed) == 2
+    for rect, im in placed:
+        x0, y0, x1, y1 = im["bbox"]
+        assert x0 >= 0.25 * 72 and x1 <= rect.width - 0.25 * 72
+        assert y0 >= 0.25 * 72 and y1 <= rect.height - 0.25 * 72
+
+
+def test_two_plates_with_the_same_file_name_are_not_confused(tmp_path):
+    from PIL import Image
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir(); b.mkdir()
+    Image.new("L", (400, 300), 20).save(a / "print-gray.jpg")
+    Image.new("L", (400, 300), 230).save(b / "print-gray.jpg")
+    pa = render_pdf._chapter_picture(str(a / "print-gray.jpg"), 200)
+    pb = render_pdf._chapter_picture(str(b / "print-gray.jpg"), 200)
+    assert pa.filename != pb.filename
