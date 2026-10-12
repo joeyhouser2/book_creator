@@ -274,12 +274,14 @@ def main() -> int:
     body = body[first:last + 1]
     starts = chapter_starts(body)
     starts[0] = (0, True)
-    # a "chapter" under 20 lines is a stray wide line, not a chapter
+    # a "chapter" under 8 lines is a stray wide line, not a chapter (XCVII is
+    # a real one of 10 verses, which a limit of 20 dropped)
     ends = [x for x, _ in starts[1:]] + [len(body)]
-    starts = [st for st, e in zip(starts, ends) if st is starts[0] or e - st[0] >= 20]
+    starts = [st for st, e in zip(starts, ends) if st is starts[0] or e - st[0] >= 8]
     print(f"{len(starts)} chapters ({sum(1 for _, r in starts if not r)} "
           f"without a rubric); the poem has {N_CHAPTERS}", file=sys.stderr)
     out: list[str] = []
+    built: list[dict] = []
     number = 0
     for idx, (s, has_rubric) in enumerate(starts):
         n = number + 1
@@ -291,16 +293,23 @@ def main() -> int:
         number = n
         e = starts[idx + 1][0] if idx + 1 < len(starts) else len(body)
         ch = body[s:e]
-        # The rubric runs to its full stop, which no verse of the first few
-        # lines is likely to carry; a heading numeral above it is dropped.
+        # The rubric is a run of wide lines (45-55 characters, against 32 for
+        # verse) and a short tail; a rubric set narrower runs to its full stop.
         k = 0
         if has_rubric:
-            k = next((i + 1 for i, l in enumerate(ch[:7]) if l.endswith(".")), 0)
-            if not k:
-                while k < len(ch) and (k == 0 or len(ch[k]) >= WIDE) and k < 6:
+            if ch and len(ch[0]) >= WIDE:
+                while k < len(ch) and len(ch[k]) >= WIDE and k < 6:
                     k += 1
+                if k < len(ch) and not ch[k - 1].endswith("."):
+                    k += 1                # "gen ward," -- the rubric's last short line
+            else:
+                k = next((i + 1 for i, l in enumerate(ch[:7]) if l.endswith(".")), 1)
         rubric = re.sub(r"^\W*(?:[A-Za-z]{1,2}\s+)?(?=[A-ZÄÖÜ])", "",
                         " ".join(ch[:k]).replace("- ", ""))
+        if rubric and not rubric.endswith((".", "!", "?")):
+            # so that sentence-by-sentence translation ends the rubric here
+            # and does not run it into the first verses
+            rubric = rubric.rstrip(" ,;:") + "."
         exp = 5
         phys: list[tuple[str, int | None]] = []
         for l in ch[k:]:
@@ -317,13 +326,63 @@ def main() -> int:
             anchors = sum(1 for _, a in phys if a is not None)
             print(f"{n:3d} lines {len(phys):4d} verses {len(verses):4d} "
                   f"anchors {anchors}  {rubric[:50]}", file=sys.stderr)
-        out.append(f"Kapitel {n}")
-        out.append(tidy(rubric))
-        out.extend(verses)
+        built.append({"n": n, "rubric": tidy(rubric), "verses": verses})
+    patch_damaged(built)
+    for ch in built:
+        out.append(f"Kapitel {ch['n']}")
+        out.append(ch["rubric"])
+        out.extend(ch["verses"])
         out.append("")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("\n".join(out), encoding="utf-8")
     return 0
+
+
+# Six chapters whose rubric the scan or the OCR damaged, mended by hand from
+# what the page does carry. Each entry: the chapter number, the verse lines it
+# opens with as OCR'd (a mismatch skips the patch, so a changed OCR cannot be
+# silently mis-patched), the rubric to put in their place, any verses to put
+# after it, and verses that are the end of the PREVIOUS chapter.
+DAMAGED = {
+    7: (["Wie drey hauptlewt verdruss", "Edlen Tewrdanck schicket", "den Helden in das lanndt"],
+        "Wie drey hauptlewt verdruss, das die Künigin nach dem Edlen Tewrdanck "
+        "schicket, vnd vnnderstünden sich, den Helden in das lanndt nicht zulassen.", [], []),
+    46: (["Tewrdannckh windters", "licheit auf eim gefrorn", "Eyss sein scheff", "eim grossen sturm"],
+         "Wie Tewrdannckh windters zeit in ein geferlicheit auf eim gefrorn wasser "
+         "furet, vnnd Im das Eyss sein scheff zerschneyd in eim grossen sturm windt.", [], []),
+    101: (["TewBD1NNecKx CI", "1 —", "Wie Tewrdannck der Edel", "Held mit dem ersten Ritter"],
+          "Wie Tewrdannck der Edel Held mit dem ersten Ritter scharpf rennet.",
+          ["As nun kam die anngesetzt zeit,", "Tewrdannck sich in rennzeüg anleyt,"], []),
+    111: (["Als Fürwittig sein red het tan", "Allzdann das vrteyl", "e et", "Wie Vnfallo gehenckt ward"],
+          "Wie Vnfallo gehenckt ward.", ["Am morgen ward Vnfalo gefürt"],
+          ["Als Fürwittig sein red het tan,", "Da kniet nider der arm Man,",
+           "Da ward Im abgeschlagen sein hanbt,", "Allzdann das vrteyl het erlaubt.",
+           "Also die fürwitzig sach nam", "Ein enndt, Vnfalo hernach kam."]),
+    112: (["Wie Neydelhart ward zu todt"],
+          "Wie Neydelhart ward zu todt geworffen.", [], []),
+    114: (["Sy hette In thun erwelen", "Wie der Ernhold sein wirbt", "ná leo", "potschafft an den Tewrdannckh"],
+          "Wie der Ernhold sein wirbt potschafft an den Tewrdannckh.", [],
+          ["Sy hette In thun erwelen", "Zü sandt Iörgen rays als ein Man,",
+           "Der Tewr wer, dorsft solchs nemen an."]),
+}
+
+
+def patch_damaged(built: list[dict]) -> None:
+    by_n = {ch["n"]: i for i, ch in enumerate(built)}
+    for n, (opening, rubric, after, to_prev) in DAMAGED.items():
+        i = by_n.get(n)
+        if i is None:
+            continue
+        v = built[i]["verses"]
+        if len(v) < len(opening) or any(not v[k].startswith(o) for k, o in enumerate(opening)):
+            print(f"  ! chapter {n}: OCR no longer opens as expected; not patched", file=sys.stderr)
+            continue
+        if built[i]["rubric"].strip() and built[i]["rubric"].startswith("Wie"):
+            continue                      # the extractor found its rubric after all
+        built[i]["rubric"] = rubric
+        built[i]["verses"] = after + v[len(opening):]
+        if to_prev and i:
+            built[i - 1]["verses"] += to_prev
 
 
 def tidy(l: str) -> str:

@@ -50,6 +50,9 @@ class Chapter:
     # Populated by pipeline.build_book, empty otherwise.
     music_images: list[str] = field(default_factory=list)
     music_caption: str = ""
+    # This chapter's illustration, if the book has per-chapter images
+    # (DecorSpec.chapter_images). Set by pipeline._render_print.
+    image: str | None = None
 
 
 @dataclass
@@ -86,6 +89,14 @@ class DecorSpec:
     corner_image: str | None = None
     # Optional PNG/JPG centered under chapter titles (overrides vector chapter art).
     chapter_image: str | None = None
+    # A different picture for each chapter: a path template with {n}, filled
+    # with the number in the chapter's title ("Kapitel 12" -> 12), e.g.
+    # "cache/theuerdank/woodcuts/wc_{n:03d}.jpg". Set under the first line of
+    # the chapter (its rubric), at this fraction of the text width, in greyscale
+    # unless chapter_images_color. A chapter with no such file gets none.
+    chapter_images: str | None = None
+    chapter_images_width: float = 0.5
+    chapter_images_color: bool = False
     # Decorative display font for each chapter's opening bead (both languages),
     # e.g. "UncialAntiqua". None disables the treatment and opens normally.
     opener_font: str | None = None

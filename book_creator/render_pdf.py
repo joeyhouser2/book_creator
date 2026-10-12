@@ -448,6 +448,19 @@ def _render_once(
                 sep = decorations.chapter_ornament(decor.bead_separator, decor.color)
                 if sep is not None:
                     story.append(sep)
+            if i == 0 and ch.image:
+                # The picture sits under the chapter's first line (its rubric).
+                # Not KeepTogether: a first bead that is a whole long sentence
+                # does not fit a page with the picture, and the whole group
+                # then jumps to the next page, leaving the heading alone.
+                held: list = []
+                _render_bead(held, bead, st, first, opener=bool(opener_font))
+                pic = _chapter_picture(ch.image, text_width * decor.chapter_images_width,
+                                       color=decor.chapter_images_color)
+                if pic is not None:
+                    held += [Spacer(1, 6), pic, Spacer(1, 8)]
+                story.extend(held)
+                continue
             _render_bead(story, bead, st, first, opener=(i == 0 and opener_font))
         if ch.music_images:
             story.append(Spacer(1, 6))
@@ -481,6 +494,39 @@ def render(chapters: list[Chapter], *, estimated_pages: int = 200, **kw):
     raise RuntimeError(
         f"gutter did not settle after 4 passes (last page count {actual}); "
         "the book sits on a KDP page-count boundary")
+
+
+_PICTURE_CACHE = Path("cache") / "chapter_images"
+
+
+def _chapter_picture(path: str, width: float, *, color: bool = False):
+    """A chapter's illustration as a centred flowable `width` points wide.
+
+    Converted once to greyscale with its contrast stretched (a hand-coloured
+    woodcut printed in black and white goes muddy otherwise) and reduced to
+    about 450 dpi at the printed size, which keeps 116 of them small.
+    """
+    from PIL import Image as PILImage, ImageOps
+
+    try:
+        src = Path(path)
+        px = max(300, int(width / 72.0 * 450))
+        dst = _PICTURE_CACHE / f"{src.stem}-{'c' if color else 'g'}{px}.jpg"
+        if not dst.exists():
+            _PICTURE_CACHE.mkdir(parents=True, exist_ok=True)
+            im = PILImage.open(src)
+            im = im.convert("RGB" if color else "L")
+            if not color:
+                im = ImageOps.autocontrast(im, cutoff=1)
+            if im.width > px:
+                im = im.resize((px, round(im.height * px / im.width)), PILImage.LANCZOS)
+            im.save(dst, quality=88)
+        w, h = ImageReader(str(dst)).getSize()
+    except Exception:
+        return None
+    img = Image(str(dst), width=width, height=width * h / w)
+    img.hAlign = "CENTER"
+    return img
 
 
 def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):

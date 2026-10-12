@@ -982,6 +982,19 @@ def _check_narration(out: dict, spec: BookSpec, slug: str, out_dir: str,
 def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
                   log) -> str:
     """Render the print edition: interior PDF, then cover and EPUB if asked."""
+    if spec.decor.chapter_images:
+        import re
+
+        found = 0
+        for ch in chapters:
+            m = re.search(r"\d+", ch.title or "")
+            if m:
+                p = Path(spec.decor.chapter_images.format(n=int(m.group())))
+                if p.is_file():
+                    ch.image = str(p)
+                    found += 1
+        log(f"• Chapter pictures: {found} of {len(chapters)} chapters.")
+
     pages = _estimate_pages(chapters)
     out_path = str(Path(out_dir) / f"{slug}.pdf")
 

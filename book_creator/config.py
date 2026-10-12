@@ -77,6 +77,9 @@ def _parse_decor(raw) -> DecorSpec:
         color=raw.get("color", "#8a7a5c"),
         corner_image=raw.get("corner_image"),
         chapter_image=raw.get("chapter_image"),
+        chapter_images=raw.get("chapter_images"),
+        chapter_images_width=float(raw.get("chapter_images_width", 0.5)),
+        chapter_images_color=bool(raw.get("chapter_images_color", False)),
         opener_font=raw.get("opener_font"),
     )
 

@@ -6,7 +6,7 @@
 # own text layer read the Fraktur as Latin type -- every long s an "f", every
 # "st" an "ß". ocr_theuerdank.py therefore re-reads the page images with
 # Tesseract's Fraktur model, and fetch_theuerdank.py cleans that into the poem:
-# 116 of its 118 chapters, with the editor's variant readings and notes dropped.
+# 117 of its 118 chapters, with the editor's variant readings and notes dropped.
 #
 # The 1517 spelling is kept (vnd, nit, Er for "he", Sy for "she"), which is why
 # the chat model is told so: Opus-MT reads modern German only.
@@ -46,6 +46,10 @@ books:
       chapter: medieval
       color: "#5b2a2a"
       opener_font: uncialantiqua
+      # The 1517 woodcuts, one under each chapter's rubric (fetch_woodcuts.py).
+      # Chapters 29 and 86 are painted miniatures in that copy, so have none.
+      chapter_images: "cache/theuerdank/woodcuts/wc_{n:03d}.jpg"
+      chapter_images_width: 0.5
     copyright:
       publisher: "Houser Classics"
       holder: "Joey Houser"
@@ -59,8 +63,11 @@ books:
         which keeps the 1517 spelling; it was read from page images by machine
         and has not been proofread, the long s is printed as s, and the editor's
         variant readings, notes and the closing key to the persons are omitted.
-        Two of the poem's 118 chapters are not marked off and run on into the
-        one before. The English is a machine translation made for this edition,
+        One of the poem's 118 chapters (the 117th) is not marked off and runs
+        on into the one before. The 116 woodcuts are from the first edition of
+        1517 as digitised by the Bayerische Staatsbibliothek (Rar. 325 a, Public
+        Domain Mark), a hand-coloured copy shown here in greyscale; the two
+        chapters it has painted miniatures for are without one. The English is a machine translation made for this edition,
         not a published human translation, and will contain errors.
     cover:
       paper: white
