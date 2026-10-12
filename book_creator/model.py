@@ -27,6 +27,12 @@ class Bead:
     # aligner can). None for a bead from a backend that does not score, and for
     # one-sided beads.
     score: float | None = None
+    # A plate printed under this bead (a heading, or nothing at all for a
+    # tailpiece): path to the image, a caption, and its width as a fraction of
+    # the text block. Unlike Chapter.image it can sit anywhere in a chapter.
+    image: str | None = None
+    image_caption: str = ""
+    image_width: float = 0.62
 
     @property
     def src_text(self) -> str:

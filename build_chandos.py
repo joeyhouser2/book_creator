@@ -1004,6 +1004,34 @@ def build_chapters(lines: list[VerseLine], rubrics: dict[int, str],
     return _chapters_from_units(lines, rubrics, numbers, units, assigned)
 
 
+# Period plates, keyed by the number of the verse line whose heading they sit
+# under. Rights and sources for each are in input/plates/RIGHTS.md. A plate
+# whose file is missing is left out, so a fresh clone still builds.
+PLATE_DIR = Path("input") / "plates"
+PLATES = {
+    303: ("crecy-kortrijk-cod135/print-gray-crop.jpg", 0.72,
+          "The battle of Crécy, 1346. Miniature by Gilles li Muisit, 14th century "
+          "(Kortrijk, Openbare Bibliotheek, cod. 135, f. 95v)."),
+    1061: ("poitiers-bnf-fr236/print-gray.jpg", 0.58,
+           "The battle of Poitiers, 1356. Miniature, about 1450 "
+           "(Paris, BnF, fr. 236, f. 221v)."),
+    1249: ("poitiers-besancon-ms864/print-gray.jpg", 0.58,
+           "The capture of King John at Poitiers. Froissart's Chroniques, "
+           "about 1412–14 (Besançon, BM, ms 864, f. 172)."),
+}
+TAILPIECE = ("ring-louvre-oa9597/print-gray-crop.jpg", 0.30,
+             "Signet ring of the Black Prince, gold and ruby, late fourteenth "
+             "century (Paris, Louvre, OA 9597).")
+
+
+def _plate(spec):
+    """(path, width, caption) -> Bead fields, or None if the file is absent."""
+    path = PLATE_DIR / spec[0]
+    if not path.exists():
+        return None
+    return {"image": str(path), "image_width": spec[1], "image_caption": spec[2]}
+
+
 def _chapters_from_units(lines, rubrics, numbers, units, assigned=None):
     """Beads and chapters from (line indexes, English) runs, in poem order.
 
@@ -1040,10 +1068,14 @@ def _chapters_from_units(lines, rubrics, numbers, units, assigned=None):
                 chapters.append(Chapter(
                     title=f"Lines {start}–{numbers[first] - 1}", beads=beads))
                 beads, start = [], numbers[first]
+            plate = _plate(PLATES[numbers[first]]) if numbers[first] in PLATES else None
             beads.append(Bead(src=[_manuscript(rubrics[first])], tgt=[],
-                              heading=True))
+                              heading=True, **(plate or {})))
         beads.append(Bead(src=[_manuscript(lines[k].manuscript) for k in part],
                           tgt=[" ".join(eng)] if eng else [], lines=True))
+    tail = _plate(TAILPIECE)
+    if tail and beads:
+        beads.append(Bead(src=[], tgt=[], **tail))
     if beads:
         chapters.append(Chapter(title=f"Lines {start}–{numbers[-1]}", beads=beads))
     return chapters
