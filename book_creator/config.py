@@ -210,6 +210,9 @@ def load_specs(path: str) -> list[BookSpec]:
             review_model=raw.get("review_model", "llama3.1"),
             review_host=raw.get("review_host", "http://localhost:11434"),
             review_sample=raw.get("review_sample"),
+            proofread=bool(raw.get("proofread", False)),
+            proofread_model=raw.get("proofread_model", "Unbabel/TowerInstruct-7B-v0.2"),
+            proofread_sample=raw.get("proofread_sample"),
             music=_parse_music(raw.get("music")),
             audio=_parse_audio(raw.get("audio")),
         ))

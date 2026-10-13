@@ -242,6 +242,14 @@ def main(argv: list[str] | None = None) -> int:
                    help="Ollama host for --review (default: %(default)s).")
     p.add_argument("--review-sample", type=int,
                    help="Cap on beads reviewed (from the start), for a quick spot-check.")
+    p.add_argument("--proofread", action="store_true",
+                   help="Score every aligned pair on the local GPU (LaBSE + a "
+                        "translation model's likelihood ratio) and write the "
+                        "outliers to <slug>-proofread.md. Advisory only.")
+    p.add_argument("--proofread-model", default="Unbabel/TowerInstruct-7B-v0.2",
+                   help="Causal LM used by --proofread (default: %(default)s).")
+    p.add_argument("--proofread-sample", type=int,
+                   help="Cap on beads scored (from the start), for a quick check.")
     p.add_argument("--music", action="store_true",
                    help="Musical literature (verse mode): typeset the piano grand "
                         "staff (treble + bass) under poems matched to a known "
@@ -459,6 +467,9 @@ def main(argv: list[str] | None = None) -> int:
             review_model=args.review_model,
             review_host=args.review_host,
             review_sample=args.review_sample,
+            proofread=args.proofread,
+            proofread_model=args.proofread_model,
+            proofread_sample=args.proofread_sample,
             music=MusicSpec(enabled=args.music, catalog=args.music_catalog),
             audio=audio_spec,
             audio_only=args.audio_only,

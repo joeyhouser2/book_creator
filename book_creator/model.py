@@ -423,3 +423,14 @@ class BookSpec:
     # Cap how many beads get sent to the model (from the start), for a quick
     # spot-check on a long book. None = review every bead.
     review_sample: int | None = None
+
+    # Measured pair proofreading on the local GPU (book_creator/proofread_pairs.py):
+    # LaBSE similarity, drift against neighbouring beads, length ratio, and a
+    # translation model's source/target likelihood ratio in both directions,
+    # each judged against this book's own distribution. Writes
+    # <slug>-proofread.md. Advisory only. The default model is Tower-Instruct,
+    # ~14 GB in half precision, so it wants the 16 GB card.
+    proofread: bool = False
+    proofread_model: str = "Unbabel/TowerInstruct-7B-v0.2"
+    # Cap how many beads are scored (from the start). None = every bead.
+    proofread_sample: int | None = None
