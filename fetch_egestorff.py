@@ -118,6 +118,30 @@ def fetch(ident: str, google_ocr: bool = False) -> list[str]:
     return path.read_text(encoding="utf-8", errors="replace").splitlines()
 
 
+# A canto whose heading the OCR lost is split at the first running head that
+# names it, which can be a page or more after the real opening: Canto XX opens
+# 35 lines earlier, at "Already far above the passing clouds" (the German's
+# "Weit schon über den Wolken"), and those lines ended up in Canto XIX.
+OPENINGS = {20: "Already far above the passing clouds,"}
+
+
+def _opening_before(lines: list[str], at: int, text: str, reach: int = 150) -> int | None:
+    from rapidfuzz import fuzz
+    lo = max(0, at - reach)
+    if lo >= at:
+        return None
+    score, i = max((fuzz.ratio(text.lower(), re.sub(r"\s+", " ", lines[k].strip()).lower()), k)
+                   for k in range(lo, at))
+    return i if score >= 80 else None
+
+
+def _junk_line(s: str) -> bool:
+    """Page-head or scan debris: a few short fragments, or a running title."""
+    w = s.split()
+    return bool(not w or re.search(r"(?i)klopstock|messiah", s)
+                or (len(w) <= 10 and sum(map(len, w)) / len(w) < 3.3))
+
+
 def starts(lines: list[str], numbers) -> dict[int, int]:
     """Line index at which each canto opens, found in order."""
     found, at = {}, 0
@@ -140,7 +164,85 @@ def starts(lines: list[str], numbers) -> dict[int, int]:
                     break
             else:
                 raise SystemExit(f"canto {want}: no heading found")
+        if n in OPENINGS:
+            k = _opening_before(lines, found[n], OPENINGS[n])
+            if k is not None:
+                j = k
+                while j > at and _junk_line(re.sub(r"\s+", " ", lines[j - 1].strip())):
+                    j -= 1                          # the page head before it
+                found[n], at = j - 1, j
     return found
+
+
+_COMMON3 = {"the", "and", "for", "but", "not", "all", "who", "his", "her", "you", "thy",
+            "him", "she", "was", "are", "one", "our", "out", "has", "had", "may", "can",
+            "day", "sun", "sky", "air", "joy", "God", "man", "men", "own", "eye", "ere",
+            "yet", "now", "how", "why", "see", "saw", "led", "set", "lay", "led", "ask",
+            "end", "new", "old", "way", "war", "woe", "lo", "thee", "thou"}
+
+
+def trim_noise_tail(line: str) -> str:
+    """Drop trailing fragments that are not words: the right-hand margin of a
+    smeared page comes through as "... heaven, eo." or "... extend 0.25. - JO)."
+    """
+    toks = line.split()
+    while len(toks) > 3:
+        core = re.sub(r"[^A-Za-z']", "", toks[-1])
+        word = core.lower()
+        keep = (len(core) >= 4 and re.search(r"[aeiouy]", word)
+                and not re.search(r"\d", toks[-1])) or word in SHORT or word in _COMMON3
+        if keep:
+            break
+        toks.pop()
+    out = " ".join(toks)
+    return re.sub(r"[\s\-.,;:]+$", lambda m: m.group(0).strip()[-1:] if m.group(0).strip()[-1:] in ".!?;:" else "", out)
+
+
+def clean_opening_lines(by_canto: dict[int, list[str]], count: int = 40) -> int:
+    """Trim the noise tails off the first `count` lines of each OPENINGS canto."""
+    n_changed = 0
+    for n in OPENINGS:
+        body = by_canto.get(n)
+        if not body:
+            continue
+        start = 2 if len(body) > 1 and not body[1].strip() else 1
+        for k in range(start, min(len(body), start + count)):
+            if body[k].strip() and not body[k].startswith("[about"):
+                t = trim_noise_tail(body[k])
+                if t != body[k]:
+                    body[k] = t
+                    n_changed += 1
+    return n_changed
+
+
+def apply_openings(by_canto: dict[int, list[str]]) -> int:
+    """The same repair for the text already written: lines that belong to the
+    start of a canto but sit at the end of the one before are moved across."""
+    moved = 0
+    for n, text in OPENINGS.items():
+        if n not in by_canto or n - 1 not in by_canto:
+            continue
+        prev = by_canto[n - 1]
+        # The debris that sat between the two cantos goes either way.
+        while prev and (not prev[-1].strip() or _junk_line(prev[-1].strip())):
+            prev.pop()
+        k = _opening_before(prev, len(prev), text, reach=150)
+        if k is None:
+            continue
+        j = k
+        while j > 0 and _junk_line(prev[j - 1].strip()):
+            j -= 1
+        tail = prev[k:]
+        del prev[j:]
+        while prev and not prev[-1].strip():
+            prev.pop()
+        head = by_canto[n]
+        at = 2 if len(head) > 1 and not head[1].strip() else 1
+        head[at:at] = tail
+        moved += len(tail)
+        print(f"  canto {n}: {len(tail)} opening line(s) moved back from canto {n - 1} "
+              f"(from {text!r})")
+    return moved
 
 
 def clean_line(raw: str) -> str | None:
@@ -294,22 +396,104 @@ def find_gaps(anchors: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return gaps
 
 
+# Pages this scan gets wrong, found by reading the page-number heads and the
+# printed line numbers off the images (the Tesseract text misreads both):
+#
+#   Canto II : page 51 ends line 1195, the next scanned page is 54: pages 52-53
+#              are not in the scan (90 lines).
+#   Canto XIX: the scan runs 643, 646, 647, 644, 649, 650... Page 644 is there
+#              but follows 647 (it opens "Of light, among the company
+#              prevail'd" and finishes the sentence page 643 broke off);
+#              pages 645 and 648 are not in the scan (45 lines each, lines
+#              1191-1235 and 1326-1370).
+#
+# A skipped page leaves no debris, which is why an earlier version of this code
+# took them for printer's slips; a displaced page looks like a page of text in
+# the wrong place and aligns badly. archive.org holds only this one scan of the
+# translation (00/01klopgoog).
+#
+# KNOWN_HOLES: canto -> [(what is missing, the last line before it, lines lost)]
+KNOWN_HOLES = {
+    2: [("pages 52-53 are", "Or with destruction overwhelm them both.", 90)],
+    19: [("page 645 is", "bound, we saw him! and how Herod", 45),
+         ("page 648 is", "Beauteous begin, now swell, diminish, still,", 45)],
+}
+# DISPLACED_PAGES: canto -> [(page, its first line, its last line, the line it
+# belongs after)]. The block is cut out and put back where the book has it.
+DISPLACED_PAGES = {
+    19: [("page 644", "Of light, among the company prevail'd.",
+          "bound, we saw him! and how Herod", "Felicity, dawn of the heritage")],
+}
+_HEAD_DEBRIS = re.compile(r"(?i)klopstock|mlewwigh|mlbyet|\bcar+o\b|canto\s+[ixlv]+\W*$|messiah\W*$")
+
+
+def _best_line(lines: list[str], text: str, lo: int = 0, hi: int | None = None,
+               floor: float = 78) -> int | None:
+    from rapidfuzz import fuzz
+    hi = len(lines) if hi is None else min(hi, len(lines))
+    if lo >= hi:
+        return None
+    score, at = max((fuzz.ratio(text.lower(), lines[i].lower()), i) for i in range(lo, hi))
+    return at if score >= floor else None
+
+
+def apply_page_fixes(lines: list[str], canto: int) -> list[str]:
+    """Put displaced pages back and mark the pages the scan lacks.
+
+    Works on a cleaned body or on the text already written, and is idempotent:
+    markers for these cantos are dropped and re-placed, and a block already in
+    its place is cut out and put back in the same spot.
+    """
+    out = [ln for ln in lines if not ln.startswith("[about ")]
+    for page, first, last, after in DISPLACED_PAGES.get(canto, []):
+        a = _best_line(out, first)
+        z = _best_line(out, last, lo=a, hi=a + 80) if a is not None else None
+        if a is None or z is None:
+            print(f"  canto {canto}: {page} not found ({first!r}); left where it is")
+            continue
+        block = out[a:z + 1]
+        del out[a:z + 1]
+        if a > 0 and _HEAD_DEBRIS.search(out[a - 1]):
+            del out[a - 1]                       # the page head left behind
+        at = _best_line(out, after)
+        if at is None:
+            out[a:a] = block                     # cannot place it: undo
+            print(f"  canto {canto}: nowhere to put {page}; left where it is")
+            continue
+        out[at + 1:at + 1] = block
+        print(f"  canto {canto}: {page} ({len(block)} lines) moved back after {after!r}")
+    for what, last, lost in KNOWN_HOLES.get(canto, []):
+        at = _best_line(out, last)
+        if at is None:
+            print(f"  canto {canto}: line before the break not found ({last!r}); no marker")
+            continue
+        out.insert(at + 1, f"[about {lost} lines lost: {what} missing from the scan]")
+        print(f"  canto {canto}: ~{lost} lines lost after line {at + 1} ({what} missing)")
+    return out
+
+
 def mark_gaps(body: list[str], anchors, rejected, canto: int) -> list[str]:
-    """Insert a visible marker where the scan lost lines, at the discarded run
-    of debris nearest the printed-number gap."""
+    """Insert a visible marker where the scan lost lines.
+
+    A smeared page leaves a run of discarded debris, and the marker goes there.
+    The cantos in KNOWN_HOLES / DISPLACED_PAGES were worked out from the page
+    images instead (see the table above). Any other jump in the printed numbers
+    with no debris is reported for a person to look at, not dismissed: it is
+    either a printer's slip or a page the scan skipped.
+    """
+    if canto in KNOWN_HOLES or canto in DISPLACED_PAGES:
+        return apply_page_fixes(body, canto)
     out = list(body)
     for before, lost in sorted(find_gaps(anchors), reverse=True):
-        # Egestorff's numbering has slips of its own (a line printed 1290 for
-        # 1200, and every number after it 90 high). Those jump with the text
-        # unbroken. A real loss leaves a page of debris right at the jump.
         near = [r for r in rejected if before - 25 <= r[0] <= before + 40 and r[1] >= 8]
-        if not near:
-            print(f"  canto {canto}: numbers jump by {lost} near line {before}, "
-                  "but the text is unbroken: a numbering slip, not a loss")
-            continue
-        spot = max(near, key=lambda r: r[1])[0]
-        out.insert(spot, f"[about {lost} lines lost: this page is illegible in the scan]")
-        print(f"  canto {canto}: ~{lost} lines lost near line {spot}")
+        if near:
+            spot = max(near, key=lambda r: r[1])[0]
+            out.insert(spot, f"[about {lost} lines lost: this page is illegible in the scan]")
+            print(f"  canto {canto}: ~{lost} lines lost near line {spot}")
+        else:
+            print(f"  canto {canto}: numbers jump by {lost} near line {before} with no "
+                  "debris: a printer's slip or a page the scan skipped. Check the page "
+                  "images (page numbers across the jump) before calling it either.")
     return out
 
 
@@ -454,7 +638,15 @@ def mark_existing() -> None:
     sections = re.split(r"\n(?=Canto [IVXL]+\n)", text)
     by_canto = {ROMAN.index(s.split(NL)[0].split()[1]) + 1: s.split(NL) for s in sections}
     added = 0
+    apply_openings(by_canto)
+    print(f"  {clean_opening_lines(by_canto)} opening line(s) trimmed of margin noise")
+    for n in sorted(set(KNOWN_HOLES) | set(DISPLACED_PAGES)):
+        if n in by_canto:
+            by_canto[n] = apply_page_fixes(by_canto[n], n)
+            added += len(KNOWN_HOLES.get(n, []))
     for n, body in fresh.items():
+        if n in KNOWN_HOLES or n in DISPLACED_PAGES:
+            continue                                   # done above, from the images
         marks = [i for i, ln in enumerate(body) if ln.startswith("[about ")]
         lines = by_canto[n]
         if any(ln.startswith("[about ") for ln in lines):

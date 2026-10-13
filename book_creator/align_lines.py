@@ -136,7 +136,9 @@ def solve(beads: list[Bead], support: list[list[float | None]],
         for c in ends:
             best, arg = NEG, None
             for a, (v, _) in f.items():
-                if c < a or (c == a and not empty_ok):
+                # A block that had no English (a hole, filled elsewhere) stays
+                # empty; every other block keeps at least one line.
+                if (c != a) if empty_ok else (c <= a):
                     continue
                 score = v + evidence(t, lo, pre, a, c) - length_cost(t, c - a)
                 if score > best:
@@ -208,26 +210,44 @@ def recut_chapters(chapters: list[Chapter], *, src_lang: str, tgt_lang: str,
     if not jobs:
         return {"moved": 0, "beads": 0, "chapters": 0}
 
-    key = _digest(jobs, model, reach)
-    cache = Path(cache_dir) / f"{key}.json"
-    support = None
-    if cache.exists():
-        try:
-            support = json.loads(cache.read_text(encoding="utf-8"))
-            log(f"  re-cut: using cached line support ({len(support)} windows)")
-        except (OSError, ValueError):
-            support = None
-    if support is None or len(support) != len(jobs):
+    # One cache entry per chapter, keyed on that chapter's text: changing one
+    # canto re-scores one canto, not the book.
+    cache_dir = Path(cache_dir)
+    support: list = [None] * len(jobs)
+    keys: dict[int, Path] = {}
+    todo: list[tuple[int, int, int]] = []          # (chapter slot, first job, count)
+    for slot, (ci, start, count) in enumerate(spans):
+        key = _digest(jobs[start:start + count], model, reach)
+        keys[slot] = cache_dir / f"{key}.json"
+        if keys[slot].exists():
+            try:
+                got = json.loads(keys[slot].read_text(encoding="utf-8"))
+                if len(got) == count:
+                    support[start:start + count] = got
+                    continue
+            except (OSError, ValueError):
+                pass
+        todo.append((slot, start, count))
+    if todo:
+        batch = [j for _, start, count in todo for j in jobs[start:start + count]]
+        log(f"  re-cut: scoring {len(batch)} windows ({len(todo)} chapter(s) "
+            f"not cached) with {model}")
         if scorer is None:
             from . import proofread_pairs as pp
             opts = {"src_lang": src_lang, "tgt_lang": tgt_lang, "model": model,
                     "quant": quant, "device": device, "batch_size": batch_size}
-            log(f"  re-cut: scoring {len(jobs)} windows with {model}")
-            support = pp.run_worker(jobs, opts, log, mode="--support")
+            got = pp.run_worker(batch, opts, log, mode="--support")
         else:
-            support = scorer(jobs)
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps(support), encoding="utf-8")
+            got = scorer(batch)
+        at = 0
+        for slot, start, count in todo:
+            part = got[at:at + count]
+            at += count
+            support[start:start + count] = part
+            keys[slot].parent.mkdir(parents=True, exist_ok=True)
+            keys[slot].write_text(json.dumps(part), encoding="utf-8")
+    else:
+        log(f"  re-cut: using cached line support ({len(jobs)} windows)")
 
     moved = changed = 0
     for ci, start, count in spans:

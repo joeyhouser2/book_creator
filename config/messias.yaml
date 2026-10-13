@@ -16,6 +16,24 @@
 #
 # python fetch_egestorff.py, then:  python make_book.py config/messias.yaml
 
+# The English has three holes where the scan lost pages (Cantos II, XIV, XIX; see
+# fetch_egestorff.py). The German there is machine translated by qwen3:14b,
+# printed with a dagger, and disclosed on the copyright page (fill_missing).
+translators:
+  de:
+    ollama: "qwen3:14b"
+    batch: 6
+    context: >-
+      This is Klopstock's Der Messias (1748-73), a hexameter epic of the
+      Passion, Resurrection and Ascension, in 18th-century German verse. Names
+      (keep them as given, never swap one for another): Messias and Jesus
+      Christus; Kephas and Simon (Peter); Johannes (John); Jakobus (James);
+      Lebbäus (Thaddaeus); Bartholomäus; Didymus (Thomas); Magdale or Magdalena
+      (Mary Magdalene); Maria; Lazarus; Abbadona, Abdiel, Adramelech and Satan
+      (fallen angels); Gabriel and Eloa (angels); Jehovah is God the Father,
+      "der Ewige". "grauend" is greying. Render the sense in plain, literal
+      English prose, with pronouns in lower case.
+
 books:
   - title: "Der Messias"
     author: "Friedrich Gottlieb Klopstock"
@@ -31,6 +49,23 @@ books:
     # count lands a few lines off; re-cut it line by line from a translation
     # model's evidence (book_creator/align_lines.py; GPU once, then cached).
     recut: true
+    fill_missing: true
+    # Where the English has no counterpart: the last original line the English
+    # before each hole covers, and the first it picks up again. Read against the
+    # page images (pages 52-53, 645 and 648 are not in the scan; one page of XIV is
+    # illegible). The English side is cut at its [about N lines lost] marker.
+    translation_gaps:
+      - after_src: "Oder ihr Ende, der Ungeheuren, mit anzusehen."
+        resume_src: "Finstrer Gedanke, Gedanke voll Qual! und Du, wilde Verzweiflung!"
+      - after_src: "Die voll Erwartungen war und Zweifel und Freud' und Erstaunen."
+        resume_src: "Eher nicht in die Grube sich neigen, als auch mein Auge"
+      # Canto XIX loses two single pages: 645 (lines 1191-1235) and 648
+      # (1326-1370). Page 644 is in the scan but bound after 647; the text is
+      # put back in order by fetch_egestorff.py.
+      - after_src: "Von den Mördern umringt, die Hand in der Fessel, erblickten?"
+        resume_src: "Siehe, Du hast ihn gezeigt und bist verherrlichet worden,"
+      - after_src: "Sinkend jetzt fortfährt mit Schönheit, nun, steigender immer,"
+        resume_src: "Aber, so licht der Schein auch war, der des Glücklichen Tiefsinn"
     first: src
     trim: [8.5, 11.0]
     density: tight
@@ -56,9 +91,15 @@ books:
         scans of the first edition, in which a language model has repaired words
         the scan misread and which have not been proofread, and Egestorff
         does not follow Klopstock line for line, so the English is placed beside
-        the German it renders by meaning, in blocks of about six lines. One
-        page of the scan, in Canto XIV, is illegible and about 34 lines of the
-        English are missing there; the place is marked.
+        the German it renders by meaning, in blocks of about six lines. Four
+        places in the scan have lost text, and each is marked where it falls:
+        about 34 lines in Canto XIV, where a page is illegible; about 90 lines
+        in Canto II, where two pages are missing from the scan altogether; and
+        about 45 lines each at two places in Canto XIX, where a page is missing
+        (one further page of that canto is bound out of order in the scan, and
+        has been put back). The German there has no English beside it, and those
+        passages are marked &dagger; and were machine translated for this
+        edition.
     cover:
       paper: white
       blurb: "Klopstock's twenty-canto epic of the Passion, the German Paradise Lost whose hexameters remade German as a poetic language, with G. H. C. Egestorff's 1826 English verse translation set beside it, complete in one volume."

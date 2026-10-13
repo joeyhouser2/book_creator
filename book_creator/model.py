@@ -366,6 +366,13 @@ class BookSpec:
     # page says so. A reader can then tell a translator's words from a machine's,
     # which a quietly filled gap would not let them do.
     fill_missing: bool = False
+    # Holes in the translation whose place is known exactly: pages the scan
+    # skipped. Each is {after_src, resume_src}: the last line of the original
+    # the translation covers before the hole and the first it picks up again.
+    # The original between them is paired with nothing (and, with
+    # `fill_missing`, machine translated and dagger-marked). The English side is
+    # cut at its `[about N lines lost ...]` marker. See pipeline._split_at_gaps.
+    translation_gaps: list = field(default_factory=list)
 
     # Verse with `verse_align: line` only: align blocks of this many lines rather
     # than single lines (0 = single lines). A hexameter epic and its fourteener

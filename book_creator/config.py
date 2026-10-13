@@ -183,6 +183,7 @@ def load_specs(path: str) -> list[BookSpec]:
             translate=bool(raw.get("translate", False)),
             translate_by=raw.get("translate_by", "line"),
             fill_missing=bool(raw.get("fill_missing", False)),
+            translation_gaps=list(raw.get("translation_gaps") or []),
             align_block=int(raw.get("align_block", 0)),
             fill_below=float(raw.get("fill_below", 0.0)),
             poem_titles=bool(raw.get("poem_titles", False)),

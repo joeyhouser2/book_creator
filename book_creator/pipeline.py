@@ -708,6 +708,89 @@ def _fill_missing_translation(chapters: list[Chapter], spec: BookSpec, log) -> N
         spec.translation_source_note = " ".join(filter(None, [spec.translation_source_note, note]))
 
 
+def _find_line(segs: list[str], text: str, floor: int = 88) -> int | None:
+    """Index of the segment that is `text` (to OCR and cleaning noise), or None."""
+    from rapidfuzz import fuzz
+    want = " ".join(text.split()).lower()
+    for i, seg in enumerate(segs):
+        if " ".join(seg.split()).lower() == want:
+            return i                     # an exact line beats the nearest one
+    best, at = 0.0, None
+    for i, seg in enumerate(segs):
+        r = fuzz.ratio(want, " ".join(seg.split()).lower())
+        if r > best:
+            best, at = r, i
+    return at if best >= floor else None
+
+
+def _split_at_gaps(src_segs: list[str], tgt_segs: list[str], spec: BookSpec,
+                   log) -> list[tuple[str, list[str], list[str]]] | None:
+    """Cut one division at the holes in the translation that `translation_gaps`
+    names, as ("pair", src, tgt) runs with ("hole", src, []) between them.
+
+    A hole is German with no English: pages the scan skipped. The English side
+    is cut at its marker line (`[about N lines lost ...]`, written by
+    fetch_egestorff.py), and the German side at the anchors the config gives:
+    the last line the English before the hole covers (`after_src`), and the
+    first it picks up again (`resume_src`). Aligning each side of a hole on its
+    own is what stops the text after it being dragged out of step by the lines
+    that are not there. None when this division has no hole.
+    """
+    gaps = []
+    for g in spec.translation_gaps or []:
+        a = _find_line(src_segs, g.get("after_src", ""))
+        b = _find_line(src_segs, g.get("resume_src", ""))
+        if a is not None and b is not None and b > a:
+            gaps.append((a, b))
+    if not gaps:
+        return None
+    gaps.sort()
+    marks = [i for i, ln in enumerate(tgt_segs) if ln.lstrip().startswith("[about ")]
+    if len(marks) != len(gaps):
+        log(f"  ⚠  {len(gaps)} translation gap(s) named for this division but "
+            f"{len(marks)} marker(s) in the English; not splitting.")
+        return None
+    parts: list[tuple[str, list[str], list[str]]] = []
+    s0 = t0 = 0
+    for (a, b), m in zip(gaps, marks):
+        parts.append(("pair", src_segs[s0:a + 1], tgt_segs[t0:m]))
+        parts.append(("hole", src_segs[a + 1:b], []))
+        s0, t0 = b, m + 1
+    parts.append(("pair", src_segs[s0:], tgt_segs[t0:]))
+    holes = sum(len(p[1]) for p in parts if p[0] == "hole")
+    log(f"• {len(gaps)} hole(s) in the translation here: {holes} line(s) of the "
+        "original have no English.")
+    return parts
+
+
+def _align_line_blocks(src_segs: list[str], tgt_segs: list[str], spec: BookSpec,
+                       log) -> list[Bead]:
+    """Pair verse line against line, in blocks of `align_block` lines."""
+    if not src_segs or not tgt_segs:
+        return ([Bead(src=[s], tgt=[]) for s in src_segs]
+                + [Bead(src=[], tgt=[t]) for t in tgt_segs])
+    n = spec.align_block
+    if n > 1:
+        # Align blocks of n lines, then put the lines back: the unit the
+        # aligner scores must be big enough to share words with its
+        # counterpart, but the page should still set verse as verse.
+        src_u = ["\n".join(src_segs[i:i + n]) for i in range(0, len(src_segs), n)]
+        tgt_n = max(1, round(n * len(tgt_segs) / max(1, len(src_segs))))
+        tgt_u = ["\n".join(tgt_segs[i:i + tgt_n]) for i in range(0, len(tgt_segs), tgt_n)]
+        beads = aligners.align(src_u, tgt_u, method=spec.aligner,
+                               src_lang=spec.src_lang, log=log,
+                               band=max(24, abs(len(src_u) - len(tgt_u)) + 24))
+        for bead in beads:
+            bead.src = [ln for blk in bead.src for ln in blk.split("\n")]
+            bead.tgt = [ln for blk in bead.tgt for ln in blk.split("\n")]
+        # The aligner places each cut to within a few lines; names, which
+        # are the same word in both languages, say where it really falls.
+        return align_refine.refine(beads)
+    return aligners.align(src_segs, tgt_segs, method=spec.aligner,
+                          src_lang=spec.src_lang, log=log,
+                          band=max(64, abs(len(src_segs) - len(tgt_segs)) + 32))
+
+
 def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
     """Segment and align each already-paired division into beads.
 
@@ -735,27 +818,20 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
             if not verse_note_logged:
                 log("• Verse mode: pairing line against line.")
                 verse_note_logged = True
-            n = spec.align_block
-            if n > 1:
-                # Align blocks of n lines, then put the lines back: the unit the
-                # aligner scores must be big enough to share words with its
-                # counterpart, but the page should still set verse as verse.
-                src_u = ["\n".join(src_segs[i:i + n]) for i in range(0, len(src_segs), n)]
-                tgt_n = max(1, round(n * len(tgt_segs) / max(1, len(src_segs))))
-                tgt_u = ["\n".join(tgt_segs[i:i + tgt_n]) for i in range(0, len(tgt_segs), tgt_n)]
-                beads = aligners.align(src_u, tgt_u, method=spec.aligner,
-                                       src_lang=spec.src_lang, log=log,
-                                       band=max(24, abs(len(src_u) - len(tgt_u)) + 24))
-                for bead in beads:
-                    bead.src = [ln for blk in bead.src for ln in blk.split("\n")]
-                    bead.tgt = [ln for blk in bead.tgt for ln in blk.split("\n")]
-                # The aligner places each cut to within a few lines; names, which
-                # are the same word in both languages, say where it really falls.
-                beads = align_refine.refine(beads)
+            parts = _split_at_gaps(src_segs, tgt_segs, spec, log)
+            if parts is None:
+                beads = _align_line_blocks(src_segs, tgt_segs, spec, log)
             else:
-                beads = aligners.align(src_segs, tgt_segs, method=spec.aligner,
-                                       src_lang=spec.src_lang, log=log,
-                                       band=max(64, abs(len(src_segs) - len(tgt_segs)) + 32))
+                beads = []
+                for kind, ps, pt in parts:
+                    if kind == "pair":
+                        beads += _align_line_blocks(ps, pt, spec, log)
+                    else:
+                        # German with no English, in blocks the size the rest
+                        # of the book is set in; fill_missing translates them.
+                        step = max(1, spec.align_block)
+                        beads += [Bead(src=ps[i:i + step], tgt=[])
+                                  for i in range(0, len(ps), step)]
             for bead in beads:
                 bead.lines = True
         elif spec.mode == "verse" and spec.verse_align == "stanza":
