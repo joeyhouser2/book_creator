@@ -4,7 +4,7 @@ Every finished book in `output/`, with its author, the date of the original
 work, and what it is. Page counts are read from the PDFs themselves, so they
 are what KDP would see.
 
-**83 books, 19,927 pages.** Development scraps are listed at the
+**83 books, 19,948 pages.** Development scraps are listed at the
 end and are not books.
 
 The division that matters commercially is **who made the English**. A book with
@@ -23,7 +23,7 @@ No disclosure, sellable as they stand.
 | **Parzival** | Wolfram von Eschenbach | c. 1200–10 | Jessie L. Weston, 1894 | 1253 | The Grail romance: Parzival's long education from naive boy to Grail king, the fullest Arthurian poem in German. |
 | **Notre-Dame de Paris** | Victor Hugo | 1831 | Isabel F. Hapgood, 1888 | 1240 | Quasimodo, Esmeralda and Frollo around the cathedral Hugo wrote the book to save. |
 | **Le Rouge et le Noir** | Stendhal | 1830 | Horace B. Samuel, 1916 | 1124 | A carpenter's son climbs through seminary and salon by calculation and sincerity in turn, and is destroyed by both. |
-| **Der Messias** | Friedrich Gottlieb Klopstock | 1748–73 | G. H. C. Egestorff, 1826 | 770 | The German Paradise Lost, all twenty cantos in one volume, in hexameters that remade German as a poetic language. |
+| **Der Messias** | Friedrich Gottlieb Klopstock | 1748–73 | G. H. C. Egestorff, 1826 | 773 | The German Paradise Lost, all twenty cantos in one volume, in hexameters that remade German as a poetic language. |
 | **Le Père Goriot** | Honoré de Balzac | 1835 | Ellen Marriage, 1896 | 725 | A retired merchant ruins himself for two daughters who will not be seen with him. |
 | **Das Nibelungenlied** | Anonymous | c. 1200 | George Henry Needler, 1904 | 574 | Siegfried's murder and Kriemhild's annihilating revenge: the central German heroic epic. |
 | **Anabasis** | Xenophon | c. 370 BC | unnamed on the copyright page | 537 | Ten thousand Greek mercenaries stranded in Persia march home — the original account of a fighting retreat. |
@@ -37,7 +37,7 @@ No disclosure, sellable as they stand.
 | **Les Fleurs du Mal** | Charles Baudelaire | 1857 | Cyril Scott, 1909 | 244 | The founding book of Symbolism, prosecuted for obscenity the year it appeared. 55 of 123 poems. |
 | **Anglorum Praelia** | Christopher Ocland | 1580 | John Sharrock, 1585 | 235 | English victories in Latin hexameters from Edward III to Mary I, a Tudor schoolroom set text. |
 | **Cantar de Mio Cid** | Anonymous | c. 1200 | Rose, 1919 | 231 | The Cid exiled by his king, winning Valencia and his honour back: Spain's national epic. |
-| **The Life of the Black Prince** | Chandos Herald | c. 1385 | Pope & Lodge, 1910 | 197 | A verse life of Edward of Woodstock by a herald who served in his household, in Anglo-Norman. |
+| **The Life of the Black Prince** | Chandos Herald | c. 1385 | Pope & Lodge, 1910 | 215 | A verse life of Edward of Woodstock by a herald who served in his household, in Anglo-Norman. |
 | **De Consulatu Stilichonis** | Claudian | 400 | Maurice Platnauer, 1922 | 89 | Three books of panegyric on Stilicho's consulship, the fullest portrait of the general who held the West together. |
 | **In Eutropium** | Claudian | 399 | Maurice Platnauer, 1922 | 83 | A savage attack on Eutropius, the eunuch who became consul — Roman political abuse at its most unrestrained. |
 | **In Rufinum** | Claudian | 396–97 | Maurice Platnauer, 1922 | 69 | An invective against the eastern minister Rufinus, with a prologue comparing him to a monster. |
@@ -143,12 +143,13 @@ Page images rather than reset text, so there is no parallel translation.
 
 ## Not books — development scraps
 
-25 files, 152 MB. Probes, stubs and superseded runs. All
+26 files, 152 MB. Probes, stubs and superseded runs. All
 reproducible, and safe to delete.
 
 | File | Pages | What it was |
 |---|---:|---|
 | `v2-check` | 570 | 570-page facsimile re-run, 146 MB |
+| `life-of-the-black-prince-v1` | 197 | First build of the Black Prince, before the page-by-page corrections; 197 pages. |
 | `life-of-the-black-prince-v2` | 197 | Second layout pass of the Black Prince; same 197 pages. |
 | `caesar-b1-la` | 56 | Gallic War Book I, untitled run — superseded by `the-gallic-war`. |
 | `the-gallic-war-book-i` | 55 | Same text, titled properly. One of four Gallic War iterations. |
