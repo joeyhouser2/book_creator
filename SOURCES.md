@@ -42,7 +42,7 @@ copyright or language.
 | **Pontano, *Parthenopeus*** | dual 85 pp | machine, `nllb-latin` |
 | **Pontano, *De hortis Hesperidum*** | dual 60 pp | machine, `nllb-latin` |
 | **Ronsard, *La Franciade*** books 1–4 | dual 444 pp | machine, `qwen3:14b` |
-| **Theuerdank** (1517) | dual 689 pp, 117 chapters, 115 woodcuts | machine, `qwen3:14b` — German re-read from page images with Tesseract's Fraktur model; woodcuts from the BSB first edition, greyscale |
+| **Theuerdank** (1517) | dual 694 pp, 117 chapters, 115 woodcuts | machine, `qwen3:14b` — German re-read from page images with Tesseract's Fraktur model; woodcuts from the BSB first edition, greyscale |
 | **Ercilla, *La Araucana*** | part 1 dual 409 pp (cantos 1–15) · parts 2–3 dual 580 pp (cantos 16–37) | machine, `qwen3:14b`, octava by octava |
 | **Rhodoman, 9 Latin works** | one short book each, `config/rhodoman_latin.yaml` | machine, `nllb-latin` |
 | **Rhodoman, 23 Greek works** | one book each, `config/rhodoman_greek.yaml` | machine, `qwen3:14b` |
