@@ -144,6 +144,7 @@ SCRAPS = {
     "gw-book-i-via-ui": "The same again, built through the web UI to check that path.",
     "the-gallic-wars": "**Broken**: pulled the wrong Gutenberg text — page 3 is Ernest Bramah's *Kai Lung's Golden Hours*.",
     "carmina-rhytmica": "Alcuin, 3 pages. A fragment, not a book.",
+    "life-of-the-black-prince-v1": "First build of the Black Prince, before the page-by-page corrections; 197 pages.",
     "life-of-the-black-prince-v2": "Second layout pass of the Black Prince; same 197 pages.",
     "enc-test": "encoding probe", "feathers-test": "ornament probe",
     "gallic-war": "2-page stub", "gallic-war-embed": "font-embedding probe",
