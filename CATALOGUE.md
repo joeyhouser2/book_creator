@@ -4,7 +4,7 @@ Every finished book in `output/`, with its author, the date of the original
 work, and what it is. Page counts are read from the PDFs themselves, so they
 are what KDP would see.
 
-**83 books, 19,922 pages.** Development scraps are listed at the
+**83 books, 19,927 pages.** Development scraps are listed at the
 end and are not books.
 
 The division that matters commercially is **who made the English**. A book with
@@ -56,7 +56,7 @@ translation exists at all, in or out of copyright.
 | Work | Author | Written | Pages | Summary |
 |---|---|---|---:|---|
 | **De modo usurarum liber** | Claudius Salmasius | 1588–1653 | 822 | A vast humanist treatise arguing that lending at interest is lawful — Salmasius against a thousand years of canon law. English only. |
-| **Theuerdank** | Emperor Maximilian I | 1517 | 689 | The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts. |
+| **Theuerdank** | Emperor Maximilian I | 1517 | 694 | The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts. |
 | **La Araucana, Parts Two and Three** | Alonso de Ercilla | 1578, 1589 | 580 | Cantos 16–37, including Caupolicán's death and Ercilla's own disillusion. |
 | **La Franciade** | Pierre de Ronsard | 1572 | 444 | France descended from a surviving son of Hector: the national epic Ronsard abandoned after four books. |
 | **Der letzte Ritter, with the Murtenlied** | Anastasius Grün; Veit Weber | 1830; 1476 | 433 | Der letzte Ritter with Weber's Murtenlied appended: one volume, the Romanzen in machine English and the song in Felton's 1845 ballad. |
