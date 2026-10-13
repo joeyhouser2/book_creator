@@ -428,3 +428,27 @@ the verse with no English of its own, because the passage before covers it.
 - **3663**: And the Prince also took Amusco first, and was at Medina del Campo, and abode in the fields until he had provisions from the town, or he would have given them battle. Likewise the Great Company took several towns in Spain, but nevertheless, of a truth, they suffered great hardships while awaiting King Pedro.
 - **4039**: Thereat he was blithe and glad,
 - **4043**: for there were Roger de Beaufort, who made boast of holding it. Sir Jean de Villemur, who said he would keep the wall, and good men-at-arms, without the burgesses therein.
+
+- **207**: But afterwards, meseems, the King and the Prince together rode through Normandy, and laid waste all the country. Many a great affray did they have, and many a good did they take,
+- **213**: and they came to the bridge of Poissy ; but the story says that the bridge there was broicen, yet they did so much that with great logs they remade the bridge by force, whereat the French marvelled, and crossed one morning. They took their way through Caux, burning, laying waste, harrying whereat the French were sore grieved
+- **223**: and cried aloud : ' Where is Philip our king?' He was at Paris, to speak the truth, for at this time he made ready and collected his great power.
+- **643**: Right speedily after, he was ready and took the field with more than six thousand fighting-men.
+- **645**: He rode towards Toulouse ; not a town remained that he did not utterly lay waste he took Carcassonne and Béziers and Narbonne, and all the country was ravaged and harried by him, and divers towns and castles, whereat the enemies in Gascony made no great rejoicing. More than four and a half months he remained in the field this time and did much damage then.
+- **850**: If they wish no accord this time, I am here, all ready, to abide the grace of God, for our quarrel is so just that I fear not to engage ; but to avert the damage and sin of death I will agree to it, at your pleasure, if so be that my father assent.'
+- **857**: The Cardinal, in tears, departed from him straightway and rode without delay towards King John of France, and told him of his reception. The King, to prolong the matter and to put off the battle, assembled and brought together all the barons of both sides.
+- **955**: See to it, if you find the English, that you engage in battle with them and spare not to put them all to death.'
+- **959**: Then he called this time his son, the Duke of Normandy, and said to him, ' Fair son, by my troth, you will be King of France after me, and therefore you shall surely have our second division ; and you shall have the noble Duke of Bourbon to accompany you, and the Lord of Saint Venant, valiant and doughty. The good Tristan of Magnelais, a right noble squire, shall bear your banner, that is of rich and precious silk.
+- **1508**: There was the noble and puissant King, and the Queen his wife,
+- **1510**: and his mother, who held him dear; many a lady, many a damsel, right amorous, sprightly, and fair.
+- **2097**: Great rejoicings did all make, and the Prince also was right glad at heart, and all say with one accord : ' Behold a right fair beginning.'
+- **2103**: Then the Prince set forth, he waited no more ; no longer did he tarry there. Very rich was his array.
+- **2553**: They stayed on the other side until the Spaniards had crossed and they were minded to come this side of the mountains before Vittoria.
+- **2558**: In front of Vittoria, on the plain,
+- **2559**: Sir Thomas Felton and his companions camped.
+- **3136**: Now do your pleasure in the matter. Behold it, I present it to you.'
+- **3138**: Then, incontinently, the Prince, the King Don Pedro, and the Duke of Lancaster also, unfurled his banner and handed it to him by the shaft and said to him forthwith : 'God grant you gain honour thereby'.
+- **3881**: Then he raised himself from his bed and said : ' Fair sirs, by my troth, methinks, by what I see, that the French deem me as dead ; but, so God comfort me, if I can rise from this bed I will yet do them much hurt, for God knows well that wrongfully they make complaint of me.'
+- **3889**: Then did he send back word to the King of France boldly and staunchly, that in sooth gladly would he go at his summons, so God grant him health and life, he and all his company, with bassinet on head to defend him from mischief. Thus began war in Aquitaine, and then he had all the companions set in all the fortified places.
+- **3959**: One after another they befell the noble Prince, who lay ill abed.
+- **3963**: But for all this he gave thanks to God and said : ' Everything will have its season ; if I could rise from here I would assuredly take vengeance.'
+- **3967**: When the French knew that the famous Chandos was dead they made great joy everywhere and rejoiced greatly, saying : ' All will be ours, as true as is the paternoster.' Then King Charles of France had word sent incontinent to Sir Bertrand du Guesclin, the bold and true, in Spain, where he was, where he served the Bastard King, and announced that Chandos was dead. Gladly did he hear the tidings.
