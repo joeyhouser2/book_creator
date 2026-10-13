@@ -192,7 +192,8 @@ def judge_all(a) -> int:
     if JUDGE.exists():
         for line in JUDGE.read_text(encoding="utf-8").splitlines():
             done.add(json.loads(line)["i"])
-    todo = [i for i in sorted(new) if i not in done][:a.limit]
+    todo = [i for i in sorted(new, reverse=a.reverse) if i not in done]
+    todo = todo[int(len(todo) * a.start_frac):][:a.limit]
     print(f"{len(new)} pairs, {len(done)} judged, {len(todo)} to go (judge {a.judge})",
           file=sys.stderr)
     t0 = time.time()
@@ -290,6 +291,12 @@ def main() -> int:
     ap.add_argument("--judge-all", action="store_true",
                     help="a second model chooses, per unit, between the two passes")
     ap.add_argument("--judge", default="gemma4:12b", help="the judge model")
+    ap.add_argument("--start-frac", type=float, default=0.0,
+                    help="with --judge-all, skip this fraction of the remaining units, "
+                         "so a third process can take the middle")
+    ap.add_argument("--reverse", action="store_true",
+                    help="with --judge-all, work from the last unit backwards, so a second "
+                         "process can share the job with a first")
     a = ap.parse_args()
     if a.judge_all:
         return judge_all(a)
