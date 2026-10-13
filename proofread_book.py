@@ -43,6 +43,10 @@ def main() -> int:
                     help="cuda:N to force a card (CUDA numbers fastest first). "
                          "Default: the one with the most memory.")
     ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--recut", action="store_true",
+                    help="Re-cut the English line by line first (align_lines), then "
+                         "proofread the result.")
+    ap.add_argument("--recut-lambda", type=float, default=1.0)
     ap.add_argument("--out-dir", default="output")
     ap.add_argument("--metrics", help="Also write the raw scores to this JSON file.")
     ap.add_argument("--from-metrics", help="Re-run the analysis on a saved metrics "
@@ -71,6 +75,10 @@ def main() -> int:
         return 2
     spec = specs[0]
 
+    if args.recut:
+        spec.recut = True
+        spec.recut_lambda = args.recut_lambda
+        spec.recut_device = args.device
     chapters = chapters_for_spec(spec)
     findings, scanned = proofread_pairs.check_chapters(
         chapters, src_lang=spec.src_lang, tgt_lang=spec.tgt_lang, model=args.model,

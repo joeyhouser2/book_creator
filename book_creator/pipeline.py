@@ -789,6 +789,16 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
         chapters.append(Chapter(title=t_title or s_title, src_segments=src_segs,
                                 tgt_segments=tgt_segs, beads=beads))
 
+    if spec.recut:
+        from . import align_lines
+        log(f"• Re-cutting the translation line by line ({spec.recut_model})…")
+        stats = align_lines.recut_chapters(
+            chapters, src_lang=spec.src_lang, tgt_lang=spec.tgt_lang,
+            model=spec.recut_model, lam=spec.recut_lambda,
+            device=spec.recut_device, log=log)
+        log(f"• Re-cut moved {stats['moved']} line(s) across "
+            f"{stats['beads']} bead(s) in {stats['chapters']} chapter(s).")
+
     if spec.fill_missing:
         _fill_missing_translation(chapters, spec, log)
     total_beads = sum(len(c.beads) for c in chapters)
@@ -838,6 +848,7 @@ def chapters_for_spec(spec: BookSpec, log=print) -> list[Chapter]:
     if not chapters:
         raise ValueError(
             f"Nothing left to print: sides='{spec.sides}' removed every bead.")
+    apply_tgt_replace(chapters, spec.tgt_replace, log)
     return chapters
 
 
@@ -848,7 +859,6 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
 
     `artifacts`, if given, is filled in with every file produced (pdf, cover,
     epub, review, audio) so a caller like the web UI can offer them all without
-    apply_tgt_replace(chapters, spec.tgt_replace, log)
     re-deriving the names.
     """
     def log(msg: str) -> None:

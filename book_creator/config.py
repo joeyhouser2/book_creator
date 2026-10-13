@@ -215,6 +215,10 @@ def load_specs(path: str) -> list[BookSpec]:
             proofread=bool(raw.get("proofread", False)),
             proofread_model=raw.get("proofread_model", "Unbabel/TowerInstruct-7B-v0.2"),
             proofread_sample=raw.get("proofread_sample"),
+            recut=bool(raw.get("recut", False)),
+            recut_model=raw.get("recut_model", "Unbabel/TowerInstruct-7B-v0.2"),
+            recut_lambda=float(raw.get("recut_lambda", 1.0)),
+            recut_device=raw.get("recut_device", "auto"),
             music=_parse_music(raw.get("music")),
             audio=_parse_audio(raw.get("audio")),
         ))

@@ -250,6 +250,14 @@ def main(argv: list[str] | None = None) -> int:
                    help="Causal LM used by --proofread (default: %(default)s).")
     p.add_argument("--proofread-sample", type=int,
                    help="Cap on beads scored (from the start), for a quick check.")
+    p.add_argument("--recut", action="store_true",
+                   help="Verse blocks: re-cut the English line by line using a "
+                        "translation model's evidence (GPU; cached). Fixes English "
+                        "displaced across block boundaries.")
+    p.add_argument("--recut-lambda", type=float, default=1.0,
+                   help="Nats of evidence needed to move a line (default %(default)s).")
+    p.add_argument("--recut-device", default="auto",
+                   help="cuda:N for --recut (default: the card with most memory).")
     p.add_argument("--music", action="store_true",
                    help="Musical literature (verse mode): typeset the piano grand "
                         "staff (treble + bass) under poems matched to a known "
@@ -470,6 +478,9 @@ def main(argv: list[str] | None = None) -> int:
             proofread=args.proofread,
             proofread_model=args.proofread_model,
             proofread_sample=args.proofread_sample,
+            recut=args.recut,
+            recut_lambda=args.recut_lambda,
+            recut_device=args.recut_device,
             music=MusicSpec(enabled=args.music, catalog=args.music_catalog),
             audio=audio_spec,
             audio_only=args.audio_only,
