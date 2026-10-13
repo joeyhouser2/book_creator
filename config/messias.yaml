@@ -62,6 +62,9 @@ books:
       # Canto XIX loses two single pages: 645 (lines 1191-1235) and 648
       # (1326-1370). Page 644 is in the scan but bound after 647; the text is
       # put back in order by fetch_egestorff.py.
+      # Canto XIII: one page the OCR read as gibberish (German 11805-11831).
+      - after_src: "S. »Weh mir, Jupiter, Jupiter! Du, der herrscht im Olympus!"
+        resume_src: "Nicht aussprechen und fleuch!« Er floh; doch zögert' er wieder"
       - after_src: "Von den Mördern umringt, die Hand in der Fessel, erblickten?"
         resume_src: "Siehe, Du hast ihn gezeigt und bist verherrlichet worden,"
       - after_src: "Sinkend jetzt fortfährt mit Schönheit, nun, steigender immer,"
@@ -91,13 +94,13 @@ books:
         scans of the first edition, in which a language model has repaired words
         the scan misread and which have not been proofread, and Egestorff
         does not follow Klopstock line for line, so the English is placed beside
-        the German it renders by meaning, in blocks of about six lines. Four
+        the German it renders by meaning, in blocks of about six lines. Five
         places in the scan have lost text, and each is marked where it falls:
-        about 34 lines in Canto XIV, where a page is illegible; about 90 lines
-        in Canto II, where two pages are missing from the scan altogether; and
-        about 45 lines each at two places in Canto XIX, where a page is missing
-        (one further page of that canto is bound out of order in the scan, and
-        has been put back). The German there has no English beside it, and those
+        about 34 lines in Canto XIV and about 45 in Canto XIII, where a page is
+        illegible; about 90 lines in Canto II, where two pages are missing from
+        the scan altogether; and about 45 lines each at two places in Canto XIX,
+        where a page is missing (one further page of that canto is bound out of
+        order in the scan, and has been put back). The German there has no English beside it, and those
         passages are marked &dagger; and were machine translated for this
         edition.
     cover:

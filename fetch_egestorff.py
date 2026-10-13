@@ -424,6 +424,15 @@ DISPLACED_PAGES = {
     19: [("page 644", "Of light, among the company prevail'd.",
           "bound, we saw him! and how Herod", "Felicity, dawn of the heritage")],
 }
+# ILLEGIBLE_PAGES: canto -> [(the last clean line before, the first clean line
+# after, lines lost)]. A smeared page that the OCR read as plausible-looking
+# gibberish passes the debris filter (Canto XIII: 43 lines of "Sok does Gusev
+# we; eee ees"), so everything between the two clean lines is replaced by one
+# marker.
+ILLEGIBLE_PAGES = {
+    13: [("Dost rule on high Olympus, most sublime,",
+          "Avaunt! — The Demon fled. But soon again", 45)],
+}
 _HEAD_DEBRIS = re.compile(r"(?i)klopstock|mlewwigh|mlbyet|\bcar+o\b|canto\s+[ixlv]+\W*$|messiah\W*$")
 
 
@@ -462,6 +471,15 @@ def apply_page_fixes(lines: list[str], canto: int) -> list[str]:
             continue
         out[at + 1:at + 1] = block
         print(f"  canto {canto}: {page} ({len(block)} lines) moved back after {after!r}")
+    for before, after, lost in ILLEGIBLE_PAGES.get(canto, []):
+        a = _best_line(out, before, floor=85)
+        z = _best_line(out, after, lo=a, hi=a + 120, floor=85) if a is not None else None
+        if a is None or z is None or z <= a + 1:
+            print(f"  canto {canto}: illegible page not found between {before!r} and {after!r}")
+            continue
+        n_gone = z - a - 1
+        out[a + 1:z] = [f"[about {lost} lines lost: this page is illegible in the scan]"]
+        print(f"  canto {canto}: illegible page ({n_gone} garbled lines) replaced by a marker")
     for what, last, lost in KNOWN_HOLES.get(canto, []):
         at = _best_line(out, last)
         if at is None:
@@ -481,7 +499,7 @@ def mark_gaps(body: list[str], anchors, rejected, canto: int) -> list[str]:
     with no debris is reported for a person to look at, not dismissed: it is
     either a printer's slip or a page the scan skipped.
     """
-    if canto in KNOWN_HOLES or canto in DISPLACED_PAGES:
+    if canto in KNOWN_HOLES or canto in DISPLACED_PAGES or canto in ILLEGIBLE_PAGES:
         return apply_page_fixes(body, canto)
     out = list(body)
     for before, lost in sorted(find_gaps(anchors), reverse=True):
@@ -640,12 +658,12 @@ def mark_existing() -> None:
     added = 0
     apply_openings(by_canto)
     print(f"  {clean_opening_lines(by_canto)} opening line(s) trimmed of margin noise")
-    for n in sorted(set(KNOWN_HOLES) | set(DISPLACED_PAGES)):
+    for n in sorted(set(KNOWN_HOLES) | set(DISPLACED_PAGES) | set(ILLEGIBLE_PAGES)):
         if n in by_canto:
             by_canto[n] = apply_page_fixes(by_canto[n], n)
             added += len(KNOWN_HOLES.get(n, []))
     for n, body in fresh.items():
-        if n in KNOWN_HOLES or n in DISPLACED_PAGES:
+        if n in KNOWN_HOLES or n in DISPLACED_PAGES or n in ILLEGIBLE_PAGES:
             continue                                   # done above, from the images
         marks = [i for i, ln in enumerate(body) if ln.startswith("[about ")]
         lines = by_canto[n]
