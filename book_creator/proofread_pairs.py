@@ -352,14 +352,8 @@ def _cap_lines(segs: list[str]) -> list[str]:
     return out
 
 
-def check_chapters(chapters: list[Chapter], *, src_lang: str, tgt_lang: str,
-                   model: str = TOWER_MODEL, max_beads: int | None = None,
-                   directions: str | None = None, suggest: int = 40,
-                   batch_size: int = 8, quant: str = "auto",
-                   device: str = "auto", scorer: Scorer | None = None,
-                   metrics_out: str | Path | None = None,
-                   log: Callable[[str], None] = print) -> tuple[list[PairFinding], int]:
-    """Score every two-sided bead and return (findings, beads scanned)."""
+def collect_items(chapters: list[Chapter]) -> list[dict]:
+    """Every two-sided bead as a scoring item (src/tgt lines, where it sits)."""
     items: list[dict] = []
     for ci, ch in enumerate(chapters):
         for bi, bead in enumerate(ch.beads):
@@ -370,6 +364,55 @@ def check_chapters(chapters: list[Chapter], *, src_lang: str, tgt_lang: str,
                           "src_lines": sl, "tgt_lines": tl,
                           "chapter_index": ci, "bead_index": bi,
                           "chapter_title": ch.title or f"Chapter {ci + 1}"})
+    return items
+
+
+def sample_windows(items: list[dict], cap: int, windows: int = 5) -> list[dict]:
+    """At most `cap` items as a few contiguous runs spread over the book, so
+    neighbouring beads stay neighbours (drift needs them) while a long book is
+    still sampled from start to end."""
+    if cap <= 0 or len(items) <= cap:
+        return items
+    size = max(1, cap // windows)
+    starts = [round(i * (len(items) - size) / max(1, windows - 1)) for i in range(windows)]
+    out: list[dict] = []
+    for a in starts:
+        out += items[a:a + size]
+    return out
+
+
+def run_batch(books: list[dict], *, model: str = TOWER_MODEL, batch_size: int = 8,
+              quant: str = "auto", device: str = "auto",
+              log: Callable[[str], None] = print) -> list[list[dict]]:
+    """Score several books in one model load. Each book is
+    {"items": [...], "src_lang": ..., "tgt_lang": ...}; returns one metrics
+    list per book, in order."""
+    pairs: list = []
+    groups: list[dict] = []
+    for b in books:
+        start = len(pairs)
+        pairs += [(it["src_lines"], it["tgt_lines"]) for it in b["items"]]
+        langs = b["src_lang"].lower()
+        groups.append({"start": start, "end": len(pairs), "src_lang": b["src_lang"],
+                       "tgt_lang": b["tgt_lang"],
+                       "directions": "both" if langs in TOWER_LANGS else "fwd"})
+    opts = {"model": model, "batch_size": batch_size, "quant": quant, "device": device,
+            "labse": LABSE_MODEL, "groups": groups, "suggest": 0}
+    flat = run_worker(pairs, opts, log)
+    if len(flat) != len(pairs):
+        raise ProofreadError(f"scorer returned {len(flat)} results for {len(pairs)} pairs")
+    return [flat[g["start"]:g["end"]] for g in groups]
+
+
+def check_chapters(chapters: list[Chapter], *, src_lang: str, tgt_lang: str,
+                   model: str = TOWER_MODEL, max_beads: int | None = None,
+                   directions: str | None = None, suggest: int = 40,
+                   batch_size: int = 8, quant: str = "auto",
+                   device: str = "auto", scorer: Scorer | None = None,
+                   metrics_out: str | Path | None = None,
+                   log: Callable[[str], None] = print) -> tuple[list[PairFinding], int]:
+    """Score every two-sided bead and return (findings, beads scanned)."""
+    items = collect_items(chapters)
     if max_beads is not None:
         items = items[:max_beads]
     if not items:
@@ -561,10 +604,15 @@ def _pmi(tok, lm, device, src_lines, tgt_lines, src_name, tgt_name, batch_size):
             for e, c, b in zip(enc, cond, base)]
 
 
+_LABSE: dict = {}
+
+
 def _labse_metrics(pairs, model_name):
     import numpy as np
     from sentence_transformers import SentenceTransformer
-    st = SentenceTransformer(model_name)
+    if model_name not in _LABSE:
+        _LABSE[model_name] = SentenceTransformer(model_name)
+    st = _LABSE[model_name]
     se = st.encode([p[0] for p in pairs], normalize_embeddings=True,
                    convert_to_numpy=True, batch_size=64)
     te = st.encode([p[1] for p in pairs], normalize_embeddings=True,
@@ -577,45 +625,35 @@ def _labse_metrics(pairs, model_name):
             "labse_prev": float(se[i] @ te[i - 1]) if i > 0 else None,
             "labse_next": float(se[i] @ te[i + 1]) if i + 1 < len(pairs) else None,
         })
-    del st
     return res
 
 
-def _worker(src_json: str, out_json: str) -> int:
-    cfg = json.loads(Path(src_json).read_text(encoding="utf-8"))
-    pairs = [(list(p[0]), list(p[1])) for p in cfg["pairs"]]
-    log = print
-    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
-    log(f"PROGRESS embedding {len(pairs)} pairs with LaBSE")
-    metrics = _labse_metrics([(" ".join(p[0]), " ".join(p[1])) for p in pairs],
-                             cfg.get("labse", LABSE_MODEL))
-
+def _score_group(tok, lm, device, pairs, src_lang, tgt_lang, directions, bs,
+                 suggest, labse, log):
+    """Metrics for one book's pairs: LaBSE, then the model's PMI each way."""
     import torch
-    tok, lm, device = _load_lm(cfg["model"], log, cfg.get("quant", "auto"),
-                                cfg.get("device", "auto"))
-    s_name, t_name = lang_name(cfg["src_lang"]), lang_name(cfg["tgt_lang"])
-    bs = int(cfg.get("batch_size", 8))
+    metrics = _labse_metrics([(" ".join(p[0]), " ".join(p[1])) for p in pairs], labse)
+    s_name, t_name = lang_name(src_lang), lang_name(tgt_lang)
     src = [p[0] for p in pairs]          # lists of lines
     tgt = [p[1] for p in pairs]
 
-    log(f"PROGRESS scoring {s_name} → {t_name} likelihood")
+    log(f"PROGRESS scoring {s_name} → {t_name} likelihood ({len(pairs)} pairs)")
     for m, r in zip(metrics, _pmi(tok, lm, device, src, tgt, s_name, t_name, bs)):
         m["fwd_pmi"], m["fwd_span"], m["fwd_lines"] = r["mean"], r["span"], r["lines"]
-    if cfg.get("directions", "fwd") == "both":
+    if directions == "both":
         log(f"PROGRESS scoring {t_name} → {s_name} likelihood")
         for m, r in zip(metrics, _pmi(tok, lm, device, tgt, src, t_name, s_name, bs)):
             m["rev_pmi"], m["rev_span"], m["rev_lines"] = r["mean"], r["span"], r["lines"]
 
     # A second opinion for the beads most likely to need one: the model's own
     # translation, by greedy decoding, set beside the book's.
-    want = int(cfg.get("suggest", 0))
-    if want > 0:
+    if suggest > 0 and pairs:
         z = robust_z([m.get("fwd_pmi") for m in metrics])
         z2 = robust_z([m.get("rev_pmi") for m in metrics])
         worst = sorted(range(len(pairs)), key=lambda i: min(
-            [v for v in (z[i], z2[i], (metrics[i]["labse"] - 0.6) * 10) if v is not None]))[:want]
+            [v for v in (z[i], z2[i], (metrics[i]["labse"] - 0.6) * 10) if v is not None]))[:suggest]
         log(f"PROGRESS drafting a second reading of {len(worst)} beads")
-        for k, i in enumerate(worst):
+        for i in worst:
             prompt = _chat_prompt(tok, s_name, t_name, "\n".join(src[i]))
             enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)
             with torch.no_grad():
@@ -623,8 +661,29 @@ def _worker(src_json: str, out_json: str) -> int:
                                   do_sample=False)
             metrics[i]["suggestion"] = tok.decode(
                 gen[0, enc.input_ids.shape[1]:], skip_special_tokens=True).strip()
+    return metrics
 
-    Path(out_json).write_text(json.dumps(metrics), encoding="utf-8")
+
+def _worker(src_json: str, out_json: str) -> int:
+    cfg = json.loads(Path(src_json).read_text(encoding="utf-8"))
+    pairs = [(list(p[0]), list(p[1])) for p in cfg["pairs"]]
+    log = print
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+    tok, lm, device = _load_lm(cfg["model"], log, cfg.get("quant", "auto"),
+                                cfg.get("device", "auto"))
+    bs = int(cfg.get("batch_size", 8))
+    # One book (the usual case) or several, each with its own languages.
+    groups = cfg.get("groups") or [{
+        "start": 0, "end": len(pairs), "src_lang": cfg["src_lang"],
+        "tgt_lang": cfg["tgt_lang"], "directions": cfg.get("directions", "fwd")}]
+    out: list = []
+    for gi, g in enumerate(groups):
+        log(f"PROGRESS book {gi + 1} of {len(groups)}: {g['src_lang']} → {g['tgt_lang']}")
+        out += _score_group(tok, lm, device, pairs[g["start"]:g["end"]], g["src_lang"],
+                            g["tgt_lang"], g.get("directions", "fwd"), bs,
+                            int(cfg.get("suggest", 0)) if len(groups) == 1 else 0,
+                            cfg.get("labse", LABSE_MODEL), log)
+    Path(out_json).write_text(json.dumps(out), encoding="utf-8")
     log("PROGRESS done")
     return 0
 
