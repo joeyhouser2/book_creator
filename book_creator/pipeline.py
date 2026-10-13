@@ -151,6 +151,35 @@ def _fuzzy_match_divisions(
     return paired
 
 
+def apply_tgt_replace(chapters: list[Chapter], mapping: dict[str, str], log) -> int:
+    """Whole-word, case-sensitive replacements on the translation side only.
+
+    Longest key first so "Medicis" cannot be half-eaten by a shorter one, and a
+    word boundary on both ends so "Henri" does not touch "Henrietta". Returns
+    the number of replacements, which is logged: a rule that matches nothing is
+    usually a typo, and silence would hide it.
+    """
+    if not mapping:
+        return 0
+    rules = [(k, re.compile(r"(?<!\w)" + re.escape(k) + r"(?!\w)"), v)
+             for k, v in sorted(mapping.items(), key=lambda kv: -len(kv[0]))]
+    counts = {k: 0 for k in mapping}
+
+    def fix(text: str) -> str:
+        for k, rx, v in rules:
+            text, n = rx.subn(v, text)
+            counts[k] += n
+        return text
+
+    for ch in chapters:
+        for b in ch.beads:
+            b.tgt = [fix(t) for t in b.tgt]
+    total = sum(counts.values())
+    log("• Name fixes in the translation: "
+        + ", ".join(f"{k}→{mapping[k]} ×{n}" for k, n in counts.items()))
+    return total
+
+
 def apply_sides(chapters: list[Chapter], sides: str, log) -> list[Chapter]:
     """Drop one side of every bead for a monolingual edition.
 
@@ -819,6 +848,7 @@ def build_book(spec: BookSpec, *, out_dir: str = "output", verbose: bool = True,
 
     `artifacts`, if given, is filled in with every file produced (pdf, cover,
     epub, review, audio) so a caller like the web UI can offer them all without
+    apply_tgt_replace(chapters, spec.tgt_replace, log)
     re-deriving the names.
     """
     def log(msg: str) -> None:
