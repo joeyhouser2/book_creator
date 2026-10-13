@@ -323,6 +323,12 @@ class BookSpec:
     # Line spacing of the body text: "normal", "compact" or "tight". A long
     # parallel poem is two books' worth of lines; this is how it fits one volume.
     density: str = "normal"
+    # Whole-word replacements applied to the *translation* once it is made,
+    # {"Henri": "Henry"}. A machine translation is consistent line by line but
+    # not across a book -- La Henriade came back with the king as Henry 21 times
+    # and Henri 20 -- and fixing that in the cache would mean re-translating.
+    # Applied to the target side only; the original is never touched.
+    tgt_replace: dict[str, str] = field(default_factory=dict)
 
     # Which sides to include at all:
     #   "both" — the parallel text (default)

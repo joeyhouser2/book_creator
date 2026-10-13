@@ -195,6 +195,8 @@ def load_specs(path: str) -> list[BookSpec]:
             trim=(float(trim[0]), float(trim[1])),
             first=raw.get("first", "src"),
             density=raw.get("density", "normal"),
+            tgt_replace={str(k): str(v) for k, v in
+                         (raw.get("tgt_replace") or {}).items()},
             sides=raw.get("sides", "both"),
             translation_pd_confirmed=bool(raw.get("translation_pd_confirmed", False)),
             translation_source_note=raw.get("translation_source_note", ""),
