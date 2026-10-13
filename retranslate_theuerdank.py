@@ -234,6 +234,72 @@ def judge_all(a) -> int:
     return 0
 
 
+RECHECK = Path("cache/theuerdank_recheck.jsonl")
+
+
+def recheck_vetoes(a) -> int:
+    """A reasoning model re-decides the pairs the judge vetoed.
+
+    The judge answers in one token and leans toward the first answer it is
+    shown; this one is allowed to think before it answers. Each pair goes in
+    both orders and the verdict is only 'old' or 'new' when both agree."""
+    import json
+
+    us = units()
+    old_conn = sqlite3.connect(BEFORE)
+    new = {}
+    for line in PASS2.read_text(encoding="utf-8").splitlines():
+        r = json.loads(line)
+        new[r["i"]] = r
+    verdict = {}
+    for line in JUDGE.read_text(encoding="utf-8").splitlines():
+        v = json.loads(line)
+        verdict[v["i"]] = v["verdict"]
+    vetoed = sorted(i for i, v in verdict.items() if v == "old")
+    done = set()
+    if RECHECK.exists():
+        done = {json.loads(l)["i"] for l in RECHECK.read_text(encoding="utf-8").splitlines()}
+    if a.ids_file:
+        keep = set(json.loads(Path(a.ids_file).read_text()))
+        vetoed = [i for i in vetoed if i in keep]
+    todo = [i for i in vetoed if i not in done][:a.limit]
+    print(f"{len(vetoed)} vetoed, {len(done)} rechecked, {len(todo)} to go "
+          f"(arbiter {a.arbiter})", file=sys.stderr)
+
+    def think(de: str, a_txt: str, b_txt: str) -> str:
+        prompt = JUDGE_PROMPT.format(de=de, a=a_txt, b=b_txt).replace(
+            "Answer (A, B or T):", "Think it through, then end with 'Answer: A', "
+            "'Answer: B' or 'Answer: T'.")
+        try:
+            r = requests.post(f"{a.host}/api/chat", json={
+                "model": a.arbiter, "stream": False, "think": True,
+                "messages": [{"role": "user", "content": prompt}],
+                "options": {"temperature": 0.2, "num_predict": 2500}}, timeout=600)
+            r.raise_for_status()
+            out = r.json()["message"]["content"]
+        except requests.RequestException:
+            return "?"
+        m = re.findall(r"Answer:\s*\**\s*([ABT])\b", out)
+        return m[-1] if m else "?"
+
+    with open(RECHECK, "a", encoding="utf-8") as out:
+        for i in todo:
+            old = old_conn.execute("SELECT english FROM translations WHERE model=? AND "
+                                   "src_sha=?", (CACHE_MODEL, new[i]["sha"])).fetchone()[0]
+            nw = new[i]["new"]
+            v1 = think(us[i], old, nw)           # A = old
+            v2 = think(us[i], nw, old)           # A = new
+            o = (v1 == "A") + (v2 == "B")
+            n = (v1 == "B") + (v2 == "A")
+            res = "old" if o > n else "new" if n > o else "tie"
+            out.write(json.dumps({"i": i, "recheck": res, "v": [v1, v2]}) + "\n")
+            out.flush()
+    from collections import Counter
+    c = Counter(json.loads(l)["recheck"] for l in RECHECK.read_text(encoding="utf-8").splitlines())
+    print(dict(c), file=sys.stderr)
+    return 0
+
+
 def apply_all() -> int:
     """Put the second pass into the cache wherever it is acceptable.
 
@@ -291,6 +357,10 @@ def main() -> int:
     ap.add_argument("--judge-all", action="store_true",
                     help="a second model chooses, per unit, between the two passes")
     ap.add_argument("--judge", default="gemma4:12b", help="the judge model")
+    ap.add_argument("--recheck-vetoes", action="store_true",
+                    help="a reasoning model re-decides the pairs the judge vetoed")
+    ap.add_argument("--arbiter", default="qwen3:14b", help="the --recheck-vetoes model")
+    ap.add_argument("--ids-file", help="with --recheck-vetoes, a JSON list of unit numbers")
     ap.add_argument("--start-frac", type=float, default=0.0,
                     help="with --judge-all, skip this fraction of the remaining units, "
                          "so a third process can take the middle")
@@ -298,6 +368,8 @@ def main() -> int:
                     help="with --judge-all, work from the last unit backwards, so a second "
                          "process can share the job with a first")
     a = ap.parse_args()
+    if a.recheck_vetoes:
+        return recheck_vetoes(a)
     if a.judge_all:
         return judge_all(a)
     if a.all:
