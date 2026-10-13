@@ -440,3 +440,15 @@ class BookSpec:
     proofread_model: str = "Unbabel/TowerInstruct-7B-v0.2"
     # Cap how many beads are scored (from the start). None = every bead.
     proofread_sample: int | None = None
+
+    # Line-level re-cut of a block alignment (book_creator/align_lines.py): a
+    # translation model scores each English line against the German block it
+    # sits beside and its neighbours, and lines are moved back across a
+    # boundary where the evidence says they belong. Fixes English displaced
+    # by several lines, which name-based refinement cannot. GPU, ~30 min for
+    # a long poem the first time, then cached on the text.
+    recut: bool = False
+    recut_model: str = "Unbabel/TowerInstruct-7B-v0.2"
+    # Nats of evidence a line needs to be moved off the block it is in.
+    recut_lambda: float = 1.0
+    recut_device: str = "auto"

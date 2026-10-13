@@ -27,6 +27,10 @@ books:
     verse_align: line
     aligner: embed
     align_block: 6
+    # Egestorff's English runs about 1.5 lines to a German line and a block cut by
+    # count lands a few lines off; re-cut it line by line from a translation
+    # model's evidence (book_creator/align_lines.py; GPU once, then cached).
+    recut: true
     first: src
     trim: [8.5, 11.0]
     density: tight

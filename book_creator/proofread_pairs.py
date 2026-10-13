@@ -304,9 +304,13 @@ Scorer = Callable[[list[tuple[list[str], list[str]]], dict, Callable[[str], None
                   list[dict]]
 
 
-def run_worker(pairs: list[tuple[list[str], list[str]]], opts: dict,
-               log: Callable[[str], None] = print) -> list[dict]:
-    """Score `pairs` in a child process that can see every GPU."""
+def run_worker(pairs: list, opts: dict, log: Callable[[str], None] = print,
+               mode: str = "--worker") -> list:
+    """Score `pairs` in a child process that can see every GPU.
+
+    `mode` picks the worker: "--worker" scores pairs (this module), "--support"
+    scores the line support of windows of translation (align_lines).
+    """
     root = Path(__file__).resolve().parent.parent
     env = dict(os.environ)
     masked = env.pop("CUDA_VISIBLE_DEVICES", None)
@@ -317,7 +321,7 @@ def run_worker(pairs: list[tuple[list[str], list[str]]], opts: dict,
         src_path, out_path = Path(tmp, "in.json"), Path(tmp, "out.json")
         src_path.write_text(json.dumps({"pairs": pairs, **opts}), encoding="utf-8")
         proc = subprocess.Popen(
-            [sys.executable, "-m", "book_creator.proofread_pairs", "--worker",
+            [sys.executable, "-m", "book_creator.proofread_pairs", mode,
              str(src_path), str(out_path)],
             cwd=str(root), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace")
@@ -625,11 +629,64 @@ def _worker(src_json: str, out_json: str) -> int:
     return 0
 
 
+SUPPORT_CAP = 900       # tokens of translation scored per window
+
+
+def _line_support(tok, lm, device, jobs, src_name, tgt_name, batch_size):
+    """Summed PMI (nats) of each translation line given the job's source block.
+
+    The sum, not the mean, because a log-likelihood ratio is additive evidence:
+    a long line the block supports is more evidence for it than a short one.
+    None for a line past the token cap or too short to score.
+    """
+    enc = [_seg_ids(tok, j["tgt"], SUPPORT_CAP) for j in jobs]
+    ids = [e[0] for e in enc]
+    cond = _token_logprobs(
+        tok, lm, device,
+        [_chat_prompt(tok, src_name, tgt_name, "\n".join(j["src"])) for j in jobs],
+        ids, batch_size)
+    base = _token_logprobs(
+        tok, lm, device,
+        [_chat_prompt(tok, src_name, tgt_name, "") for _ in jobs],
+        ids, batch_size)
+    out = []
+    for (_, spans), c, b in zip(enc, cond, base):
+        n = min(len(c), len(b))
+        row: list[float | None] = []
+        for a, z in spans:
+            z = min(z, n)
+            row.append(sum(c[k] - b[k] for k in range(a, z)) if z - a >= 2 else None)
+        out.append(row)
+    return out
+
+
+def _support_worker(src_json: str, out_json: str) -> int:
+    cfg = json.loads(Path(src_json).read_text(encoding="utf-8"))
+    jobs = cfg["pairs"]
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+    tok, lm, device = _load_lm(cfg["model"], print, cfg.get("quant", "auto"),
+                               cfg.get("device", "auto"))
+    s_name, t_name = lang_name(cfg["src_lang"]), lang_name(cfg["tgt_lang"])
+    bs = int(cfg.get("batch_size", 3))
+    out: list = []
+    step = 64
+    for a in range(0, len(jobs), step):
+        out += _line_support(tok, lm, device, jobs[a:a + step], s_name, t_name, bs)
+        print(f"PROGRESS scored {min(a + step, len(jobs))} of {len(jobs)} windows",
+              flush=True)
+    Path(out_json).write_text(json.dumps(out), encoding="utf-8")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--worker", nargs=2, metavar=("IN_JSON", "OUT_JSON"),
                     help="internal: score a JSON list of pairs")
+    ap.add_argument("--support", nargs=2, metavar=("IN_JSON", "OUT_JSON"),
+                    help="internal: per-line support of translation windows")
     args = ap.parse_args(argv)
+    if args.support:
+        return _support_worker(*args.support)
     if args.worker:
         return _worker(*args.worker)
     ap.print_help()

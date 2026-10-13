@@ -1035,6 +1035,35 @@ Notes:
 - Any causal LM with a chat template works as `--proofread-model`; a small one
   (e.g. `Qwen/Qwen2.5-0.5B-Instruct`) is fine for a quick drift check.
 
+### Re-cutting a block alignment (`--recut`)
+
+Block alignment of verse (`align_block: 6`) cuts the English by count, and a
+translation that runs 1.5 lines to a German line lands its cuts a few lines
+off. Proofreading Klopstock's *Messias* found the English for a German block
+sitting in the previous block's tail: a six-line block facing one English line,
+then an overlong column. `recut: true` (`--recut`) fixes that after alignment:
+
+- A translation model (Tower by default) scores each English line against the
+  German block it sits beside **and its neighbours**: `log P(line | block) −
+  log P(line | no source)`, summed over the line's tokens.
+- The German blocks stay as aligned. Only the English boundaries move, each
+  within `reach` (12) lines of where it was, by a small segmentation DP that
+  maximises total evidence minus a price per moved line (`recut_lambda`, 1.0),
+  a price per moved boundary, and a length prior that stops a block being left
+  with far fewer English lines than its German warrants.
+- Scoring runs on the GPU in a subprocess (about 50 minutes for *Messias*'
+  2,546 blocks on a 12 GB card in 4-bit) and is **cached on the text**, so a
+  rebuild is instant.
+
+On *Messias* it was validated against LaBSE similarity and neighbour drift,
+which are not part of its objective: mean block similarity 0.719 → 0.77, drift
+beads 76 → ~16, English-starved blocks 93 → ~17; about 4% of the beads it
+changed got worse. It is advisory in the sense that the numbers above are
+about *this* book: check `--proofread` before and after on another one.
+
+`python proofread_book.py config/<book>.yaml --recut` re-cuts and then
+proofreads the result without rendering.
+
 ## Fonts
 
 Fonts are **auto-discovered** from `fonts/`: drop a font's `.ttf` files in and the
