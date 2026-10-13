@@ -34,7 +34,7 @@ from typing import Callable
 
 from .model import Bead, Chapter
 
-DEFAULT_REACH = 12
+DEFAULT_REACH = 24
 DEFAULT_LAMBDA = 1.0
 # Weight of the block-length prior: nats per squared log-ratio of English lines
 # to what the German block's size warrants.
@@ -49,37 +49,28 @@ DEFAULT_MU = 10.0
 DEFAULT_KAPPA = 6.0
 
 
-def build_jobs(beads: list[Bead], reach: int) -> tuple[list[dict], list[list[tuple[int, int, int]]]]:
-    """One scoring window per bead, and, for each, where its lines came from.
+def build_jobs(beads: list[Bead], reach: int) -> tuple[list[dict], list[int]]:
+    """One scoring window per bead, over the flat run of English lines.
 
-    The second return holds, per job, (bead, line, position_in_window) for each
-    window line, so a scored window can be mapped back onto the beads.
+    Block t's window is every English line from `reach` lines before its
+    current start to `reach` lines after its current end (within the chapter),
+    however many beads that crosses. The second return is each window's first
+    flat line index, so window position p is flat line origin[t] + p.
     """
+    flat = [ln for b in beads for ln in b.tgt]
     jobs: list[dict] = []
-    origin: list[list[tuple[int, int, int]]] = []
-    for t, b in enumerate(beads):
-        lines: list[str] = []
-        src: list[tuple[int, int, int]] = []
-        if t > 0:
-            prev = beads[t - 1].tgt
-            for k in range(max(0, len(prev) - reach), len(prev)):
-                src.append((t - 1, k, len(lines)))
-                lines.append(prev[k])
-        for k, ln in enumerate(b.tgt):
-            src.append((t, k, len(lines)))
-            lines.append(ln)
-        if t + 1 < len(beads):
-            nxt = beads[t + 1].tgt
-            for k in range(min(reach, len(nxt))):
-                src.append((t + 1, k, len(lines)))
-                lines.append(nxt[k])
-        jobs.append({"src": list(b.src), "tgt": lines})
-        origin.append(src)
+    origin: list[int] = []
+    end = 0
+    for b in beads:
+        start, end = end, end + len(b.tgt)
+        lo, hi = max(0, start - reach), min(len(flat), end + reach)
+        jobs.append({"src": list(b.src), "tgt": flat[lo:hi]})
+        origin.append(lo)
     return jobs, origin
 
 
 def solve(beads: list[Bead], support: list[list[float | None]],
-          origin: list[list[tuple[int, int, int]]], lam: float = DEFAULT_LAMBDA,
+          origin: list[int], lam: float = DEFAULT_LAMBDA,
           kappa: float = DEFAULT_KAPPA, mu: float = DEFAULT_MU,
           reach: int = DEFAULT_REACH) -> list[int]:
     """The block each English line belongs to, as one list over the flat
@@ -95,7 +86,7 @@ def solve(beads: list[Bead], support: list[list[float | None]],
         - lam * (lines moved)  -  kappa * (boundaries moved)
 
     where the evidence for a line in block t is the support window t gave it
-    (`support[t][p]` at the position `origin[t]` maps it to). The length prior
+    (`support[t][p]` is flat line `origin[t] + p`). The length prior
     keeps a block from being left with far fewer English lines than its German
     warrants, which the evidence alone will happily do.
     """
@@ -111,19 +102,13 @@ def solve(beads: list[Bead], support: list[list[float | None]],
     g = [max(1, len(b.src)) for b in beads]
     ratio = total / max(1, sum(g))
 
-    # prefix[t][e - lo_t] = evidence block t has for lines lo_t .. e-1
+    # prefix[e - lo] = evidence block t has for lines lo .. e-1 of its window
     def prefix_for(t: int) -> tuple[int, list[float]]:
-        lo = max(0, (orig_cut[t - 1] if t > 0 else 0) - reach)
-        hi = min(total, orig_cut[t] + reach)
-        val = [0.0] * (hi - lo)
         row = support[t] if t < len(support) else []
-        for (b, k, p) in origin[t]:
-            e = off[b] + k
-            if lo <= e < hi and p < len(row) and row[p] is not None:
-                val[e - lo] = row[p]
+        lo = origin[t] if t < len(origin) else 0
         pre = [0.0]
-        for v in val:
-            pre.append(pre[-1] + v)
+        for v in row:
+            pre.append(pre[-1] + (v if v is not None else 0.0))
         return lo, pre
 
     def evidence(t: int, lo: int, pre: list[float], a: int, z: int) -> float:
@@ -214,7 +199,7 @@ def recut_chapters(chapters: list[Chapter], *, src_lang: str, tgt_lang: str,
             if len(ch.beads) >= 2 and any(b.tgt for b in ch.beads)]
     jobs: list[dict] = []
     spans: list[tuple[int, int, int]] = []        # (chapter, first job, job count)
-    origins: list[list[tuple[int, int, int]]] = []
+    origins: list[int] = []
     for ci, ch in work:
         j, o = build_jobs(ch.beads, reach)
         spans.append((ci, len(jobs), len(j)))

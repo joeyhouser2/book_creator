@@ -31,16 +31,11 @@ def _book(true_counts: list[int], shift: dict[int, int]) -> tuple[list[Bead], li
 
 
 def _support(beads, truth, reach, right=5.0, wrong=0.0):
+    """Evidence per window position: `right` where the flat line truly belongs
+    to the window's block, `wrong` elsewhere."""
     jobs, origin = al.build_jobs(beads, reach)
-    flat_index = {}
-    n = 0
-    for b, bead in enumerate(beads):
-        for k in range(len(bead.tgt)):
-            flat_index[(b, k)] = n
-            n += 1
-    sup = []
-    for t, org in enumerate(origin):
-        sup.append([right if truth[flat_index[(b, k)]] == t else wrong for (b, k, _) in org])
+    sup = [[right if truth[origin[t] + p] == t else wrong
+            for p in range(len(jobs[t]["tgt"]))] for t in range(len(beads))]
     return sup, origin
 
 
@@ -57,7 +52,7 @@ def test_window_has_neighbour_tail_own_and_next_head():
     jobs, origin = al.build_jobs(beads, reach=2)
     assert jobs[1]["tgt"] == ["b0l2", "b0l3", "b1l0", "b1l1", "b1l2", "b1l3", "b2l0", "b2l1"]
     assert jobs[0]["tgt"][:4] == ["b0l0", "b0l1", "b0l2", "b0l3"]
-    assert [o[:2] for o in origin[1][:2]] == [(0, 2), (0, 3)]
+    assert origin[1] == 2 and origin[0] == 0
 
 
 def test_a_displaced_boundary_is_put_back():
@@ -169,13 +164,36 @@ def test_length_prior_stops_a_block_being_starved():
     # Window 0 likes block 1's first 5 lines slightly more than window 1 does.
     jobs, origin = al.build_jobs(beads, reach=6)
     sup = []
-    for t, org in enumerate(origin):
+    for t in range(3):
         row = []
-        for (b, k, _) in org:
-            row.append(4.0 if b == t else (5.0 if (b == 1 and t == 0 and k < 5) else 0.0))
+        for p in range(len(jobs[t]["tgt"])):
+            e = origin[t] + p                  # flat line; block = e // 6
+            blk = e // 6
+            row.append(4.0 if blk == t else (5.0 if (t == 0 and blk == 1 and e % 6 < 5) else 0.0))
         sup.append(row)
     free = al.solve(beads, sup, origin, lam=0.0, kappa=0.0, mu=0.0)
     kept = al.solve(beads, sup, origin, lam=0.0, kappa=0.0, mu=10.0)
     n_free = sum(1 for a in free if a == 1)
     n_kept = sum(1 for a in kept if a == 1)
     assert n_free < n_kept and n_kept >= 5
+
+
+def test_a_lag_of_more_than_one_block_is_repaired():
+    # The English runs ~10 lines late for four boundaries: block 0 holds a
+    # whole extra block's worth. Neighbour-only windows could not reach it.
+    beads, truth = _book([6, 6, 6, 6, 6, 6, 6, 6], {0: 10, 1: 10, 2: 10, 3: 10, 4: 5})
+    assert len(beads[0].tgt) == 16
+    sup, origin = _support(beads, truth, reach=24)
+    assign = al.solve(beads, sup, origin, lam=1.0, kappa=4.0, mu=0.0, reach=24)
+    blocks = _assignment_blocks(beads, assign)
+    assert [len(b) for b in blocks] == [6] * 8
+    assert blocks[1][0] == "b1l0" and blocks[4][0] == "b4l0"
+
+
+def test_reach_bounds_how_far_a_cut_can_move():
+    beads, truth = _book([6, 6, 6, 6], {0: 5})
+    sup, origin = _support(beads, truth, reach=24)
+    short = al.solve(beads, sup, origin, lam=0.0, kappa=0.0, mu=0.0, reach=3)
+    assert [len(b) for b in _assignment_blocks(beads, short)][0] == 8     # moved 3 of 5
+    full = al.solve(beads, sup, origin, lam=0.0, kappa=0.0, mu=0.0, reach=24)
+    assert [len(b) for b in _assignment_blocks(beads, full)][0] == 6

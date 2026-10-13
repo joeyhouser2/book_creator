@@ -629,7 +629,7 @@ def _worker(src_json: str, out_json: str) -> int:
     return 0
 
 
-SUPPORT_CAP = 900       # tokens of translation scored per window
+SUPPORT_CAP = 1500      # tokens of translation scored per window
 
 
 def _line_support(tok, lm, device, jobs, src_name, tgt_name, batch_size):
