@@ -141,6 +141,9 @@ class CoverSpec:
     background: str = "#f4ead5"      # parchment
     accent: str | None = None        # override the per-language accent color
     blurb: str = ""                  # back-cover description
+    # The publisher's signum at the foot of the spine (assets/signum): auto
+    # (black on a light spine, gold on a dark one) | black | gold | white | none.
+    spine_logo: str = "auto"
 
 
 @dataclass
@@ -373,6 +376,15 @@ class BookSpec:
     # `fill_missing`, machine translated and dagger-marked). The English side is
     # cut at its `[about N lines lost ...]` marker. See pipeline._split_at_gaps.
     translation_gaps: list = field(default_factory=list)
+    # Explicit stanza pairing for a short poem whose two sides do not follow one
+    # another stanza for stanza and whose language an embedding cannot read
+    # (a medieval German ballad against a 19th-century English one). A list of
+    # [original, translation] pairs, each side a 1-based stanza number, an
+    # "a-b" range, or null for none. Every stanza on each side must appear
+    # exactly once, in order. An original stanza paired with null is a hole
+    # (filled and dagger-marked under `fill_missing`). See
+    # pipeline._explicit_stanza_pairs.
+    stanza_pairs: list = field(default_factory=list)
 
     # Verse with `verse_align: line` only: align blocks of this many lines rather
     # than single lines (0 = single lines). A hexameter epic and its fourteener

@@ -486,6 +486,48 @@ def _verse_blocks(src_segs: list[str], tgt_segs: list[str],
     return (tgt_block + src_block) if spec.first == "tgt" else (src_block + tgt_block)
 
 
+def _stanza_range(item, n: int, what: str) -> list[int]:
+    """0-based stanza indices named by one side of a `stanza_pairs` entry."""
+    if item is None or item == "" or item == []:
+        return []
+    text = str(item).strip()
+    if "-" in text:
+        a, b = (int(x) for x in text.split("-", 1))
+    else:
+        a = b = int(text)
+    if not (1 <= a <= b <= n):
+        raise ValueError(f"stanza_pairs: {what} stanzas {text!r} are outside 1-{n}")
+    return list(range(a - 1, b))
+
+
+def _explicit_stanza_pairs(src_st: list[list[str]], tgt_st: list[list[str]],
+                           pairs: list) -> list[Bead]:
+    """Beads from an explicit pairing. Refuses a pairing that drops, repeats or
+    reorders a stanza on either side, because a quietly wrong pairing is the
+    thing this exists to prevent."""
+    beads: list[Bead] = []
+    next_s = next_t = 0
+    for k, entry in enumerate(pairs, 1):
+        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            raise ValueError(f"stanza_pairs entry {k} must be [original, translation]")
+        s = _stanza_range(entry[0], len(src_st), "original")
+        t = _stanza_range(entry[1], len(tgt_st), "translation")
+        if s and s[0] != next_s:
+            raise ValueError(f"stanza_pairs entry {k}: original stanza {s[0] + 1} where "
+                             f"{next_s + 1} was expected (every stanza once, in order)")
+        if t and t[0] != next_t:
+            raise ValueError(f"stanza_pairs entry {k}: translation stanza {t[0] + 1} where "
+                             f"{next_t + 1} was expected (every stanza once, in order)")
+        next_s += len(s)
+        next_t += len(t)
+        beads.append(Bead(src=[ln for i in s for ln in src_st[i]],
+                          tgt=[ln for i in t for ln in tgt_st[i]], lines=True))
+    if next_s != len(src_st) or next_t != len(tgt_st):
+        raise ValueError(f"stanza_pairs covers {next_s} of {len(src_st)} original and "
+                         f"{next_t} of {len(tgt_st)} translation stanzas")
+    return beads
+
+
 def _align_stanzas(src_body: str, tgt_body: str, spec: BookSpec,
                    log) -> list[Bead] | None:
     """Pair a stanzaic poem stanza-by-stanza. None when there are no stanzas.
@@ -520,6 +562,11 @@ def _align_stanzas(src_body: str, tgt_body: str, spec: BookSpec,
         tgt_st = [st for st in tgt_st if st]
         if len(src_st) < 2 or len(tgt_st) < 2:
             return None
+
+    if spec.stanza_pairs:
+        log(f"• Stanzas — source: {len(src_st)}, translation: {len(tgt_st)}; "
+            f"paired by hand ({len(spec.stanza_pairs)} groups).")
+        return _explicit_stanza_pairs(src_st, tgt_st, spec.stanza_pairs)
 
     # An epic's worth of stanzas is far too many for an O(n·m) DP (the
     # Nibelungenlied measures at ~14 minutes unbanded), and the two sides are
@@ -1184,6 +1231,7 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
             font_spec=spec.font, background=spec.cover.background,
             accent=spec.cover.accent, blurb=spec.cover.blurb,
             publisher=spec.copyright.publisher,
+            spine_logo=spec.cover.spine_logo,
         )
         w, h, spine = dims
         log(f"✓ Cover: {cover_path} ({w:.3f} × {h:.3f} in, spine {spine:.3f} in)")

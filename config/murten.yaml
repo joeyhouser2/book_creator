@@ -9,12 +9,37 @@
 #
 # English: "The Battle of Murten", translated by C. C. Felton for Longfellow's
 # The Poets and Poetry of Europe (Philadelphia, 1845), pp. 930-931. Felton worked
-# from a modernised text, restoring Weber's wording in places, and renders it in
-# 4-line stanzas (about 19 against Weber's 32) with some strophes dropped, so
-# the two are not stanza for stanza. Stanzas are paired by meaning (LaBSE), several
-# of Weber's against the English stanzas that carry them.
+# from a modernised text and renders only part of it, in 18 four-line stanzas
+# against Weber's 32 six-line strophes: he begins at strophe 7 (the call to the
+# Confederates) and drops or compresses most of the rest.
+#
+# The two are paired by hand, below (stanza_pairs). An embedding aligner cannot
+# read Alemannic spelling well enough to find where Felton begins, and it paired
+# his first stanza with Weber's opening strophe. Every pairing is a judgement
+# from reading both; the strophes Felton did not translate (14 of the 32) are
+# machine translated, marked with a dagger and disclosed (fill_missing).
 #
 # python make_book.py config/murten.yaml
+
+translators:
+  de:
+    ollama: "qwen3:14b"
+    batch: 6
+    context: >-
+      This is Veit Weber's "Murtenlied" (1476), a Swiss soldier's ballad on the
+      defeat of Charles the Bold, Duke of Burgundy, at Murten (Morat) on 22 June
+      1476, in six-line strophes of Alemannic German with unmodernised spelling
+      (û is u, ou/öu are au/eu, "nût" is nicht). The "Walchen" or "Welschen" are
+      the Burgundians and their French-speaking allies; the "Eidgenossen" are
+      the Swiss Confederates; "Granson" is the earlier Swiss victory, in 1476;
+      the "Herzog von Lothringen" is René of Lorraine; Bübenberg commanded
+      Murten; Entlibuch and Thun were Swiss banners; Röimond is the Count of
+      Romont. Glossary: paner and van are banners; höuschen is asked for;
+      betler is beggars; gesin is been; "tusent vierhundert und sibenzig jar und
+      in das sechst was komen" is the year 1476 (1470 and the sixth year), and
+      "der zehen tusent rittern tag" is 22 June, the day of the Ten Thousand
+      Knights. Render the sense in plain, literal English prose, with pronouns
+      and banners as they are, and do not change any numbers.
 
 books:
   - title: "The Battle of Murten"
@@ -26,6 +51,37 @@ books:
     mode: verse
     verse_align: stanza
     aligner: embed
+    fill_missing: true
+    # [original strophes, Felton's stanzas]; null = Felton has nothing for it.
+    # Strophe numbers are Weber's 1-32 in the German file, stanzas Felton's 1-18.
+    stanza_pairs:
+      - ["1", null]       # the singer's opening
+      - ["2", null]       # the Duke comes before Murten
+      - ["3", null]       # towers and walls shot down
+      - ["4", null]       # the night assault
+      - ["5", null]       # the honour of the defenders
+      - ["6", null]       # Bubenberg
+      - ["7", "1"]        # the Confederates are called: "The tidings flew"
+      - ["8", null]       # the Duke of Lorraine's anger
+      - ["9", null]       # Austria, Strassburg, Basel
+      - ["10", null]      # the gathering host
+      - ["11", null]      # the date, 22 June 1476
+      - ["12-13", "2"]    # the march through the green wood; "We'll forward!"
+      - ["14", "3-4"]     # "when ends the long debate?" / "the sun in his tent"
+      - ["15", null]      # banners and courage
+      - ["16", null]      # the vanguard: Entlibuch and Thun
+      - ["17", "5"]       # the guns are not heeded
+      - ["18", "6"]       # sword and spear
+      - ["19", "7"]       # the field strewn with lances
+      - ["20", "8"]       # flight into forest and lake
+      - ["21", "9-10"]    # the ducks; the lake turned red
+      - ["22", "11"]      # up the trees: shot like crows
+      - ["23-26", "12"]   # the battle two leagues long; the night
+      - ["27-28", "13"]   # the camp and the captured banners
+      - ["29", null]      # Romont's land burned
+      - ["30", "14-15"]   # the game of chess: checkmate
+      - ["31", null]      # the beggars' staves
+      - ["32", "16-18"]   # Veit Weber's own signature
     first: src
     trim: [5.5, 8.5]
     translation_pd_confirmed: true
@@ -48,8 +104,10 @@ books:
         page images by machine and checked by eye. The English ballad by C. C.
         Felton (1845) is in the public domain; he translated a modernised text of
         the song, so it is shorter than Weber's and does not follow it strophe
-        for strophe. The English is therefore placed beside the German it renders
-        by meaning, in blocks of about six lines.
+        for strophe: it begins at Weber's seventh strophe and drops or compresses
+        most of the rest. The two are paired by hand, and the strophes Felton did
+        not translate are marked &dagger; and were machine translated for this
+        edition.
     cover:
       paper: white
       blurb: "Veit Weber, a minstrel who fought in the ranks, sang the Swiss victory over Charles the Bold at Murten in 1476. His Alemannic song faces C. C. Felton's English ballad, as printed in Longfellow's anthology."

@@ -8,11 +8,13 @@ round. Each source language gets its own accent colour and vector emblem.
 from __future__ import annotations
 
 import math
+import re
 import tempfile
 from pathlib import Path
 
 from reportlab.lib.colors import HexColor, Color
 from reportlab.lib.units import inch
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfgen import canvas
@@ -712,7 +714,179 @@ def _draw_front(c, x0, y0, tw, th, *, title, author, src_lang, tgt_lang,
          edition_line=edition_line)
 
 
-def _draw_spine(c, x0, y0, spine, th, *, title, author, motif, font, accent, ink, bg):
+# ---------------------------------------------------------------------------
+# The signum: the publisher's monogram, stroked paths in an SVG
+# ---------------------------------------------------------------------------
+SIGNUM_DIR = Path(__file__).resolve().parent.parent / "assets" / "signum"
+SIGNUM_VARIANTS = ("black", "gold", "white")
+SPINE_LOGO_CHOICES = ("auto", "black", "gold", "white", "none")
+_TOKEN = re.compile(r"[MmLlHhVvCcSsQqZz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+_ARGS = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "Z": 0}
+_svg_cache: dict[str, tuple] = {}
+
+
+def _parse_svg_path(d: str) -> list[tuple[str, list[float]]]:
+    """An SVG path as absolute ("M"|"L"|"C"|"Z", coords) segments.
+
+    Supports M L H V C S Q Z in either case. Arcs are refused rather than drawn
+    wrong; the signum has none.
+    """
+    toks = _TOKEN.findall(d)
+    if re.search(r"[AaTt]", d):
+        raise ValueError("SVG arcs are not supported in a signum path")
+    out: list[tuple[str, list[float]]] = []
+    i = 0
+    cx = cy = sx = sy = 0.0
+    last_c = None            # last cubic control point, for S
+    cmd = ""
+    while i < len(toks):
+        if re.fullmatch(r"[A-Za-z]", toks[i]):
+            cmd = toks[i]
+            i += 1
+            if cmd in "Zz":
+                out.append(("Z", []))
+                cx, cy = sx, sy
+                last_c = None
+                continue
+        n = _ARGS[cmd.upper()]
+        nums = [float(t) for t in toks[i:i + n]]
+        if len(nums) != n:
+            raise ValueError(f"truncated SVG path near {toks[i:i + 3]!r}")
+        i += n
+        rel = cmd.islower()
+        k = cmd.upper()
+        if k == "M":
+            x, y = nums
+            if rel:
+                x, y = cx + x, cy + y
+            out.append(("M", [x, y]))
+            cx, cy, sx, sy = x, y, x, y
+            cmd = "l" if rel else "L"             # further pairs are lineto
+            last_c = None
+        elif k in "LHV":
+            if k == "L":
+                x, y = nums
+                if rel:
+                    x, y = cx + x, cy + y
+            elif k == "H":
+                x, y = (cx + nums[0] if rel else nums[0]), cy
+            else:
+                x, y = cx, (cy + nums[0] if rel else nums[0])
+            out.append(("L", [x, y]))
+            cx, cy = x, y
+            last_c = None
+        elif k == "C":
+            a = nums if not rel else [cx + nums[0], cy + nums[1], cx + nums[2],
+                                      cy + nums[3], cx + nums[4], cy + nums[5]]
+            out.append(("C", a))
+            last_c = (a[2], a[3])
+            cx, cy = a[4], a[5]
+        elif k == "S":
+            x2, y2, x, y = nums
+            if rel:
+                x2, y2, x, y = cx + x2, cy + y2, cx + x, cy + y
+            x1, y1 = ((2 * cx - last_c[0], 2 * cy - last_c[1]) if last_c else (cx, cy))
+            out.append(("C", [x1, y1, x2, y2, x, y]))
+            last_c = (x2, y2)
+            cx, cy = x, y
+        else:                                      # Q: promote to a cubic
+            qx, qy, x, y = nums
+            if rel:
+                qx, qy, x, y = cx + qx, cy + qy, cx + x, cy + y
+            out.append(("C", [cx + 2 / 3 * (qx - cx), cy + 2 / 3 * (qy - cy),
+                              x + 2 / 3 * (qx - x), y + 2 / 3 * (qy - y), x, y]))
+            cx, cy = x, y
+            last_c = None
+    return out
+
+
+def _load_svg(path: Path) -> tuple:
+    """(viewbox, stroke colour, stroke width, [paths]) for a stroked-path SVG."""
+    key = str(path)
+    if key not in _svg_cache:
+        text = path.read_text(encoding="utf-8")
+        vb = re.search(r'viewBox="([^"]+)"', text)
+        x, y, w, h = (float(v) for v in vb.group(1).replace(",", " ").split())
+        color = re.search(r'stroke="(#[0-9A-Fa-f]{3,8})"', text)
+        width = re.search(r'stroke-width="([\d.]+)"', text)
+        paths = [_parse_svg_path(m) for m in re.findall(r'<path[^>]*\sd="([^"]+)"', text)]
+        if not paths:
+            raise ValueError(f"{path.name}: no <path> elements found")
+        _svg_cache[key] = ((x, y, w, h), color.group(1) if color else "#111111",
+                           float(width.group(1)) if width else 1.0, paths)
+    return _svg_cache[key]
+
+
+def signum_aspect(variant: str = "black") -> float:
+    """Height over width of the signum artwork."""
+    (_, _, w, h), _, _, _ = _load_svg(SIGNUM_DIR / f"signum-{variant}.svg")
+    return h / w
+
+
+def _draw_signum(c, cx, y_bottom, width, variant="black"):
+    """Draw the signum `width` wide, centred on cx, its bottom at y_bottom."""
+    (vx, vy, vw, vh), color, stroke_w, paths = _load_svg(
+        SIGNUM_DIR / f"signum-{variant}.svg")
+    s = width / vw
+    left, top = cx - width / 2.0, y_bottom + vh * s
+
+    def P(px, py):
+        return left + (px - vx) * s, top - (py - vy) * s     # SVG y runs down
+
+    c.saveState()
+    c.setStrokeColor(HexColor(color))
+    c.setLineWidth(stroke_w * s)
+    c.setLineCap(1)
+    c.setLineJoin(1)
+    for segs in paths:
+        p = c.beginPath()
+        for kind, a in segs:
+            if kind == "M":
+                p.moveTo(*P(a[0], a[1]))
+            elif kind == "L":
+                p.lineTo(*P(a[0], a[1]))
+            elif kind == "C":
+                p.curveTo(*P(a[0], a[1]), *P(a[2], a[3]), *P(a[4], a[5]))
+            else:
+                p.close()
+        c.drawPath(p, stroke=1, fill=0)
+    c.restoreState()
+
+
+SIGNUM_MARK = "signum-spine"        # in a cover's PDF keywords once it carries one
+_SIGNUM_FOOT = 0.45 * inch          # from the bottom trim edge to the signum
+_SIGNUM_GAP = 0.12 * inch           # clear space above it, under the text
+_SIGNUM_MIN = 0.14 * inch
+
+
+def _signum_width(spine: float, room: float, aspect: float) -> float:
+    """How wide the signum can be: the spine allows, the room above the foot
+    permits, and never less than a legible mark (0 means leave it out)."""
+    if room <= 0:
+        return 0.0
+    width = min(spine * 0.72, 0.9 * inch, room / aspect)
+    return width if width >= _SIGNUM_MIN else 0.0
+
+
+def _luminance(color) -> float:
+    return 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
+
+
+def _signum_variant(choice: str | None, bg) -> str | None:
+    """Which signum to print: black on a light spine, gold on a dark one, unless
+    the book names one (or none)."""
+    choice = (choice or "auto").lower()
+    if choice == "none":
+        return None
+    if choice in SIGNUM_VARIANTS:
+        return choice
+    if choice != "auto":
+        raise ValueError(f"unknown spine_logo {choice!r}; choose from {SPINE_LOGO_CHOICES}")
+    return "gold" if _luminance(bg) < 0.45 else "black"
+
+
+def _draw_spine(c, x0, y0, spine, th, *, title, author, motif, font, accent, ink, bg,
+                logo: str | None = "auto"):
     if spine < 0.18 * inch:
         return
     cx = x0 + spine / 2.0
@@ -729,6 +903,115 @@ def _draw_spine(c, x0, y0, spine, th, *, title, author, motif, font, accent, ink
     # tiny diamond near the top of the spine
     c.setFillColor(accent)
     decorations._diamond(c, cx, y0 + th - 0.5 * inch, max(1.5, spine * 0.12))
+
+    # The publisher's signum at the foot of the spine, upright (as a publisher's
+    # mark is), as wide as the spine allows and kept clear of the author's name,
+    # which runs up the spine from just above it.
+    variant = _signum_variant(logo, bg)
+    if variant:
+        bottom = y0 + _SIGNUM_FOOT
+        a_size = min(spine * 0.5 / inch * 18, 12)
+        author_low = y0 + th / 2.0 - th * 0.30 - stringWidth(author, font[0], a_size) / 2.0
+        width = _signum_width(spine, author_low - _SIGNUM_GAP - bottom,
+                              signum_aspect(variant))
+        if width:
+            _draw_signum(c, cx, bottom, width, variant)
+            c.setKeywords(SIGNUM_MARK)
+
+
+def stamp_signum(cover_pdf: str, interior_pdf: str, *, logo: str = "auto",
+                 out_path: str | None = None, force: bool = False) -> dict:
+    """Add the signum to the spine of a finished wraparound cover.
+
+    The cover is not rebuilt: its spine width is read back from its own size
+    and the interior's trim (`interior_pdf`'s page size), the existing spine
+    text is found on the page and cleared, and the signum is stamped as a
+    vector overlay. Returns what was done, with an "action" of stamped /
+    skipped and a reason.
+    """
+    import os
+    import fitz                                    # PyMuPDF
+
+    res = {"cover": cover_pdf, "action": "skipped", "reason": ""}
+    doc = fitz.open(cover_pdf)
+    page = doc[0]
+    if SIGNUM_MARK in (doc.metadata.get("keywords") or "") and not force:
+        res["reason"] = "already has a signum"
+        return res
+    inner = fitz.open(interior_pdf)[0].rect
+    tw, th = inner.width, inner.height
+    bleed = BLEED * 72
+    W, H = page.rect.width, page.rect.height
+    if abs(H - (th + 2 * bleed)) > 3:
+        res["reason"] = (f"cover height {H / 72:.2f} in does not match the interior's "
+                         f"trim {th / 72:.2f} in + bleed")
+        return res
+    spine = W - 2 * bleed - 2 * tw
+    res["spine_in"] = round(spine / 72, 3)
+    if spine < 0.18 * 72:
+        res["reason"] = f"spine {spine / 72:.2f} in is too thin"
+        return res
+
+    sx0 = bleed + tw
+    zone = fitz.Rect(sx0, 0, sx0 + spine, H)
+    # Lowest existing text on the spine (the author's name, which runs up it).
+    low_text = 0.0
+    for block in page.get_text("dict")["blocks"]:
+        for line in block.get("lines", []):
+            for span in line["spans"]:
+                r = fitz.Rect(span["bbox"])
+                if span["text"].strip() and zone.intersects(r):
+                    low_text = max(low_text, r.y1)
+    # y runs down in PyMuPDF, up in ReportLab.
+    bottom = bleed + _SIGNUM_FOOT
+    text_edge_up = (H - low_text) if low_text else (bleed + 0.2 * 72)
+    room = text_edge_up - _SIGNUM_GAP - bottom
+
+    # Light or dark spine: sampled from the page just beside the signum's place.
+    probe = fitz.Rect(sx0 + 2, H - bleed - 0.9 * 72, sx0 + spine - 2, H - bleed - 0.2 * 72)
+    pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5), clip=probe, colorspace=fitz.csRGB)
+    s = pix.samples
+    n = max(1, len(s) // 3)
+    lum = sum(0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2]
+              for i in range(0, len(s) - 2, 3)) / n / 255.0
+    variant = _signum_variant(logo, Color(lum, lum, lum))
+    if variant is None:
+        res["reason"] = "spine_logo is none"
+        return res
+    width = _signum_width(spine, room, signum_aspect(variant))
+    if not width:
+        if spine * 0.72 < _SIGNUM_MIN:
+            res["reason"] = f"spine {spine / 72:.2f} in is too thin for a legible signum"
+        else:
+            res["reason"] = (f"only {max(room, 0) / 72:.2f} in above the foot: the spine "
+                             "text leaves no room for a legible signum")
+        return res
+
+    import shutil
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="signum-")
+    try:
+        ov = os.path.join(tmp, "ov.pdf")
+        c = canvas.Canvas(ov, pagesize=(W, H))
+        _draw_signum(c, sx0 + spine / 2.0, bottom, width, variant)
+        c.showPage()
+        c.save()
+        overlay = fitz.open(ov)
+        page.show_pdf_page(page.rect, overlay, 0, overlay=True)
+        overlay.close()                    # Windows holds the file until closed
+        meta = dict(doc.metadata or {})
+        kw = (meta.get("keywords") or "").strip()
+        meta["keywords"] = (kw + " " + SIGNUM_MARK).strip()
+        doc.set_metadata(meta)
+        tmp_out = os.path.join(tmp, "out.pdf")
+        doc.save(tmp_out, garbage=3, deflate=True)
+        doc.close()
+        shutil.copyfile(tmp_out, out_path or cover_pdf)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    res.update(action="stamped", variant=variant, width_in=round(width / 72, 3),
+               reason="")
+    return res
 
 
 def _draw_back(c, x0, y0, tw, th, *, blurb, motif, font, accent, ink, publisher):
@@ -754,7 +1037,8 @@ def render_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
                  tgt_lang: str, trim, pages: int, paper: str = "white",
                  font_spec: FontSpec | None = None, background: str = "#f4ead5",
                  accent: str | None = None, blurb: str = "",
-                 publisher: str = "", edition_line: str | None = None) -> tuple[str, tuple]:
+                 publisher: str = "", edition_line: str | None = None,
+                 spine_logo: str | None = "auto") -> tuple[str, tuple]:
     full_w, full_h, spine = cover_dimensions(trim, pages, paper)
     W, H = full_w * inch, full_h * inch
     font = fonts.register(font_spec.family if font_spec else None,
@@ -783,7 +1067,8 @@ def render_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
     _draw_back(c, back_x0, y0, tw, th, blurb=blurb, motif=motif, font=font,
                accent=accent_color, ink=ink, publisher=publisher)
     _draw_spine(c, spine_x0, y0, spine_pt, th, title=title, author=author,
-                motif=motif, font=font, accent=accent_color, ink=ink, bg=bg)
+                motif=motif, font=font, accent=accent_color, ink=ink, bg=bg,
+                logo=spine_logo)
     _draw_front(c, front_x0, y0, tw, th, style=style, title=title, author=author,
                 src_lang=src_lang, tgt_lang=tgt_lang, motif=motif, font=font,
                 accent=accent_color, ink=ink, edition_line=edition_line)

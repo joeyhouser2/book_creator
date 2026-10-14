@@ -23,6 +23,7 @@ def _parse_cover(raw) -> CoverSpec:
         background=raw.get("background", "#f4ead5"),
         accent=raw.get("accent"),
         blurb=raw.get("blurb", ""),
+        spine_logo=raw.get("spine_logo", "auto"),
     )
 
 
@@ -184,6 +185,7 @@ def load_specs(path: str) -> list[BookSpec]:
             translate_by=raw.get("translate_by", "line"),
             fill_missing=bool(raw.get("fill_missing", False)),
             translation_gaps=list(raw.get("translation_gaps") or []),
+            stanza_pairs=list(raw.get("stanza_pairs") or []),
             align_block=int(raw.get("align_block", 0)),
             fill_below=float(raw.get("fill_below", 0.0)),
             poem_titles=bool(raw.get("poem_titles", False)),
