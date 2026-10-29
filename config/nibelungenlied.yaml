@@ -1,0 +1,60 @@
+# Das Nibelungenlied, Middle High German with George Henry Needler's 1904 English,
+# strophe for strophe.
+#
+# The das-nibelungenlied.pdf already in output/ was built from the command line
+# with Gutenberg 14915 as its German -- Simrock's 1827 modern German translation,
+# not the poem. This is the poem: Simrock's 1892 edition of the Middle High German
+# (Gutenberg 48888), Lachmann's A text with the strophes B and C add set in
+# their places, 2,496 strophes to Needler's 2,379 (he translated Bartsch's B).
+#
+# python fetch_sources.py nibelungen writes input/nibelungen_mhg.txt and
+# input/nibelungen_needler_en.txt, both cut into the 39 âventiuren with each
+# title as a one-line stanza, and input/nibelungen_pairs.json, which pairs the
+# strophes by which manuscripts carry them rather than by embedding: LaBSE
+# cannot read Middle High German, and left to itself paired barely a sixth of
+# the strophes one to one. The 116 strophes B lacks stand alone, without English.
+#
+# Run with:  python make_book.py config/nibelungenlied.yaml
+
+books:
+  - title: "Das Nibelungenlied"
+    slug: das-nibelungenlied-mhg
+    author: "Anonymous"
+    src_lang: de
+    tgt_lang: en
+    src_path: "input/nibelungen_mhg.txt"
+    tgt_path: "input/nibelungen_needler_en.txt"
+    mode: verse
+    verse_align: stanza
+    stanza_pairs: "input/nibelungen_pairs.json"
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "George Henry Needler, 1904 (Project Gutenberg #7321) — public domain."
+    font: OldStandard
+    decorations:
+      margin: corners
+      chapter: medieval
+      color: "#6b1f1f"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "George Henry Needler"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Middle High German text of the
+        <i>Nibelungenlied</i> is anonymous and in the public domain; it is set
+        from Karl Simrock's edition of 1892 (Lachmann's text, with the strophes
+        of the B and C manuscripts in their places), as transcribed by Project
+        Gutenberg, with the editor's manuscript sigla and the closing variant
+        strophes omitted. The English translation by George Henry Needler
+        (1904), which follows Bartsch's text of manuscript B, is in the public
+        domain; where the German has a strophe the English does not, it stands
+        alone.
+    cover:
+      paper: white
+      blurb: "The Middle High German epic of Siegfried's murder and Kriemhild's revenge, in the poem's own language with George Henry Needler's 1904 English verse facing it, strophe for strophe."
+    epub: true

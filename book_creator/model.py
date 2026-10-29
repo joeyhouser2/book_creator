@@ -73,6 +73,12 @@ class FontSpec:
     regular: str | None = None
     italic: str | None = None
     bold: str | None = None
+    # A second family for the original-language text alone (its verse and its
+    # rubrics), e.g. "TheuerdankFraktur" to set the 1517 German in the type it
+    # was first printed in. The translation, headings and front matter stay in
+    # `family`, as does any character the original's face has no glyph for.
+    # PDF only: the EPUB keeps `family`.
+    original: str | None = None
 
 
 @dataclass
@@ -383,8 +389,10 @@ class BookSpec:
     # "a-b" range, or null for none. Every stanza on each side must appear
     # exactly once, in order. An original stanza paired with null is a hole
     # (filled and dagger-marked under `fill_missing`). See
-    # pipeline._explicit_stanza_pairs.
-    stanza_pairs: list = field(default_factory=list)
+    # pipeline._explicit_stanza_pairs. For a poem in several divisions, a dict
+    # of such lists keyed by division number ("1", "2", ...), or in the config
+    # the path of a JSON file holding one.
+    stanza_pairs: list | dict = field(default_factory=list)
 
     # Verse with `verse_align: line` only: align blocks of this many lines rather
     # than single lines (0 = single lines). A hexameter epic and its fourteener

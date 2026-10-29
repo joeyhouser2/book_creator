@@ -10,6 +10,9 @@ and its translator, but not what century the poem is from. Add a book to DATA
 when you build one; anything in output/ that is not accounted for here is
 reported as uncovered rather than silently dropped.
 
+It also writes KDP.md: the KDP product description for every catalogued book,
+from kdp_descriptions.yaml, as the HTML KDP's description box takes.
+
     python make_catalogue.py
 """
 import glob
@@ -39,7 +42,9 @@ DATA = {
     "kudrun": ("Anonymous", "c. 1230–40", "Arthur Nichols, 1889",
                "A Hegelingen princess abducted and held for years, who endures rather than avenges — the Nibelungenlied's answer poem, and far gentler."),
     "das-nibelungenlied": ("Anonymous", "c. 1200", "George Henry Needler, 1904",
-                           "Siegfried's murder and Kriemhild's annihilating revenge: the central German heroic epic."),
+                           "Siegfried's murder and Kriemhild's annihilating revenge: the central German heroic epic. The German is Simrock's 1827 modern rendering, not the poem's own language."),
+    "das-nibelungenlied-mhg": ("Anonymous", "c. 1200", "George Henry Needler, 1904",
+                               "The same epic in its own Middle High German (Simrock's 1892 edition), strophe for strophe with Needler."),
     "os-lusiadas": ("Luís de Camões", "1572", "Richard Francis Burton, 1880",
                     "Vasco da Gama's voyage to India told as national epic, with the gods of Olympus taking sides."),
     "gerusalemme-liberata-volume-1": ("Torquato Tasso", "1581", "Edward Fairfax, 1600",
@@ -58,7 +63,7 @@ DATA = {
                      "A Homeric ode asking Plato to descend and present his own works to Leo X, prefixed to the Aldine first edition — the high point of Renaissance Greek verse."),
     "life-of-the-black-prince": ("Chandos Herald", "c. 1385", "Pope & Lodge, 1910",
                                  "A verse life of Edward of Woodstock by a herald who served in his household, in Anglo-Norman."),
-    "anabasis": ("Xenophon", "c. 370 BC", "unnamed on the copyright page",
+    "anabasis": ("Xenophon", "c. 370 BC", "Carleton L. Brownson, 1921–22",
                  "Ten thousand Greek mercenaries stranded in Persia march home — the original account of a fighting retreat."),
     "de-bello-gothico": ("Claudian", "402", "Maurice Platnauer, 1922",
                          "Stilicho's defeat of Alaric at Pollentia, written within months of the battle."),
@@ -113,6 +118,8 @@ DATA = {
                           "Der letzte Ritter with Weber's Murtenlied appended: one volume, the Romanzen in machine English and the song in Felton's 1845 ballad."),
     "theuerdank": ("Emperor Maximilian I", "1517", "machine",
                    "The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts."),
+    "theuerdank-fraktur": ("Emperor Maximilian I", "1517", "machine",
+                           "The same edition with the German set in Theuerdank Fraktur, after the type cut for the 1517 printing. PDF only."),
     "la-franciade": ("Pierre de Ronsard", "1572", "machine",
                      "France descended from a surviving son of Hector: the national epic Ronsard abandoned after four books."),
     "la-henriade": ("Voltaire", "1723", "machine",
@@ -180,7 +187,9 @@ def load_configs():
         for b in (doc.get("books") or []):
             if not isinstance(b, dict) or not b.get("title"):
                 continue
-            slug = re.sub(r"[^a-z0-9]+", "-", b["title"].lower()).strip("-")
+            # A config's own `slug:` names its files, so it names it here too:
+            # without it the Fraktur Theuerdank read as a second "theuerdank".
+            slug = b.get("slug") or re.sub(r"[^a-z0-9]+", "-", b["title"].lower()).strip("-")
             got[slug] = {
                 "title": b["title"], "author": b.get("author"),
                 "blurb": (b.get("cover") or {}).get("blurb") or "",
@@ -212,6 +221,8 @@ TITLES = {
     "la-legende-des-siecles": "La Légende des siècles",
     "la-legende-des-siecles-en": "La Légende des siècles",
     "das-nibelungenlied-en": "Das Nibelungenlied",
+    "das-nibelungenlied-mhg": "Das Nibelungenlied (Middle High German)",
+    "theuerdank-fraktur": "Theuerdank (Fraktur type)",
     "de-modo-usurarum-liber": "De modo usurarum liber",
     "warsofmarlboroug01tayl-facsimile": "The Wars of Marlborough, Volume I",
     "warsofmarlboroug02tayl-facsimile": "The Wars of Marlborough, Volume II",
@@ -408,3 +419,87 @@ if uncovered:
           "Add each to DATA (a book) or SCRAPS (not a book):")
     for s in uncovered:
         print(f"  {s}  ({pages(s)} pp)")
+
+
+# ---- KDP.md: the product description for every catalogued book ----------- #
+# Written here because the catalogue is what decides which books exist; the
+# descriptions themselves are authored in kdp_descriptions.yaml.
+KDP_LIMIT = 4000  # characters, HTML included, in KDP's description box
+
+MACHINE_NOTE = ("<b>About the translation.</b> No published English translation of this "
+                "work is available to set beside it, so the English here was made by "
+                "machine for this edition and is disclosed as such on the copyright "
+                "page. It is a reading aid to the original, not a literary translation, "
+                "and will contain errors.")
+RHODOMAN_NOTE = ("<b>About the author.</b> Laurentius Rhodoman (1546–1606), Lutheran "
+                 "schoolmaster and pupil of Michael Neander at Ilfeld, wrote epic, "
+                 "didactic and occasional verse in Homeric Greek and in Latin for most "
+                 "of his life, and edited Quintus of Smyrna and Diodorus. His poems "
+                 "have never been translated; this series prints them from the digital "
+                 "edition at rhodomanologia.de, each with an English version beside the "
+                 "original.")
+
+
+def kdp_html(text):
+    paras = [" ".join(p.split()) for p in re.split(r"\n\s*\n", text.strip()) if p.strip()]
+    return "".join(f"<p>{p}</p>" for p in paras)
+
+
+desc = yaml.safe_load((REPO / "kdp_descriptions.yaml").read_text(encoding="utf-8")) or {}
+machine_slugs = {s for s, v in DATA.items() if v[2] == "machine"} | {
+    "la-legende-des-siecles-en"} | {
+    s for s, c in CFG.items() if c["author"] == "Laurentius Rhodoman"}
+rhodoman = {s for s, c in CFG.items() if c["author"] == "Laurentius Rhodoman"}
+
+K = []
+K.append("# KDP descriptions")
+K.append("")
+K.append("Generated by `make_catalogue.py` from `kdp_descriptions.yaml`. Each block is")
+K.append("ready to paste into KDP's description box, which accepts this HTML. The")
+K.append(f"limit is {KDP_LIMIT:,} characters including tags.")
+K.append("")
+missing, long_ = [], []
+for slug in real:
+    t = title_of(slug)
+    entry = desc.get(slug)
+    K.append(f"## {t}")
+    K.append("")
+    K.append(f"`{slug}` · {pages(slug)} pp")
+    K.append("")
+    if entry is None:
+        missing.append(slug)
+        K.append("**No description yet.**")
+        K.append("")
+        continue
+    if isinstance(entry, dict) and entry.get("hold"):
+        K.append(f"**Hold — do not list yet.** {entry['hold']}")
+        K.append("")
+        continue
+    body = kdp_html(entry)
+    if slug in rhodoman:
+        body += f"<p>{RHODOMAN_NOTE}</p>"
+    if slug in machine_slugs and slug != "de-modo-usurarum-liber":
+        body += f"<p>{MACHINE_NOTE}</p>"
+    if slug == "de-modo-usurarum-liber":
+        body += ("<p><b>About the translation.</b> No English translation of this work "
+                 "has ever been published. This English was made by machine and "
+                 "restyled for readability, and is disclosed as such on the copyright "
+                 "page; it will contain errors.</p>")
+    n = len(body)
+    if n > KDP_LIMIT:
+        long_.append((slug, n))
+    K.append(f"{n:,} characters")
+    K.append("")
+    K.append("```html")
+    K.append(body)
+    K.append("```")
+    K.append("")
+unknown = sorted(set(desc) - set(real))
+(REPO / "KDP.md").write_text("\n".join(K) + "\n", encoding="utf-8")
+print(f"wrote KDP.md - {len(real) - len(missing)} of {len(real)} books described")
+for s_ in missing:
+    print(f"  no KDP description: {s_}")
+for s_, n in long_:
+    print(f"  over KDP's {KDP_LIMIT:,} characters: {s_} ({n:,})")
+for s_ in unknown:
+    print(f"  kdp_descriptions.yaml names a book not in the catalogue: {s_}")

@@ -30,6 +30,13 @@ and the web UI picker. No code changes needed.
   Pirata One, MedievalSharp
 - **Greek display:** GFS Didot, GFS Neohellenic
 
+- **Period (`python download_fonts.py period`):** Theuerdank Fraktur, a
+  digital face modelled on the type cut for the 1517 *Theuerdank*. **Not OFL**:
+  it is under 1001fonts' Free For Commercial Use licence, which permits books
+  sold for money but forbids modifying or republishing the font file. A PDF
+  embeds a subset, which is fine; an EPUB would ship the whole file, so the
+  edition that uses it (`font: {original: TheuerdankFraktur}`) is PDF-only.
+
 Cardo and Old Standard cover both Latin and **polytonic Greek**, so they're safe
 defaults for Greek texts. The medieval/display faces are Latin-only (best for
 titles). If no font is found at all, rendering falls back to Times-Roman, which

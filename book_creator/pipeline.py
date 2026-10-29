@@ -529,7 +529,7 @@ def _explicit_stanza_pairs(src_st: list[list[str]], tgt_st: list[list[str]],
 
 
 def _align_stanzas(src_body: str, tgt_body: str, spec: BookSpec,
-                   log) -> list[Bead] | None:
+                   log, division: int | None = None) -> list[Bead] | None:
     """Pair a stanzaic poem stanza-by-stanza. None when there are no stanzas.
 
     The whole-block pairing above is the right call for a short lyric, and the
@@ -563,10 +563,14 @@ def _align_stanzas(src_body: str, tgt_body: str, spec: BookSpec,
         if len(src_st) < 2 or len(tgt_st) < 2:
             return None
 
-    if spec.stanza_pairs:
+    pairs = spec.stanza_pairs
+    if isinstance(pairs, dict):
+        # One pairing per division, keyed by its 1-based number.
+        pairs = pairs.get(str(division)) or []
+    if pairs:
         log(f"• Stanzas — source: {len(src_st)}, translation: {len(tgt_st)}; "
-            f"paired by hand ({len(spec.stanza_pairs)} groups).")
-        return _explicit_stanza_pairs(src_st, tgt_st, spec.stanza_pairs)
+            f"paired explicitly ({len(pairs)} groups).")
+        return _explicit_stanza_pairs(src_st, tgt_st, pairs)
 
     # An epic's worth of stanzas is far too many for an O(n·m) DP (the
     # Nibelungenlied measures at ~14 minutes unbanded), and the two sides are
@@ -849,7 +853,7 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
     aligners.reset_announcement()
     verse_note_logged = False
     chapters: list[Chapter] = []
-    for (s_title, s_body), (t_title, t_body) in paired:
+    for division, ((s_title, s_body), (t_title, t_body)) in enumerate(paired, 1):
         src_segs = segment.segment(s_body, spec.mode, spec.src_lang)
         tgt_segs = segment.segment(t_body, spec.mode, spec.tgt_lang)
         if spec.clean:
@@ -885,7 +889,7 @@ def _align_paired(paired, spec: BookSpec, log) -> list[Chapter]:
             # A stanzaic narrative is paired stanza against stanza: the stanza
             # is the unit a verse translator actually preserves, even while
             # reordering clauses freely inside it. See _align_stanzas.
-            beads = _align_stanzas(s_body, t_body, spec, log)
+            beads = _align_stanzas(s_body, t_body, spec, log, division=division)
             if beads is None:
                 log("• Verse mode: no stanza breaks found on one side of "
                     f"{t_title or s_title or 'this division'}; pairing it as a block.")

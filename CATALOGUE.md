@@ -4,7 +4,7 @@ Every finished book in `output/`, with its author, the date of the original
 work, and what it is. Page counts are read from the PDFs themselves, so they
 are what KDP would see.
 
-**83 books, 19,948 pages.** Development scraps are listed at the
+**85 books, 21,293 pages.** Development scraps are listed at the
 end and are not books.
 
 The division that matters commercially is **who made the English**. A book with
@@ -25,8 +25,9 @@ No disclosure, sellable as they stand.
 | **Le Rouge et le Noir** | Stendhal | 1830 | Horace B. Samuel, 1916 | 1124 | A carpenter's son climbs through seminary and salon by calculation and sincerity in turn, and is destroyed by both. |
 | **Der Messias** | Friedrich Gottlieb Klopstock | 1748–73 | G. H. C. Egestorff, 1826 | 773 | The German Paradise Lost, all twenty cantos in one volume, in hexameters that remade German as a poetic language. |
 | **Le Père Goriot** | Honoré de Balzac | 1835 | Ellen Marriage, 1896 | 725 | A retired merchant ruins himself for two daughters who will not be seen with him. |
-| **Das Nibelungenlied** | Anonymous | c. 1200 | George Henry Needler, 1904 | 574 | Siegfried's murder and Kriemhild's annihilating revenge: the central German heroic epic. |
-| **Anabasis** | Xenophon | c. 370 BC | unnamed on the copyright page | 537 | Ten thousand Greek mercenaries stranded in Persia march home — the original account of a fighting retreat. |
+| **Das Nibelungenlied (Middle High German)** | Anonymous | c. 1200 | George Henry Needler, 1904 | 658 | The same epic in its own Middle High German (Simrock's 1892 edition), strophe for strophe with Needler. |
+| **Das Nibelungenlied** | Anonymous | c. 1200 | George Henry Needler, 1904 | 574 | Siegfried's murder and Kriemhild's annihilating revenge: the central German heroic epic. The German is Simrock's 1827 modern rendering, not the poem's own language. |
+| **Anabasis** | Xenophon | c. 370 BC | Carleton L. Brownson, 1921–22 | 537 | Ten thousand Greek mercenaries stranded in Persia march home — the original account of a fighting retreat. |
 | **Kudrun** | Anonymous | c. 1230–40 | Arthur Nichols, 1889 | 501 | A Hegelingen princess abducted and held for years, who endures rather than avenges — the Nibelungenlied's answer poem, and far gentler. |
 | **Os Lusíadas** | Luís de Camões | 1572 | Richard Francis Burton, 1880 | 481 | Vasco da Gama's voyage to India told as national epic, with the gods of Olympus taking sides. |
 | **Eugénie Grandet** | Honoré de Balzac | 1833 | Katharine Prescott Wormeley | 478 | A miser's daughter in provincial Saumur, whose one act of generosity costs her everything. |
@@ -46,7 +47,7 @@ No disclosure, sellable as they stand.
 | **De Bello Gildonico** | Claudian | 398 | Maurice Platnauer, 1922 | 39 | The suppression of Gildo's African revolt, which had threatened Rome's grain supply. |
 | **The Battle of Maldon** | Anonymous | c. 1000 | James M. Garnett | 23 | The Old English fragment on Byrhtnoth's defeat by vikings in 991, and the most famous bad decision in the language. |
 | **Ode to Plato** | Marcus Musurus | 1513 | William Roscoe, 1805 | 15 | A Homeric ode asking Plato to descend and present his own works to Leo X, prefixed to the Aldine first edition — the high point of Renaissance Greek verse. |
-| **The Battle of Murten** | Veit Weber | 1476 | C. C. Felton, 1845 | 11 | A minstrel who fought in the ranks sings the Swiss victory over Charles the Bold, in his own Alemannic; Felton's English is from Longfellow's anthology. |
+| **The Battle of Murten** | Veit Weber | 1476 | C. C. Felton, 1845 | 12 | A minstrel who fought in the ranks sings the Swiss victory over Charles the Bold, in his own Alemannic; Felton's English is from Longfellow's anthology. |
 
 ## Machine-translated
 
@@ -57,6 +58,7 @@ translation exists at all, in or out of copyright.
 |---|---|---|---:|---|
 | **De modo usurarum liber** | Claudius Salmasius | 1588–1653 | 822 | A vast humanist treatise arguing that lending at interest is lawful — Salmasius against a thousand years of canon law. English only. |
 | **Theuerdank** | Emperor Maximilian I | 1517 | 694 | The knight Theuerdank rides through a hundred perils laid by three treacherous captains to win his bride: Maximilian's own allegorical romance, famed for its 118 woodcuts. |
+| **Theuerdank (Fraktur type)** | Emperor Maximilian I | 1517 | 686 | The same edition with the German set in Theuerdank Fraktur, after the type cut for the 1517 printing. PDF only. |
 | **La Araucana, Parts Two and Three** | Alonso de Ercilla | 1578, 1589 | 580 | Cantos 16–37, including Caupolicán's death and Ercilla's own disillusion. |
 | **La Franciade** | Pierre de Ronsard | 1572 | 444 | France descended from a surviving son of Hector: the national epic Ronsard abandoned after four books. |
 | **Der letzte Ritter, with the Murtenlied** | Anastasius Grün; Veit Weber | 1830; 1476 | 433 | Der letzte Ritter with Weber's Murtenlied appended: one volume, the Romanzen in machine English and the song in Felton's 1845 ballad. |

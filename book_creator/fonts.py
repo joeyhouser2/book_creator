@@ -39,6 +39,7 @@ _META: dict[str, tuple[str, str, bool]] = {
     "grenzegotisch": ("Grenze Gotisch", "medieval", False),
     "pirataone": ("Pirata One", "medieval", False),
     "uncialantiqua": ("Uncial Antiqua", "medieval", False),
+    "theuerdankfraktur": ("Theuerdank Fraktur", "medieval", False),
     "gfsdidot": ("GFS Didot", "greek", True),
     "gfsneohellenic": ("GFS Neohellenic", "greek", True),
     "gfsporson": ("GFS Porson", "greek", True),
@@ -150,6 +151,29 @@ def catalog() -> list[dict]:
 def _safe_register(name: str, path: str) -> None:
     if name not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont(name, path))
+
+
+def has_glyph(font_name: str, ch: str) -> bool:
+    """Whether the registered font `font_name` has a glyph for `ch`."""
+    face = getattr(pdfmetrics.getFont(font_name), "face", None)
+    if face is None:  # a built-in Type 1 font: assume Latin-1 coverage
+        return ord(ch) < 256
+    return ord(ch) in face.charToGlyph
+
+
+def register_exact(family: str) -> str:
+    """Register `family`'s regular face and return its name, or raise.
+
+    For a face asked for by name for one purpose (the original-language text),
+    where `register`'s fall-back to whatever is installed would silently print
+    the book in the wrong type."""
+    entry = discover().get(normalize(family))
+    if not entry or not entry["regular"]:
+        raise ValueError(f"font {family!r} is not installed in {FONTS_DIR}/ "
+                         "(see download_fonts.py)")
+    name = re.sub(r"[^A-Za-z0-9]", "", entry["display"])
+    _safe_register(name, entry["regular"])
+    return name
 
 
 def register(family: str | None, overrides: dict | None = None) -> tuple[str, str, str]:

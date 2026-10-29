@@ -319,6 +319,41 @@ def _esc(text: str) -> str:
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+# A blackletter's x-height is far smaller than a modern serif's, so at the same
+# point size the original reads a size smaller than its translation. Theuerdank
+# Fraktur needed about this much to look level with Old Standard.
+_ORIGINAL_SCALE = 1.15
+
+
+def _in_font(text: str, font_name: str | None, size: float | None = None) -> str:
+    """`text` escaped and set in `font_name`, except for characters that face
+    has no glyph for, which are left to the paragraph's own font.
+
+    A period face is rarely complete -- Theuerdank Fraktur has no ffl ligature
+    and no degree sign, both in the OCR'd 1517 text -- and a missing glyph
+    prints as a blank box rather than failing, so it has to be caught here."""
+    if not font_name:
+        return _esc(text)
+    out, run, run_in = [], [], True
+    open_tag = (f'<font name="{font_name}" size="{size * _ORIGINAL_SCALE:.1f}">'
+                if size else f'<font name="{font_name}">')
+
+    def flush():
+        if run:
+            chunk = _esc("".join(run))
+            out.append(f"{open_tag}{chunk}</font>" if run_in else chunk)
+            run.clear()
+
+    for ch in text:
+        has = ch.isspace() or fonts.has_glyph(font_name, ch)
+        if has != run_in:
+            flush()
+            run_in = has
+        run.append(ch)
+    flush()
+    return "".join(out)
+
+
 def _music_flowables(image_paths: list[str], caption: str, st, max_width: float,
                      max_height: float = 0.0) -> list:
     """Grand-staff page images (see music.py), scaled to fit the text column,
@@ -375,6 +410,8 @@ def _render_once(
     gutter = _gutter_for_page_count(estimated_pages)
     opener_font = fonts.register(decor.opener_font)[0] if decor.opener_font else None
     st = _styles(font, first, opener_font, density)
+    if font_spec and font_spec.original:
+        st["original_font"] = fonts.register_exact(font_spec.original)
     text_width = trim[0] * inch - gutter - 0.5 * inch  # matches _BookDoc's text_w
 
     # A TOC is only meaningful when there are at least two titled divisions.
@@ -443,6 +480,11 @@ def _render_once(
         if orn is not None and (ch.title or decor.chapter_image):
             story.append(orn)
             story.append(Spacer(1, 8))
+        # In a parallel chapter a one-sided bead (a strophe the translator left
+        # out) must not sit at the original's 2pt gap from the next pair, or it
+        # reads as part of it; a monolingual edition is all one-sided and keeps
+        # its own spacing.
+        bilingual = any(b.src and b.tgt for b in ch.beads)
         for i, bead in enumerate(ch.beads):
             if i > 0 and decor.bead_separator not in ("", "none", None):
                 sep = decorations.chapter_ornament(decor.bead_separator, decor.color)
@@ -465,7 +507,8 @@ def _render_once(
                 story.extend(_plate_flowables(bead, st, first, text_width,
                                               opener=(i == 0 and opener_font)))
                 continue
-            _render_bead(story, bead, st, first, opener=(i == 0 and opener_font))
+            _render_bead(story, bead, st, first, opener=(i == 0 and opener_font),
+                         alone=bilingual and not (bead.src and bead.tgt))
         if ch.music_images:
             story.append(Spacer(1, 6))
             story.extend(_music_flowables(ch.music_images, ch.music_caption, st,
@@ -562,22 +605,31 @@ def _plate_flowables(bead: Bead, st, first: str, text_width: float,
     return [KeepTogether(held)]
 
 
-def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):
+def _render_bead(story, bead: Bead, st, first: str, opener: bool = False,
+                 alone: bool = False):
+    # The original's own face wins over the opener's display face: a period
+    # type is the point of setting it, and the translation keeps the opener.
+    orig_font = st.get("original_font")
     if bead.heading:
-        story.append(Paragraph(_esc(bead.src_text), st["rubric"]))
+        story.append(Paragraph(_in_font(bead.src_text, orig_font,
+                                        st["rubric"].fontSize), st["rubric"]))
         return
+    src_style = st["src_open"] if opener else st["src"]
+    tgt_style = st["tgt_open"] if opener else st["tgt"]
+    # Whichever style the original is printed in (first: tgt swaps them).
+    orig_size = (tgt_style if first == "tgt" else src_style).fontSize
+
     # `lines` applies to both sides: a stanza-aligned bead holds verse in each
     # language, and running the translation's lines together while keeping the
     # original's would print one side as poetry and the other as prose.
-    def _side(segs: list[str], joined: str) -> str:
+    def _side(segs: list[str], joined: str, font_name: str | None = None) -> str:
         if not bead.lines:
-            return _esc(joined)
-        return "<br/>".join(_esc(s.strip()) for s in segs if s.strip())
+            return _in_font(joined, font_name, orig_size)
+        return "<br/>".join(_in_font(s.strip(), font_name, orig_size)
+                            for s in segs if s.strip())
 
-    src_txt = _side(bead.src, bead.src_text)
+    src_txt = _side(bead.src, bead.src_text, orig_font)
     tgt_txt = _side(bead.tgt, bead.tgt_text)
-    src_style = st["src_open"] if opener else st["src"]
-    tgt_style = st["tgt_open"] if opener else st["tgt"]
     blocks = []
     if first == "tgt":
         if tgt_txt:
@@ -589,4 +641,11 @@ def _render_bead(story, bead: Bead, st, first: str, opener: bool = False):
             blocks.append(Paragraph(src_txt, src_style))
         if tgt_txt:
             blocks.append(Paragraph(tgt_txt, tgt_style))
+    if alone and blocks:
+        # The gap that closes a pair, so the next pair starts clear of it.
+        from reportlab.lib.styles import ParagraphStyle
+
+        last = blocks[-1]
+        last.style = ParagraphStyle(f"{last.style.name}_alone", parent=last.style,
+                                    spaceAfter=st["tgt"].spaceAfter)
     story.extend(blocks)

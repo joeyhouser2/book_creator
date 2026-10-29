@@ -497,7 +497,122 @@ def ocland() -> None:
            "Ocland, Anglorum Praelia (Latin)")
 
 
+def nibelungen() -> None:
+    """The Nibelungenlied: Middle High German (Gutenberg 48888) and Needler's
+    1904 English (Gutenberg 7321), cut into the same 39 âventiuren, and the
+    pairing of their strophes.
+
+    The book built until now paired Needler with Gutenberg 14915, which is
+    Simrock's 1827 *modern* German translation -- a translation beside a
+    translation. 48888 is Simrock's 1892 edition of the poem itself: Lachmann's
+    A text with the strophes the B and C manuscripts add printed in their
+    places, 2,496 strophes to Needler's 2,379 (Bartsch's B). Its sigla sit in
+    both margins ("A.19" at the right, "B. C." before a strophe A lacks, "II.138"
+    for Lachmann's songs) and come off here, as do the ~emphasis~ tildes and the
+    variant strophes printed after the poem's end.
+
+    The pairing is not left to the aligner. LaBSE cannot read Middle High German
+    well enough: it paired only 401 of ~2,400 strophes one to one and merged the
+    rest into shifted 2-1 and 1-2 groups. The margin says which strophes B lacks
+    instead -- a right-hand "C." or "b." marks one only C or the b manuscript
+    has -- and every other strophe pairs with Needler's next, in order. That
+    matches his count exactly in 35 of the 39 âventiuren; the other four are
+    NOT_IN_B and IN_B below, each checked by reading both sides. The result is
+    written to input/nibelungen_pairs.json for config/nibelungenlied.yaml.
+
+    Each division's first line is its own title ("von den Nibelungen." /
+    "Kriemhild's Dream"), so the titles pair as a one-line stanza of their own.
+    Needler's strophe numbers and his two footnotes are dropped.
+    """
+    import json
+
+    from book_creator import fetch
+
+    def gutenberg(gid: int) -> str:
+        # fetch caches resp.text, already CRLF, through a newline-translating
+        # write, so on Windows the file holds \r\r\n and reads back with every
+        # line double-spaced -- which hides the stanza breaks this cut relies on.
+        fetch.fetch_gutenberg(gid)
+        raw = (fetch.CACHE_DIR / f"pg{gid}.txt").read_bytes().decode("utf-8")
+        return fetch.strip_gutenberg_boilerplate(re.sub(r"\r+\n", "\n", raw))
+
+    # (âventiure, 0-based strophe) exceptions to the margin rule.
+    NOT_IN_B = {(2, 1)}      # "Ich sage iu von dem degene": Needler goes 20, then 22
+    IN_B = {(8, 44),         # "Dô welt si ir gesindes": "Trusty knights two thousand"
+            (9, 42),         # "Ûf dem hove wâren": "Within the court the heroes"
+            (27, 66)}        # "Dô diu küneginne vernam": "Within a lofty casement"
+
+    mhg = gutenberg(48888)
+    mhg = mhg[mhg.index("\nÂventiure\n"):]
+    mhg = mhg[:mhg.index("*       *       *")]
+    sigla = r"(?:[A-Da-d]\.\s?)+"
+    parts, in_b = [], []
+    for n, chunk in enumerate(re.split(r"(?m)^Âventiure\n", mhg)[1:], 1):
+        blocks = [b for b in re.split(r"\n\s*\n", chunk) if b.strip()]
+        title, strophes = blocks[0], blocks[1:]
+        kept, member = [], []
+        for k, st in enumerate(strophes):
+            first = st.strip("\n").splitlines()[0]
+            m = re.search(r"\s{4,}(\S.*?)\s*$", first)
+            tag = m.group(1) if m else ""
+            b = not (tag in ("C.", "b.") or tag.startswith("C."))
+            member.append((b or (n, k) in IN_B) and (n, k) not in NOT_IN_B)
+            lines = []
+            for raw in st.strip("\n").splitlines():
+                # "II.138" is Lachmann's song number, at the strophe opening each.
+                line = re.sub(rf"\s{{4,}}(?:[IVXL]+a?\.)?(?:{sigla})?\d*\s*$", "",
+                              raw.rstrip())
+                # A siglum closing a line within a strophe sits one space off.
+                line = re.sub(r"(?:\s+[A-D]\.)+$", "", line)
+                line = re.sub(rf"^\s*{sigla}(?=\S)", "", line.strip()).replace("~", "")
+                # One siglum sits mid-line, "(b)"; Simrock's bracketed words stay.
+                lines.append(line.replace(" (b)", ""))
+            kept.append("\n".join(lines))
+        in_b.append(member)
+        # Without the circumflex: segment's heading detector does not take
+        # "Âventiure" as a division word, and the poem became one chapter.
+        parts.append(f"Aventiure {n}\n\n{title.strip()}\n\n" + "\n\n".join(kept))
+    if len(parts) != 39:
+        raise RuntimeError(f"expected 39 âventiuren in Gutenberg 48888, got {len(parts)}")
+    _write("nibelungen_mhg.txt", parts, "Nibelungenlied (Middle High German)")
+
+    en = gutenberg(7321)
+    heads = list(re.finditer(r"(?m)^[A-Z-]+ ADVENTURE\.?$", en))
+    if len(heads) != 39:
+        raise RuntimeError(f"expected 39 adventures in Gutenberg 7321, got {len(heads)}")
+    parts, en_counts = [], []
+    for n, h in enumerate(heads, 1):
+        end = heads[n].start() if n < 39 else len(en)
+        body = en[h.end():end]
+        body = re.sub(r"(?ms)^\[\d+\].*?(?=\n\s*\n)", "", body)   # footnote text
+        body = re.sub(r"\[\d+\]", "", body)                       # its marker
+        kept = [l.rstrip() for l in body.splitlines() if not _NUM_ONLY.match(l.strip())]
+        body = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+        en_counts.append(len([b for b in re.split(r"\n\s*\n", body) if b.strip()]) - 1)
+        parts.append(f"Adventure {n}\n\n{body}")
+    _write("nibelungen_needler_en.txt", parts, "Nibelungenlied (Needler's English)")
+
+    # Stanza 1 on each side is the title; a strophe B lacks stands alone.
+    pairs = {}
+    for n, (member, n_en) in enumerate(zip(in_b, en_counts), 1):
+        if sum(member) != n_en:
+            raise RuntimeError(f"âventiure {n}: {sum(member)} strophes in B, "
+                               f"Needler has {n_en} -- recheck NOT_IN_B / IN_B")
+        group, t = [[1, 1]], 1
+        for s, b in enumerate(member, 2):
+            if b:
+                t += 1
+            group.append([s, t if b else None])
+        pairs[str(n)] = group
+    path = OUT / "nibelungen_pairs.json"
+    path.write_text(json.dumps(pairs), encoding="utf-8")
+    alone = sum(1 for m in in_b for b in m if not b)
+    print(f"✓ Strophe pairing: {sum(en_counts):,} pairs, {alone} German strophes "
+          f"without English → {path}")
+
+
 SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias,
+           "nibelungen": nibelungen,
            "lusiadas_en": lusiadas_en,
            "gerusalemme": gerusalemme,
            "maldon": maldon,

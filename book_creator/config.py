@@ -65,7 +65,20 @@ def _parse_font(raw) -> FontSpec:
         regular=raw.get("regular"),
         italic=raw.get("italic"),
         bold=raw.get("bold"),
+        original=raw.get("original"),
     )
+
+
+def _parse_stanza_pairs(raw):
+    """A list of pairs for every division, or a dict of lists by division
+    number, or the path of a JSON file holding either (a long poem's pairing
+    is generated, not typed -- see fetch_sources.nibelungen)."""
+    if isinstance(raw, str):
+        import json
+        raw = json.loads(Path(raw).read_text(encoding="utf-8"))
+    if isinstance(raw, dict):
+        return {str(k): list(v) for k, v in raw.items()}
+    return list(raw or [])
 
 
 def _parse_decor(raw) -> DecorSpec:
@@ -185,7 +198,7 @@ def load_specs(path: str) -> list[BookSpec]:
             translate_by=raw.get("translate_by", "line"),
             fill_missing=bool(raw.get("fill_missing", False)),
             translation_gaps=list(raw.get("translation_gaps") or []),
-            stanza_pairs=list(raw.get("stanza_pairs") or []),
+            stanza_pairs=_parse_stanza_pairs(raw.get("stanza_pairs")),
             align_block=int(raw.get("align_block", 0)),
             fill_below=float(raw.get("fill_below", 0.0)),
             poem_titles=bool(raw.get("poem_titles", False)),

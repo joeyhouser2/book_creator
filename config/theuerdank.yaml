@@ -13,6 +13,12 @@
 #
 # Sentence by sentence, because the verse runs on across its rhymed couplets.
 #
+# Two editions from the one text: theuerdank.pdf sets the German in Old Standard,
+# and theuerdank-fraktur.pdf in Theuerdank Fraktur, a digitisation of the type
+# cut for the 1517 first printing (python download_fonts.py period). The second
+# is PDF only -- its font licence allows a PDF's embedded subset but not
+# shipping the font file inside an EPUB (see download_fonts.py).
+#
 #   python ocr_theuerdank.py && python fetch_theuerdank.py
 #   python make_book.py config/theuerdank.yaml
 
@@ -30,7 +36,8 @@ translators:
       Ernreich (Ehrenreich); his herald is the Ernhold.
 
 books:
-  - title: "Theuerdank"
+  - &theuerdank
+    title: "Theuerdank"
     author: "Emperor Maximilian I"
     src_lang: de
     tgt_lang: en
@@ -50,7 +57,7 @@ books:
       # Chapters 29 and 86 are painted miniatures in that copy, so have none.
       chapter_images: "cache/theuerdank/woodcuts/wc_{n:03d}.jpg"
       chapter_images_width: 0.5
-    copyright:
+    copyright: &copyright
       publisher: "Houser Classics"
       holder: "Joey Houser"
       year: 2026
@@ -69,7 +76,38 @@ books:
         Domain Mark), a hand-coloured copy shown here in greyscale; the two
         chapters it has painted miniatures for are without one. The English is a machine translation made for this edition,
         not a published human translation, and will contain errors.
-    cover:
+    cover: &cover
       paper: white
       blurb: "Maximilian's allegorical romance of the knight Theuerdank, who rides through a hundred perils to win his bride, in the Early New High German of the 1517 first printing with a machine-made English translation."
     epub: true
+
+  # The same book with the German in the 1517 type. Everything but the font,
+  # the rights paragraph, the blurb and the EPUB is inherited from above.
+  - <<: *theuerdank
+    slug: theuerdank-fraktur
+    font:
+      family: OldStandard
+      original: TheuerdankFraktur
+    copyright:
+      <<: *copyright
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. <i>Theuerdank</i> (1517), written by Emperor
+        Maximilian I with Melchior Pfintzing and Marx Treitzsaurwein, is in the
+        public domain. The German is set from Karl Haltaus's 1836 edition,
+        which keeps the 1517 spelling; it was read from page images by machine
+        and has not been proofread, the long s is printed as s, and the editor's
+        variant readings, notes and the closing key to the persons are omitted.
+        It is printed here in Theuerdank Fraktur (Typographer
+        Mediengestaltung, 2000), a digital face modelled on the type Vinzenz
+        Rockner cut for the 1517 first edition. One of the poem's 118 chapters (the 117th) is not marked off
+        and runs on into the one before. The 116 woodcuts are from the first
+        edition of 1517 as digitised by the Bayerische Staatsbibliothek (Rar.
+        325 a, Public Domain Mark), a hand-coloured copy shown here in
+        greyscale; the two chapters it has painted miniatures for are without
+        one. The English is a machine translation made for this edition, not a
+        published human translation, and will contain errors.
+    cover:
+      <<: *cover
+      blurb: "Maximilian's allegorical romance of the knight Theuerdank, who rides through a hundred perils to win his bride, set in the Fraktur type cut for its 1517 first printing, with a machine-made English translation."
+    epub: false
