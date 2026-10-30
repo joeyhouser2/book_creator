@@ -277,13 +277,40 @@ def _armillary(c, cx, cy, size, color):
     c.restoreState()
 
 
+EMBLEM_ART_DIR = Path(__file__).resolve().parent.parent / "assets" / "emblems"
+
+
+def _picture(name, back=None):
+    """An engraving in place of a drawn emblem: assets/emblems/<name>.jpg
+    (written by fetch_cover_art.py), cut to a circle. Drawn in its own ink, so
+    a style that reverses its emblem out of the accent leaves it as it is.
+
+    `back` is the drawn emblem for the back cover, where a portrait at that
+    size crowds the blurb under it."""
+    def draw(c, cx, cy, size, color):
+        path = EMBLEM_ART_DIR / f"{name}.jpg"
+        if not path.exists():
+            raise FileNotFoundError(f"{path} is missing: run python fetch_cover_art.py")
+        # Just inside the plate's inner ring, which sits at size / 1.15 less
+        # four points.
+        r = size * 0.80
+        c.saveState()
+        p = c.beginPath()
+        p.circle(cx, cy, r)
+        c.clipPath(p, stroke=0, fill=0)
+        c.drawImage(str(path), cx - r, cy - r, 2 * r, 2 * r)
+        c.restoreState()
+    draw.back = back
+    return draw
+
+
 _EMBLEMS = {"la": _laurel, "grc": _meander, "el": _meander, "fr": _fleur, "de": _oak,
             "xno": _feathers, "pt": _armillary}
 # Emblems a book can ask for by name (cover: {emblem: ...}) when its language's
 # own says nothing about it, or the language has none.
 NAMED_EMBLEMS = {"laurel": _laurel, "meander": _meander, "fleur": _fleur, "oak": _oak,
                  "feathers": _feathers, "armillary": _armillary,
-                 "jerusalem": _jerusalem_cross}
+                 "jerusalem": _jerusalem_cross, "godfrey": _picture("godfrey", back=_jerusalem_cross)}
 # Codes other sources use for a language the tables know by another: Perseus
 # tags its Latin "lat".
 _LANG_ALIASES = {"lat": "la"}
@@ -1076,7 +1103,9 @@ def stamp_signum(cover_pdf: str, interior_pdf: str, *, logo: str = "auto",
 def _draw_back(c, x0, y0, tw, th, *, blurb, motif, font, accent, ink, publisher):
     _ornament_frame(c, x0, y0, tw, th, accent, 0.45 * inch)
     cx = x0 + tw / 2.0
-    _draw_emblem(c, motif, cx, y0 + th - 1.5 * inch, 0.95 * inch)
+    back = getattr(motif.get("emblem"), "back", None)
+    _draw_emblem(c, {**motif, "emblem": back} if back else motif,
+                 cx, y0 + th - 1.5 * inch, 0.95 * inch)
     if blurb:
         style = ParagraphStyle("blurb", fontName=font[0], fontSize=12.5,
                                leading=18, alignment=TA_CENTER, textColor=ink)
