@@ -214,6 +214,8 @@ def main(argv: list[str] | None = None) -> int:
                    default=cover.DEFAULT_COVER_STYLE,
                    help="Front-cover layout: "
                         + " | ".join(cover.ALL_COVER_STYLES) + ".")
+    p.add_argument("--cover-emblem", choices=sorted(cover.NAMED_EMBLEMS), default=None,
+                   help="Emblem in place of the source language's own.")
     p.add_argument("--paper", choices=["white", "cream", "color"], default="white",
                    help="Paper stock (sets spine width).")
     p.add_argument("--blurb", default="", help="Back-cover description text.")
@@ -469,7 +471,8 @@ def main(argv: list[str] | None = None) -> int:
             ),
             split_long_divisions=args.split_sections,
             cover=CoverSpec(enabled=args.cover, style=args.cover_style,
-                            paper=args.paper, blurb=args.blurb),
+                            paper=args.paper, blurb=args.blurb,
+                            emblem=args.cover_emblem),
             epub=args.epub,
             review=args.review,
             review_model=args.review_model,

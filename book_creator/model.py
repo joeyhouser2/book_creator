@@ -150,6 +150,9 @@ class CoverSpec:
     # The publisher's signum at the foot of the spine (assets/signum): auto
     # (black on a light spine, gold on a dark one) | black | gold | white | none.
     spine_logo: str = "auto"
+    # A named emblem (cover.NAMED_EMBLEMS) in place of the language's own, for
+    # a book its language's emblem says nothing about (Tasso's crusade).
+    emblem: str | None = None
 
 
 @dataclass

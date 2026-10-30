@@ -24,6 +24,7 @@ def _parse_cover(raw) -> CoverSpec:
         accent=raw.get("accent"),
         blurb=raw.get("blurb", ""),
         spine_logo=raw.get("spine_logo", "auto"),
+        emblem=raw.get("emblem"),
     )
 
 

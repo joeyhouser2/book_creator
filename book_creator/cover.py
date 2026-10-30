@@ -35,6 +35,8 @@ _MOTIFS: dict[str, dict] = {
     "fr": {"name": "French", "color": "#27408b"},     # royal azure
     "de": {"name": "German", "color": "#3d5234"},     # forest/oak green
     "xno": {"name": "Anglo-Norman", "color": "#1e1b18"},  # sable: the Black Prince
+    "it": {"name": "Italian", "color": "#5a4a2c"},
+    "pt": {"name": "Portuguese", "color": "#5a4a2c"},
 }
 _DEFAULT_MOTIF = {"name": "", "color": "#5a4a2c"}
 
@@ -230,15 +232,72 @@ def _feathers(c, cx, cy, size, color):
     c.restoreState()
 
 
+def _jerusalem_cross(c, cx, cy, size, color):
+    """A cross potent between four small crosses: the arms of the crusader
+    Kingdom of Jerusalem (Tasso)."""
+    c.setFillColor(color)
+    u = size * 0.42 / 5.0                  # the device spans -5u..5u
+
+    def bar(x0, y0, x1, y1):
+        c.rect(cx + x0 * u, cy + y0 * u, (x1 - x0) * u, (y1 - y0) * u,
+               fill=1, stroke=0)
+
+    bar(-0.65, -5, 0.65, 5)                # the great cross
+    bar(-5, -0.65, 5, 0.65)
+    for s in (-1, 1):                      # its potent ends
+        bar(-1.9, s * 5 - (s > 0) * 0.9, 1.9, s * 5 + (s < 0) * 0.9)
+        bar(s * 5 - (s > 0) * 0.9, -1.9, s * 5 + (s < 0) * 0.9, 1.9)
+    for qx in (-1, 1):                     # a small cross in each quarter
+        for qy in (-1, 1):
+            mx, my = qx * 2.85, qy * 2.85
+            bar(mx - 0.3, my - 1.2, mx + 0.3, my + 1.2)
+            bar(mx - 1.2, my - 0.3, mx + 1.2, my + 0.3)
+
+
+def _armillary(c, cx, cy, size, color):
+    """An armillary sphere, the emblem of Manuel I and of Portugal's arms:
+    the age of the voyages (Portuguese)."""
+    c.saveState()
+    c.setStrokeColor(color)
+    R = size * 0.40
+    c.setLineWidth(max(1.0, size * 0.028))
+    c.circle(cx, cy, R, stroke=1, fill=0)                    # the meridian
+    c.setLineWidth(max(0.7, size * 0.016))
+    c.ellipse(cx - R, cy - R * 0.22, cx + R, cy + R * 0.22)  # the equator
+    c.ellipse(cx - R * 0.3, cy - R, cx + R * 0.3, cy + R)    # the colure
+    c.line(cx, cy - R * 1.15, cx, cy + R * 1.15)             # the axis
+    # The ecliptic: a broad band set aslant, which is what makes the sphere
+    # read as one and not as a globe. Its edges are offset, not nested, so the
+    # band keeps its width to the rim. The tropics are left out: at cover size
+    # they turned the sphere to a ball of string.
+    c.translate(cx, cy)
+    c.rotate(-24)
+    for d in (-0.07, 0.07):
+        c.ellipse(-R * 0.93, R * (d - 0.24), R * 0.93, R * (d + 0.24))
+    c.restoreState()
+
+
 _EMBLEMS = {"la": _laurel, "grc": _meander, "el": _meander, "fr": _fleur, "de": _oak,
-            "xno": _feathers}
+            "xno": _feathers, "pt": _armillary}
+# Emblems a book can ask for by name (cover: {emblem: ...}) when its language's
+# own says nothing about it, or the language has none.
+NAMED_EMBLEMS = {"laurel": _laurel, "meander": _meander, "fleur": _fleur, "oak": _oak,
+                 "feathers": _feathers, "armillary": _armillary,
+                 "jerusalem": _jerusalem_cross}
+# Codes other sources use for a language the tables know by another: Perseus
+# tags its Latin "lat".
+_LANG_ALIASES = {"lat": "la"}
 
 
-def _motif_for(src_lang: str, accent: str | None) -> dict:
-    m = dict(_MOTIFS.get(src_lang, _DEFAULT_MOTIF))
+def _motif_for(src_lang: str, accent: str | None, emblem: str | None = None) -> dict:
+    lang = _LANG_ALIASES.get(src_lang, src_lang)
+    m = dict(_MOTIFS.get(lang, _DEFAULT_MOTIF))
     if accent:
         m["color"] = accent
-    m["emblem"] = _EMBLEMS.get(src_lang)
+    if emblem and emblem not in NAMED_EMBLEMS:
+        raise ValueError(f"unknown cover emblem {emblem!r}; "
+                         f"choose from {sorted(NAMED_EMBLEMS)}")
+    m["emblem"] = NAMED_EMBLEMS[emblem] if emblem else _EMBLEMS.get(lang)
     return m
 
 
@@ -1038,7 +1097,8 @@ def render_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
                  font_spec: FontSpec | None = None, background: str = "#f4ead5",
                  accent: str | None = None, blurb: str = "",
                  publisher: str = "", edition_line: str | None = None,
-                 spine_logo: str | None = "auto") -> tuple[str, tuple]:
+                 spine_logo: str | None = "auto",
+                 emblem: str | None = None) -> tuple[str, tuple]:
     full_w, full_h, spine = cover_dimensions(trim, pages, paper)
     W, H = full_w * inch, full_h * inch
     font = fonts.register(font_spec.family if font_spec else None,
@@ -1048,7 +1108,7 @@ def render_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
     # Opened in the cover's own font: ReportLab otherwise writes Helvetica into
     # the page as its default, unembedded, and KDP rejects a cover for that.
     c = canvas.Canvas(out_path, pagesize=(W, H), initialFontName=font[0])
-    motif = _motif_for(src_lang, accent)
+    motif = _motif_for(src_lang, accent, emblem)
     accent_color = HexColor(motif["color"])
     ink = HexColor("#241f1a")
     bg = HexColor(background)
@@ -1082,7 +1142,8 @@ def render_ebook_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
                        title: str, author: str, src_lang: str,
                        tgt_lang: str, trim, font_spec: FontSpec | None = None,
                        background: str = "#f4ead5", accent: str | None = None,
-                       dpi: int = 400, edition_line: str | None = None) -> str:
+                       dpi: int = 400, edition_line: str | None = None,
+                       emblem: str | None = None) -> str:
     """Render just the front-cover panel (no spine/back/bleed) as a PNG, for EPUB.
 
     Reuses _draw_front so the ebook cover matches the print wraparound's
@@ -1101,7 +1162,7 @@ def render_ebook_cover(out_path: str, *, style: str = DEFAULT_COVER_STYLE,
                           {"regular": getattr(font_spec, "regular", None),
                            "italic": getattr(font_spec, "italic", None),
                            "bold": getattr(font_spec, "bold", None)} if font_spec else None)
-    motif = _motif_for(src_lang, accent)
+    motif = _motif_for(src_lang, accent, emblem)
     accent_color = HexColor(motif["color"])
     ink = HexColor("#241f1a")
     bg = HexColor(background)

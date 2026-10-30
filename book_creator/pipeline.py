@@ -1235,7 +1235,7 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
             font_spec=spec.font, background=spec.cover.background,
             accent=spec.cover.accent, blurb=spec.cover.blurb,
             publisher=spec.copyright.publisher,
-            spine_logo=spec.cover.spine_logo,
+            spine_logo=spec.cover.spine_logo, emblem=spec.cover.emblem,
         )
         w, h, spine = dims
         log(f"✓ Cover: {cover_path} ({w:.3f} × {h:.3f} in, spine {spine:.3f} in)")
@@ -1251,7 +1251,7 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
                 title=spec.title, author=spec.author,
                 src_lang=spec.src_lang, tgt_lang=spec.tgt_lang, trim=spec.trim,
                 font_spec=spec.font, accent=spec.cover.accent,
-                background=spec.cover.background,
+                background=spec.cover.background, emblem=spec.cover.emblem,
             )
         except RuntimeError as exc:
             log(f"  ⚠  Skipping EPUB cover image: {exc}")
