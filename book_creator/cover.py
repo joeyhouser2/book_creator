@@ -24,8 +24,11 @@ from . import decorations, fonts
 from .model import FontSpec
 
 BLEED = 0.125
-# Inches of spine per interior page, by paper stock (KDP figures).
-_PAPER_THICKNESS = {"white": 0.002252, "cream": 0.0025, "color": 0.002347}
+# Inches of spine per interior page, by paper stock (KDP figures). Colour is
+# what KDP's cover check actually asks for, 0.00235, not the 0.002347 its
+# calculator tables print: it expected 13.225 in for 415 pages and 13.251 for
+# 426, and 0.002347 falls short of both.
+_PAPER_THICKNESS = {"white": 0.002252, "cream": 0.0025, "color": 0.00235}
 
 # Per-language motif: accent colour + emblem drawing function (set below).
 _MOTIFS: dict[str, dict] = {
