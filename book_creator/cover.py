@@ -37,6 +37,8 @@ _MOTIFS: dict[str, dict] = {
     "xno": {"name": "Anglo-Norman", "color": "#1e1b18"},  # sable: the Black Prince
     "it": {"name": "Italian", "color": "#5a4a2c"},
     "pt": {"name": "Portuguese", "color": "#5a4a2c"},
+    "es": {"name": "Spanish", "color": "#5a4a2c"},
+    "oc": {"name": "Occitan", "color": "#5a4a2c"},
 }
 _DEFAULT_MOTIF = {"name": "", "color": "#5a4a2c"}
 
@@ -280,19 +282,17 @@ def _armillary(c, cx, cy, size, color):
 EMBLEM_ART_DIR = Path(__file__).resolve().parent.parent / "assets" / "emblems"
 
 
-def _picture(name, back=None):
-    """An engraving in place of a drawn emblem: assets/emblems/<name>.jpg
-    (written by fetch_cover_art.py), cut to a circle. Drawn in its own ink, so
-    a style that reverses its emblem out of the accent leaves it as it is.
-
-    `back` is the drawn emblem for the back cover, where a portrait at that
-    size crowds the blurb under it."""
+def _picture(name):
+    """A picture in place of a drawn emblem: assets/emblems/<name>.jpg (written
+    by fetch_cover_art.py), cut to a circle under a fine rule. Drawn in its own
+    ink, so a style that reverses its emblem out of the accent leaves it as it
+    is."""
     def draw(c, cx, cy, size, color):
         path = EMBLEM_ART_DIR / f"{name}.jpg"
         if not path.exists():
             raise FileNotFoundError(f"{path} is missing: run python fetch_cover_art.py")
-        # Just inside the plate's inner ring, which sits at size / 1.15 less
-        # four points.
+        # In the plate this falls just inside the roundel's inner ring, which
+        # sits at size / 1.15 less four points; elsewhere the rule is its own.
         r = size * 0.80
         c.saveState()
         p = c.beginPath()
@@ -300,20 +300,45 @@ def _picture(name, back=None):
         c.clipPath(p, stroke=0, fill=0)
         c.drawImage(str(path), cx - r, cy - r, 2 * r, 2 * r)
         c.restoreState()
-    draw.back = back
+        c.saveState()
+        c.setStrokeColor(color)
+        c.setLineWidth(0.8)
+        c.circle(cx, cy, r + 1.2, stroke=1, fill=0)
+        c.restoreState()
     return draw
 
 
 _EMBLEMS = {"la": _laurel, "grc": _meander, "el": _meander, "fr": _fleur, "de": _oak,
             "xno": _feathers, "pt": _armillary}
 # Emblems a book can ask for by name (cover: {emblem: ...}) when its language's
-# own says nothing about it, or the language has none.
-NAMED_EMBLEMS = {"laurel": _laurel, "meander": _meander, "fleur": _fleur, "oak": _oak,
-                 "feathers": _feathers, "armillary": _armillary,
-                 "jerusalem": _jerusalem_cross, "godfrey": _picture("godfrey", back=_jerusalem_cross)}
+# own says nothing about it, or the language has none: the drawn ones, and
+# every picture fetch_cover_art.py has written.
+_DRAWN_EMBLEMS = {"laurel": _laurel, "meander": _meander, "fleur": _fleur, "oak": _oak,
+                  "feathers": _feathers, "armillary": _armillary,
+                  "jerusalem": _jerusalem_cross}
+PICTURES = sorted(p.stem for p in EMBLEM_ART_DIR.glob("*.jpg"))
+NAMED_EMBLEMS = {**_DRAWN_EMBLEMS, **{name: _picture(name) for name in PICTURES}}
+# A picture's back cover carries a drawn emblem -- at that size and over the
+# blurb a portrait crowds the text. The language's own, unless the book's
+# subject has a better one.
+_PICTURE_BACKS = {"godfrey": _jerusalem_cross}
 # Codes other sources use for a language the tables know by another: Perseus
 # tags its Latin "lat".
 _LANG_ALIASES = {"lat": "la"}
+# Which books carry which picture, by slug: assets/emblems/books.yaml.
+_BOOK_EMBLEMS: dict | None = None
+
+
+def emblem_for(slug: str | None) -> str | None:
+    """The emblem assets/emblems/books.yaml gives this book, if any."""
+    global _BOOK_EMBLEMS
+    if _BOOK_EMBLEMS is None:
+        import yaml
+        path = EMBLEM_ART_DIR / "books.yaml"
+        _BOOK_EMBLEMS = {}
+        if path.exists():
+            _BOOK_EMBLEMS = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return _BOOK_EMBLEMS.get(slug)
 
 
 def _motif_for(src_lang: str, accent: str | None, emblem: str | None = None) -> dict:
@@ -325,6 +350,9 @@ def _motif_for(src_lang: str, accent: str | None, emblem: str | None = None) -> 
         raise ValueError(f"unknown cover emblem {emblem!r}; "
                          f"choose from {sorted(NAMED_EMBLEMS)}")
     m["emblem"] = NAMED_EMBLEMS[emblem] if emblem else _EMBLEMS.get(lang)
+    m["back_emblem"] = m["emblem"]
+    if emblem in PICTURES:
+        m["back_emblem"] = _PICTURE_BACKS.get(emblem) or _EMBLEMS.get(lang)
     return m
 
 
@@ -1103,8 +1131,7 @@ def stamp_signum(cover_pdf: str, interior_pdf: str, *, logo: str = "auto",
 def _draw_back(c, x0, y0, tw, th, *, blurb, motif, font, accent, ink, publisher):
     _ornament_frame(c, x0, y0, tw, th, accent, 0.45 * inch)
     cx = x0 + tw / 2.0
-    back = getattr(motif.get("emblem"), "back", None)
-    _draw_emblem(c, {**motif, "emblem": back} if back else motif,
+    _draw_emblem(c, {**motif, "emblem": motif.get("back_emblem")},
                  cx, y0 + th - 1.5 * inch, 0.95 * inch)
     if blurb:
         style = ParagraphStyle("blurb", fontName=font[0], fontSize=12.5,

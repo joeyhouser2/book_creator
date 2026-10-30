@@ -1224,6 +1224,9 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
             "the divisions each), which also gives each volume its own "
             "printable spine.")
 
+    # The book's own picture (assets/emblems/books.yaml) unless its config
+    # names an emblem.
+    emblem = spec.cover.emblem or cover.emblem_for(slug)
     if spec.cover.enabled:
         cover_path = str(Path(out_dir) / f"{slug}-cover.pdf")
         _, dims = cover.render_cover(
@@ -1235,7 +1238,7 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
             font_spec=spec.font, background=spec.cover.background,
             accent=spec.cover.accent, blurb=spec.cover.blurb,
             publisher=spec.copyright.publisher,
-            spine_logo=spec.cover.spine_logo, emblem=spec.cover.emblem,
+            spine_logo=spec.cover.spine_logo, emblem=emblem,
         )
         w, h, spine = dims
         log(f"✓ Cover: {cover_path} ({w:.3f} × {h:.3f} in, spine {spine:.3f} in)")
@@ -1251,7 +1254,7 @@ def _render_print(chapters, spec: BookSpec, slug: str, out_dir: str, out: dict,
                 title=spec.title, author=spec.author,
                 src_lang=spec.src_lang, tgt_lang=spec.tgt_lang, trim=spec.trim,
                 font_spec=spec.font, accent=spec.cover.accent,
-                background=spec.cover.background, emblem=spec.cover.emblem,
+                background=spec.cover.background, emblem=emblem,
             )
         except RuntimeError as exc:
             log(f"  ⚠  Skipping EPUB cover image: {exc}")

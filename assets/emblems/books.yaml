@@ -1,0 +1,45 @@
+# Which picture each book's cover roundel carries, by slug. A config's own
+# cover: {emblem: ...} wins over this; a book not listed keeps its language's
+# drawn emblem. The pictures are fetch_cover_art.py's; README.md says what
+# each one is.
+
+# Tasso: Godfrey of Bouillon, the poem's captain, in the crown of thorns.
+gerusalemme-liberata-en: godfrey
+gerusalemme-liberata-volume-1: godfrey
+gerusalemme-liberata-volume-2: godfrey
+
+# Maximilian I, the last knight, and Theuerdank, his own allegory of himself.
+der-letzte-ritter: maximilian
+der-letzte-ritter-and-the-murtenlied: maximilian
+theuerdank: theuerdank
+theuerdank-fraktur: theuerdank
+
+parzival: knight
+la-henriade: henri-iv
+les-fleurs-du-mal: baudelaire
+le-p-re-goriot: balzac
+eug-nie-grandet: balzac
+la-legende-des-siecles: hugo
+la-legende-des-siecles-en: hugo
+notre-dame-de-paris: stryge
+le-rouge-et-le-noir: stendhal
+cantar-de-mio-cid: cid
+
+# Pontano's three poems: his own portrait medal.
+urania: pontano
+parthenopeus: pontano
+de-hortis-hesperidum: pontano
+# Basinio's Hesperis is Sigismondo Malatesta's war; this is his medal.
+hesperis: sigismondo
+
+# Claudian wrote for the court of Honorius.
+de-bello-gildonico: honorius
+de-bello-gothico: honorius
+de-consulatu-stilichonis: honorius
+in-eutropium: honorius
+in-rufinum: honorius
+
+# Xenophon marched with Cyrus against the Great King: his gold archer.
+anabasis: daric
+# Ocland's Anglorum Praelia, set for English schools by Elizabeth's Council.
+anglorum-praelia: elizabeth
