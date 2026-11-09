@@ -42,6 +42,7 @@ _MOTIFS: dict[str, dict] = {
     "pt": {"name": "Portuguese", "color": "#5a4a2c"},
     "es": {"name": "Spanish", "color": "#5a4a2c"},
     "oc": {"name": "Occitan", "color": "#5a4a2c"},
+    "ang": {"name": "Old English", "color": "#5a4a2c"},
 }
 _DEFAULT_MOTIF = {"name": "", "color": "#5a4a2c"}
 

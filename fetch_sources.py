@@ -308,37 +308,35 @@ def gerusalemme() -> None:
     _write("gerusalemme_en.txt", en_parts, "Gerusalemme Liberata (Fairfax's English)")
 
 
-def maldon() -> None:
-    """The Battle of Maldon: Old English (en.wikisource, Bright's Reader) and
-    Garnett's line-for-line English (Gutenberg 15879).
+def _bright(page: str, expect: int) -> list[str]:
+    """One poem's Old English from Bright's Anglo-Saxon Reader on en.wikisource.
 
-    Garnett's volume prints five poems, and its contents list repeats every
-    title, so "BYRHTNOTH, OR THE FIGHT AT MALDON" matches twice before the poem
-    itself; the text runs from the last such heading to "THE DREAM OF THE ROOD",
-    and his numbered notes at the foot are not verse.
-
-    The poem survives without its opening, which is why both sides begin
-    mid-sentence ("brocen wurde" / "was broken").
+    The verse is bounded by lines carrying Old English letters, but lines
+    INSIDE it may carry none (Maldon's "folc and foldan; feallan sceolon"), so
+    the letters locate the region and everything within it is kept. Maldon
+    survives without its opening, which Bright marks "[...] brocen wurde;" --
+    that is the first line, and it sits just outside the lettered region.
     """
-    from book_creator import fetch
-
-    # Old English. The naive tag regex leaks Parsoid's data-mw attribute, which
-    # carries the page's whole wikitext -- see _TAG.
-    s = _session()
-    r = s.get("https://en.wikisource.org/wiki/Bright%27s_Anglo-Saxon_Reader/"
-              "The_Battle_of_Maldon", timeout=60)
+    # The naive tag regex leaks Parsoid's data-mw attribute, which carries the
+    # page's whole wikitext -- see _TAG.
+    r = _session().get(f"https://en.wikisource.org/wiki/Bright%27s_Anglo-Saxon_Reader/{page}",
+                       timeout=60)
     r.encoding = "utf-8"
     m = re.search(r'(?s)<div[^>]*id="mw-content-text".*?>(.*?)<div class="printfooter"', r.text)
     frag = re.sub(r"(?is)<(script|style|table|sup).*?</\1>", "", m.group(1))
     frag = re.sub(r"(?is)<br\s*/?>|</p>|</div>|</li>", "\n", frag)
-    lines = [l.replace("\xa0", " ").strip()
-             for l in html.unescape(_TAG.sub("", frag)).splitlines()]
+    # A zero-width space marks where Bright's pages turned, and two verse lines
+    # either side of a turn come out joined on one line.
+    lines = [p.replace("\xa0", " ").strip()
+             for l in html.unescape(_TAG.sub("", frag)).splitlines()
+             for p in l.split("​")]
     lines = [l for l in lines if l]
-    # The verse is bounded by lines carrying Old English letters, but five lines
-    # INSIDE it carry none ("folc and foldan; feallan sceolon"), so the letters
-    # locate the region and everything within it is kept. The poem survives
-    # without its opening, which Bright marks "[...] brocen wurde;" -- that is
-    # the first line, and it sits just outside the lettered region.
+    # The page's navigation names the neighbouring poems ("Cædmon's Genesis"),
+    # and carries the letters too; the verse begins after the poem's own
+    # heading.
+    head = [i for i, l in enumerate(lines) if re.fullmatch(r"THE BATTLE OF [A-Z]+\.?", l)]
+    if head:
+        lines = lines[head[-1] + 1:]
     letters = re.compile(r"[þðæāēīōūȳǣ]")
     first = next(i for i, l in enumerate(lines) if letters.search(l))
     last = len(lines) - 1 - next(i for i, l in enumerate(reversed(lines))
@@ -346,36 +344,82 @@ def maldon() -> None:
     opening = first - 1
     if opening >= 0 and lines[opening].startswith("[..."):
         first = opening
-    oe = [re.sub(r"\s{2,}", "   ", re.sub(r"^\[\.\.\.\]\s*", "", l))
+    # Bright's line numbers, every fifth line: "[5]" at the end, and the bare
+    # figure the page sets in its margin ("15ofer brāde brimu").
+    oe = [re.sub(r"\s{2,}", "   ", re.sub(r"^\[\.\.\.\]\s*|\[\d+\]$|^\d+(?=\D)", "", l)).strip()
           for l in lines[first:last + 1]]
-    if len(oe) < 320:
-        raise SystemExit(f"expected ~325 Old English lines, got {len(oe)}")
-    _write("maldon_ang.txt", ["The Battle of Maldon" + "\n\n" + "\n".join(oe)],
-           "The Battle of Maldon (Old English)")
+    if abs(len(oe) - expect) > 5:
+        raise SystemExit(f"{page}: expected ~{expect} Old English lines, got {len(oe)}")
+    return oe
 
-    # Garnett's English.
+
+def _garnett(heading: str, expect: int, argument: bool = False) -> list[str]:
+    """One poem from Garnett's line-for-line English (Gutenberg 15879).
+
+    His volume prints five poems, and its contents list repeats every title,
+    so a heading matches more than once before the poem itself: the text runs
+    from the last match to his numbered notes, which are not verse. Maldon
+    opens with a prose argument, skipped up to the asterisks that stand for
+    its lost beginning. Every fifth line carries his line number at the
+    right margin, and words carry note marks ("lief[1] hawk", "Dyng[5][?]");
+    both go, while his own editorial brackets ("[they were]") stay.
+    """
+    from book_creator import fetch
+
     b = fetch.strip_gutenberg_boilerplate(fetch.fetch_gutenberg(15879))
-    marks = list(re.finditer(r"(?m)^[ \t]*THE FIGHT AT MALDON\.?\s*$", b))
-    end = re.search(r"(?m)^[ \t]*THE DREAM OF THE ROOD\.?\s*$", b[marks[-1].end():])
-    body = b[marks[-1].end(): marks[-1].end() + end.start()]
-    en, seen_verse = [], False
-    for raw in body.splitlines():
+    start = list(re.finditer(rf"(?m)^[ \t]*{heading}\.?\s*$", b))[-1].end()
+    en, seen_verse = [], not argument
+    for raw in b[start:].splitlines():
         line = raw.strip()
         if not line:
             continue
-        if re.match(r"^\[\d+\]", line):      # his notes begin; the verse is done
-            break
+        if re.match(r"^\[\d+\]", line) or re.match(r"^[A-Z ,.]{12,}$", line):
+            break                            # his notes, or the next poem
         if not seen_verse:
-            # Skip the prose argument that precedes the verse.
             if line.startswith("*"):
                 seen_verse = True
             else:
                 continue
+        line = re.sub(r"\[(?:\d+|\?)\]", "", line)
+        line = re.sub(r"\s+\d+$", "", line)
+        line = re.sub(r"\bAE(?=[a-z])", "Æ", line)
+        line = re.sub(r"\baeth", "æth", line)
         en.append(re.sub(r"\s{2,}", " ", line))
-    if len(en) < 300:
-        raise SystemExit(f"expected ~325 English lines, got {len(en)}")
-    _write("maldon_en.txt", ["The Battle of Maldon" + "\n\n" + "\n".join(en)],
+    if abs(len(en) - expect) > 5:
+        raise SystemExit(f"{heading}: expected ~{expect} English lines, got {len(en)}")
+    return en
+
+
+def maldon() -> None:
+    """The Battle of Maldon: Old English (Bright's Reader) and Garnett's
+    line-for-line English. The poem survives without its opening, which is
+    why both sides begin mid-sentence ("brocen wurde" / "was broken")."""
+    _write("maldon_ang.txt",
+           ["The Battle of Maldon" + "\n\n" + "\n".join(_bright("The_Battle_of_Maldon", 325))],
+           "The Battle of Maldon (Old English)")
+    _write("maldon_en.txt",
+           ["The Battle of Maldon" + "\n\n" + "\n".join(_garnett("THE FIGHT AT MALDON", 325, True))],
            "The Battle of Maldon (Garnett's English)")
+
+
+def battles() -> None:
+    """The two Old English battle poems in one book, in the order fought:
+    Brunanburh (937), from the Anglo-Saxon Chronicle, then Maldon (991). Both
+    are Bright's text and Garnett's English, so one translator's line-for-line
+    crib serves the whole volume. Each title stands two blank lines clear on
+    either side, which is how a verse file marks an unnumbered poem's title
+    (segment._is_isolated_title)."""
+    poems = [("The Battle of Brunanburh", "The_Battle_of_Brunanburh", 73,
+              "THE FIGHT AT BRUNANBURH", False),
+             ("The Battle of Maldon", "The_Battle_of_Maldon", 325,
+              "THE FIGHT AT MALDON", True)]
+    _write("battles_ang.txt",
+           [f"{title}\n\n\n" + "\n".join(_bright(page, n)) for title, page, n, _, _ in poems],
+           "Brunanburh and Maldon (Old English)")
+    _write("battles_en.txt",
+           [f"{title}\n\n\n" + "\n".join(_garnett(head, n, arg))
+            for title, _, n, head, arg in poems],
+           "Brunanburh and Maldon (Garnett's English)")
 
 
 def africa() -> None:
@@ -616,6 +660,7 @@ SOURCES = {"parzival": parzival, "henriade": henriade, "messias": messias,
            "lusiadas_en": lusiadas_en,
            "gerusalemme": gerusalemme,
            "maldon": maldon,
+           "battles": battles,
            "africa": africa,
            "pontano": pontano,
            "ocland": ocland}

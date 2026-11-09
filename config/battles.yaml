@@ -1,0 +1,64 @@
+# The two Old English battle poems in one volume, in the order fought:
+# The Battle of Brunanburh (937), the poem the Anglo-Saxon Chronicle sets
+# under that year, and The Battle of Maldon (991).
+#
+# Both sides come from one place each. The Old English is Bright's
+# Anglo-Saxon Reader (1891) as transcribed on en.wikisource; the English is
+# James M. Garnett's line-for-line translation (Gutenberg 15879), whose
+# volume prints both poems, so a single translator serves the book. Garnett
+# made a scholarly crib rather than a verse rendering, so the poems pair line
+# against line (Brunanburh 73 to 73; Maldon 325 to 326, the extra line
+# absorbed by the aligner).
+#
+# Each poem alone is too short for a KDP paperback (Maldon is 23 pages,
+# under the 24-page minimum), and they belong together.
+#
+#   python fetch_sources.py battles
+#   python make_book.py config/battles.yaml
+
+books:
+  - title: "The Battles of Brunanburh and Maldon"
+    slug: the-battles-of-brunanburh-and-maldon
+    author: "Anonymous"
+    src_lang: ang
+    tgt_lang: en
+    src_path: "input/battles_ang.txt"
+    tgt_path: "input/battles_en.txt"
+    mode: verse
+    verse_align: line
+    # By length: LaBSE cannot read Old English, and left to itself grouped a
+    # quarter of the lines two to one where the crib is line for line.
+    aligner: gale-church
+    # Each poem is a chapter, by its title (two blank lines either side).
+    poem_titles: true
+    first: src
+    trim: [6.0, 9.0]
+    translation_pd_confirmed: true
+    translation_source_note: "James M. Garnett, Elene; Judith; Athelstan, or the Fight at Brunanburh; Byrhtnoth, or the Fight at Maldon (Boston, 1889; Project Gutenberg #15879) — public domain."
+    font: Cardo
+    decorations:
+      margin: corners
+      chapter: medieval
+      color: "#5a4a2c"
+      opener_font: uncialantiqua
+    copyright:
+      publisher: "Houser Classics"
+      holder: "Joey Houser"
+      year: 2026
+      isbn: ""
+      translator: "James M. Garnett"
+      rights: >-
+        This edition's typography, arrangement, and design are copyright
+        &copy; 2026 Joey Houser. The Old English poems are anonymous and in
+        the public domain; they are set from James W. Bright's
+        <i>Anglo-Saxon Reader</i> (1891) as transcribed at Wikisource. The
+        English translations by James M. Garnett (1889) are in the public
+        domain; they are set from Project Gutenberg, with Garnett's line
+        numbers and notes omitted. <i>The Battle of Maldon</i> survives
+        without its opening and its close, so both sides begin and end
+        mid-sentence.
+    cover:
+      style: band
+      paper: white
+      blurb: "The two great battle poems of Old English: Brunanburh (937), Æthelstan's victory over the Scots and Norse as the Anglo-Saxon Chronicle sings it, and Maldon (991), Byrhtnoth's last stand against the vikings. The Old English with James M. Garnett's line-for-line translation facing it."
+    epub: true

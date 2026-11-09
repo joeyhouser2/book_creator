@@ -641,6 +641,13 @@ def _render_bead(story, bead: Bead, st, first: str, opener: bool = False,
             blocks.append(Paragraph(src_txt, src_style))
         if tgt_txt:
             blocks.append(Paragraph(tgt_txt, tgt_style))
+    if len(blocks) == 2 and len(bead.src) <= 4 and len(bead.tgt) <= 4 \
+            and len(bead.src_text) + len(bead.tgt_text) < 600:
+        # A short pair -- a line against its line, a couplet against its
+        # couplet -- goes over a page break whole: left, the original sat at
+        # the foot of one page and its translation opened the next. A long
+        # pair may still break, or a page would end in a hole.
+        blocks[0].keepWithNext = True
     if alone and blocks:
         # The gap that closes a pair, so the next pair starts clear of it.
         from reportlab.lib.styles import ParagraphStyle

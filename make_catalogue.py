@@ -58,7 +58,9 @@ DATA = {
     "cantar-de-mio-cid": ("Anonymous", "c. 1200", "Rose, 1919",
                           "The Cid exiled by his king, winning Valencia and his honour back: Spain's national epic."),
     "the-battle-of-maldon": ("Anonymous", "c. 1000", "James M. Garnett",
-                             "The Old English fragment on Byrhtnoth's defeat by vikings in 991, and the most famous bad decision in the language."),
+                             "The Old English fragment on Byrhtnoth's defeat by vikings in 991, and the most famous bad decision in the language. Superseded by the two-poem volume, and under KDP's 24-page minimum."),
+    "the-battles-of-brunanburh-and-maldon": ("Anonymous", "937; c. 1000", "James M. Garnett, 1889",
+                                             "Both Old English battle poems in one volume: Æthelstan's victory at Brunanburh as the Chronicle sings it, and Byrhtnoth's last stand at Maldon."),
     "ode-to-plato": ("Marcus Musurus", "1513", "William Roscoe, 1805",
                      "A Homeric ode asking Plato to descend and present his own works to Leo X, prefixed to the Aldine first edition — the high point of Renaissance Greek verse."),
     "life-of-the-black-prince": ("Chandos Herald", "c. 1385", "Pope & Lodge, 1910",
@@ -215,6 +217,7 @@ TITLES = {
     "gerusalemme-liberata-en": "Gerusalemme Liberata",
     "life-of-the-black-prince": "The Life of the Black Prince",
     "the-battle-of-maldon": "The Battle of Maldon",
+    "the-battles-of-brunanburh-and-maldon": "The Battles of Brunanburh and Maldon",
     "der-letzte-ritter-and-the-murtenlied": "Der letzte Ritter, with the Murtenlied",
     "le-p-re-goriot": "Le Père Goriot",
     "eug-nie-grandet": "Eugénie Grandet",
@@ -412,7 +415,7 @@ if over:
 known = set(DATA) | set(EN_ONLY) | set(FACSIMILE) | set(SCRAPS) | {
     s for s, c in CFG.items() if c["author"] == "Laurentius Rhodoman"}
 uncovered = sorted(p.stem for p in OUT.glob("*.pdf")
-                   if not p.name.endswith("-cover.pdf") and p.stem not in known)
+                   if not re.search(r"-cover(-\w+-paper)?$", p.stem) and p.stem not in known)
 if uncovered:
     print(f"\n{len(uncovered)} PDF(s) in output/ are not described in this "
           "script, so they are missing from the catalogue.\n"

@@ -25,7 +25,8 @@ credited here all the same.
 | `daric.jpg` | Achaemenid gold daric with the archer-king, 4th century BCE | Metropolitan Museum 324243 |
 | `elizabeth.jpg` | Crown gold sovereign of Elizabeth I, c. 1593–1601 | Metropolitan Museum 825978 |
 | `cid.jpg` | Francisco Goya, *The Cid Campeador Spearing a Bull*, *La Tauromaquia* plate 11, 1816 | Metropolitan Museum 359939 |
+| `brooch.jpg` | Anglo-Saxon disk brooch, gold, garnet and glass, early 600s | Metropolitan Museum 466157 |
 | `theuerdank.jpg` | Woodcut 117 of the 1517 *Theuerdank*, hand-coloured copy | Bayerische Staatsbibliothek, Rar. 325 a |
 
-All but the Theuerdank woodcut are re-inked to the cover's ink and ground;
-the woodcut keeps its colouring.
+All but the Theuerdank woodcut and the brooch are re-inked to the cover's ink
+and ground; those two keep their colour.

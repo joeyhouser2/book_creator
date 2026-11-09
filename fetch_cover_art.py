@@ -52,6 +52,7 @@ ART = {
     "daric": (("met", 324243), "auto", True),
     "elizabeth": (("met", 825978), "auto", True),
     "cid": (("met", 359939), (0.52, 0.30, 0.20), True),
+    "brooch": (("met", 466157), "auto", False),
     # python fetch_woodcuts.py writes it.
     "theuerdank": (("file", "cache/theuerdank/woodcuts/wc_117.jpg"), (0.44, 0.54, 0.36), False),
 }
