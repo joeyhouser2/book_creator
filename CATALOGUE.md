@@ -4,7 +4,7 @@ Every finished book in `output/`, with its author, the date of the original
 work, and what it is. Page counts are read from the PDFs themselves, so they
 are what KDP would see.
 
-**85 books, 21,293 pages.** Development scraps are listed at the
+**86 books, 18,905 pages.** Development scraps are listed at the
 end and are not books.
 
 The division that matters commercially is **who made the English**. A book with
@@ -21,8 +21,6 @@ No disclosure, sellable as they stand.
 | Work | Author | Written | Translator | Pages | Summary |
 |---|---|---|---:|---:|---|
 | **Parzival** | Wolfram von Eschenbach | c. 1200–10 | Jessie L. Weston, 1894 | 1253 | The Grail romance: Parzival's long education from naive boy to Grail king, the fullest Arthurian poem in German. |
-| **Notre-Dame de Paris** | Victor Hugo | 1831 | Isabel F. Hapgood, 1888 | 1240 | Quasimodo, Esmeralda and Frollo around the cathedral Hugo wrote the book to save. |
-| **Le Rouge et le Noir** | Stendhal | 1830 | Horace B. Samuel, 1916 | 1124 | A carpenter's son climbs through seminary and salon by calculation and sincerity in turn, and is destroyed by both. |
 | **Der Messias** | Friedrich Gottlieb Klopstock | 1748–73 | G. H. C. Egestorff, 1826 | 773 | The German Paradise Lost, all twenty cantos in one volume, in hexameters that remade German as a poetic language. |
 | **Le Père Goriot** | Honoré de Balzac | 1835 | Ellen Marriage, 1896 | 725 | A retired merchant ruins himself for two daughters who will not be seen with him. |
 | **Das Nibelungenlied (Middle High German)** | Anonymous | c. 1200 | George Henry Needler, 1904 | 658 | The same epic in its own Middle High German (Simrock's 1892 edition), strophe for strophe with Needler. |
@@ -34,7 +32,7 @@ No disclosure, sellable as they stand.
 | **Buch der Lieder** | Heinrich Heine | 1827 | Emma Lazarus, 1887 | 457 | The songbook that became the most-set body of lyric in European music. A selection: ~125 of 227 poems have a Lazarus version. |
 | **Gerusalemme Liberata, Volume 2** | Torquato Tasso | 1581 | Edward Fairfax, 1600 | 426 | Cantos 11–20: Armida's enchantments, Tancred and Clorinda, and the city's fall. |
 | **Gerusalemme Liberata, Volume 1** | Torquato Tasso | 1581 | Edward Fairfax, 1600 | 415 | The First Crusade's siege of Jerusalem, cantos 1–10, in Fairfax's Elizabethan ottava rima. |
-| **Mirèio** | Frédéric Mistral | 1859 | Harriet Waters Preston, 1872 | 324 | A farm girl loves a basket-weaver beneath her station and dies on pilgrimage — the poem that won Provençal a Nobel Prize. |
+| **Mirèio** | Frédéric Mistral | 1859 | Harriet Waters Preston, 1872 | 322 | A farm girl loves a basket-weaver beneath her station and dies on pilgrimage — the poem that won Provençal a Nobel Prize. |
 | **Les Fleurs du Mal** | Charles Baudelaire | 1857 | Cyril Scott, 1909 | 244 | The founding book of Symbolism, prosecuted for obscenity the year it appeared. 55 of 123 poems. |
 | **Anglorum Praelia** | Christopher Ocland | 1580 | John Sharrock, 1585 | 235 | English victories in Latin hexameters from Edward III to Mary I, a Tudor schoolroom set text. |
 | **Cantar de Mio Cid** | Anonymous | c. 1200 | Rose, 1919 | 231 | The Cid exiled by his king, winning Valencia and his honour back: Spain's national epic. |
@@ -42,12 +40,15 @@ No disclosure, sellable as they stand.
 | **De Consulatu Stilichonis** | Claudian | 400 | Maurice Platnauer, 1922 | 89 | Three books of panegyric on Stilicho's consulship, the fullest portrait of the general who held the West together. |
 | **In Eutropium** | Claudian | 399 | Maurice Platnauer, 1922 | 83 | A savage attack on Eutropius, the eunuch who became consul — Roman political abuse at its most unrestrained. |
 | **In Rufinum** | Claudian | 396–97 | Maurice Platnauer, 1922 | 69 | An invective against the eastern minister Rufinus, with a prologue comparing him to a monster. |
-| **The Gallic War** | Julius Caesar | c. 51 BC | McDevitte & Bohn, 1869 | 56 | Caesar's own account of the conquest of Gaul, Book I. |
 | **De Bello Gothico** | Claudian | 402 | Maurice Platnauer, 1922 | 47 | Stilicho's defeat of Alaric at Pollentia, written within months of the battle. |
 | **De Bello Gildonico** | Claudian | 398 | Maurice Platnauer, 1922 | 39 | The suppression of Gildo's African revolt, which had threatened Rome's grain supply. |
-| **The Battle of Maldon** | Anonymous | c. 1000 | James M. Garnett | 23 | The Old English fragment on Byrhtnoth's defeat by vikings in 991, and the most famous bad decision in the language. |
+| **The Battles of Brunanburh and Maldon** | Anonymous | 937; c. 1000 | James M. Garnett, 1889 | 34 | Both Old English battle poems in one volume: Æthelstan's victory at Brunanburh as the Chronicle sings it, and Byrhtnoth's last stand at Maldon. |
+| **The Battle of Maldon** | Anonymous | c. 1000 | James M. Garnett | 23 | The Old English fragment on Byrhtnoth's defeat by vikings in 991, and the most famous bad decision in the language. Superseded by the two-poem volume, and under KDP's 24-page minimum. |
 | **Ode to Plato** | Marcus Musurus | 1513 | William Roscoe, 1805 | 15 | A Homeric ode asking Plato to descend and present his own works to Leo X, prefixed to the Aldine first edition — the high point of Renaissance Greek verse. |
 | **The Battle of Murten** | Veit Weber | 1476 | C. C. Felton, 1845 | 12 | A minstrel who fought in the ranks sings the Swiss victory over Charles the Bold, in his own Alemannic; Felton's English is from Longfellow's anthology. |
+| **Le Rouge et le Noir** | Stendhal | 1830 | Horace B. Samuel, 1916 | 0 | A carpenter's son climbs through seminary and salon by calculation and sincerity in turn, and is destroyed by both. |
+| **Notre-Dame de Paris** | Victor Hugo | 1831 | Isabel F. Hapgood, 1888 | 0 | Quasimodo, Esmeralda and Frollo around the cathedral Hugo wrote the book to save. |
+| **The Gallic War** | Julius Caesar | c. 51 BC | McDevitte & Bohn, 1869 | 0 | Caesar's own account of the conquest of Gaul, Book I. |
 
 ## Machine-translated
 
@@ -145,7 +146,7 @@ Page images rather than reset text, so there is no parallel translation.
 
 ## Not books — development scraps
 
-26 files, 152 MB. Probes, stubs and superseded runs. All
+25 files, 152 MB. Probes, stubs and superseded runs. All
 reproducible, and safe to delete.
 
 | File | Pages | What it was |
@@ -156,7 +157,6 @@ reproducible, and safe to delete.
 | `caesar-b1-la` | 56 | Gallic War Book I, untitled run — superseded by `the-gallic-war`. |
 | `the-gallic-war-book-i` | 55 | Same text, titled properly. One of four Gallic War iterations. |
 | `gw-book-i-via-ui` | 55 | The same again, built through the web UI to check that path. |
-| `the-gallic-wars` | 7 | **Broken**: pulled the wrong Gutenberg text — page 3 is Ernest Bramah's *Kai Lung's Golden Hours*. |
 | `toy` | 4 | scratch |
 | `carmina-rhytmica` | 3 | Alcuin, 3 pages. A fragment, not a book. |
 | `t` | 3 | scratch |
@@ -184,8 +184,6 @@ volumes. The build warns and continues, but the generated cover has a spine
 thicker than KDP accepts, so the rejection arrives after upload:
 
 - **Parzival** — 1253 pp, 425 over
-- **Notre-Dame de Paris** — 1240 pp, 412 over
-- **Le Rouge et le Noir** — 1124 pp, 296 over
 
 Each needs splitting with `--src-range`, the way Gerusalemme Liberata already
 is, which also gives every volume a printable spine.

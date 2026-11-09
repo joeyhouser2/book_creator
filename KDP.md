@@ -96,7 +96,7 @@ limit is 4,000 characters including tags.
 
 ## Mirèio
 
-`mireio` · 324 pp
+`mireio` · 322 pp
 
 570 characters
 
@@ -132,6 +132,16 @@ limit is 4,000 characters including tags.
 
 ```html
 <p>In August 991 a viking army camped on an island in the Blackwater estuary. Byrhtnoth, ealdorman of Essex, let them cross to fight on fair ground, and died with his household troops around him. <i>The Battle of Maldon</i> is the Old English poem of that defeat, with its famous lines on courage rising as strength fails.</p><p>This edition prints the Old English with James M. Garnett's line-for-line translation.</p>
+```
+
+## The Battles of Brunanburh and Maldon
+
+`the-battles-of-brunanburh-and-maldon` · 34 pp
+
+818 characters
+
+```html
+<p>Old English has two great poems of battle, and they stand at either end of the tenth century. In 937 King Æthelstan and his brother Edmund broke an alliance of Scots, Strathclyde Britons and the Norse king of Dublin at Brunanburh; the Anglo-Saxon Chronicle, instead of an annal, records it in a poem of triumph, with the raven, the eagle and the wolf left to the dead. In 991 Byrhtnoth, ealdorman of Essex, let a viking army cross the causeway at Maldon to fight on fair ground, and died with his household troops around him. <i>The Battle of Maldon</i> is the poem of that defeat, with its famous lines on courage rising as strength fails.</p><p>This edition prints both poems in Old English, from James W. Bright's <i>Anglo-Saxon Reader</i>, with James M. Garnett's line-for-line translation facing each line.</p>
 ```
 
 ## Ode to Plato
@@ -216,7 +226,7 @@ limit is 4,000 characters including tags.
 
 ## Le Rouge et le Noir
 
-`le-rouge-et-le-noir` · 1124 pp
+`le-rouge-et-le-noir` · 0 pp
 
 693 characters
 
@@ -226,7 +236,7 @@ limit is 4,000 characters including tags.
 
 ## Notre-Dame de Paris
 
-`notre-dame-de-paris` · 1240 pp
+`notre-dame-de-paris` · 0 pp
 
 785 characters
 
@@ -276,7 +286,7 @@ limit is 4,000 characters including tags.
 
 ## The Gallic War
 
-`the-gallic-war` · 56 pp
+`the-gallic-war` · 0 pp
 
 416 characters
 
