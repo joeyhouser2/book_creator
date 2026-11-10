@@ -25,6 +25,13 @@ reported, since a dropped or doubled line shifts every stanza after it.
 
 Writes input/mireio_oc.txt and input/mireio_en.txt (Preston, PG 56008): 'CANTO n'
 headings, one stanza per block.
+
+The text layer misreads much of the Provençal and drops lines. `python
+ocr_mireio.py` re-reads the Provençal pages with Tesseract's Occitan model and
+then runs this script; once its OCR is cached, this script corrects each canto
+from it by itself (see ocr_mireio.merge). Cantos I, III, X and XII hold songs
+in other metres (Sufren, Magali, the prayer to the Saintes, Vincèn's lament),
+so their line counts need not divide by seven.
 """
 import re
 import sys
@@ -212,10 +219,20 @@ def preston() -> str:
         if ln.strip().startswith("*  "):           # a section break
             continue
         out.append(ln.strip() if ln.startswith("    ") else "")
-    return "\n".join(out)
+    # Gutenberg's underscores for italic ('_Peirounello_', '_Ave_') would
+    # print as underscores.
+    return re.sub(r"_([^_\n]+)_", r"\1", "\n".join(out))
 
 
-def main() -> int:
+def main(report: bool = False) -> int:
+    """Write the two input files. When ocr_mireio.py has re-read the
+    Provençal pages (its OCR cached under cache/mireio_ocr/), each canto's
+    lines are corrected from that second reading, and lines this text layer
+    dropped are restored, before they are counted off into stanzas."""
+    import ocr_mireio
+    second = ocr_mireio.available()
+    lex = ocr_mireio.lexicon() if second else None
+    log: dict = {}
     if not CACHE.exists():
         import subprocess
         CACHE.parent.mkdir(exist_ok=True)
@@ -238,16 +255,33 @@ def main() -> int:
         # of them (and a Dante quotation) would pass for verse.
         stop = next((i for i in range(at, stop) if NOTES.match(lines[i])), stop)
         verse = provencal(lines[skip_argument(lines, at, stop):stop])
+        before = len(verse)
+        if second:
+            verse = ocr_mireio.merge(n, verse, lex, log)
         stanzas = [verse[i:i + STANZA] for i in range(0, len(verse), STANZA)]
         flag = "" if len(verse) % STANZA == 0 else f"  <-- {len(verse) % STANZA} line(s) over"
-        print(f"canto {n:>2}: {len(verse):>4} lines = {len(stanzas):>3} stanzas{flag}", file=sys.stderr)
+        was = f" (text layer alone: {before}, {before % STANZA} over)" if second else ""
+        print(f"canto {n:>2}: {len(verse):>4} lines = {len(stanzas):>3} stanzas{flag}{was}", file=sys.stderr)
         out += ["", f"CANTO {n}", ""]
         for st in stanzas:
             out += st + [""]
     OUT.write_text("\n".join(out), encoding="utf-8")
     OUT_EN.write_text(preston(), encoding="utf-8")
+    if second:
+        print(f"second OCR: {len(log.get('changed', []))} lines corrected, "
+              f"{len(log.get('restored', []))} restored, {len(log.get('old_only', []))} kept "
+              f"from the text layer alone, {len(log.get('old_dropped', []))} dropped as not "
+              f"verse, {len(log.get('new_rejected', []))} new-only lines not restored", file=sys.stderr)
+    else:
+        print("no second OCR cached (python ocr_mireio.py makes one)", file=sys.stderr)
+    if report:
+        for key in ("changed", "restored", "old_only", "old_dropped", "new_rejected"):
+            print(f"\n## {key}")
+            for row in log.get(key, []):
+                print(" | ".join(str(x) for x in row))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.exit(main(report="--report" in sys.argv))

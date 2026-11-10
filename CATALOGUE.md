@@ -4,7 +4,7 @@ Every finished book in `output/`, with its author, the date of the original
 work, and what it is. Page counts are read from the PDFs themselves, so they
 are what KDP would see.
 
-**86 books, 18,905 pages.** Development scraps are listed at the
+**86 books, 18,925 pages.** Development scraps are listed at the
 end and are not books.
 
 The division that matters commercially is **who made the English**. A book with
@@ -32,7 +32,7 @@ No disclosure, sellable as they stand.
 | **Buch der Lieder** | Heinrich Heine | 1827 | Emma Lazarus, 1887 | 457 | The songbook that became the most-set body of lyric in European music. A selection: ~125 of 227 poems have a Lazarus version. |
 | **Gerusalemme Liberata, Volume 2** | Torquato Tasso | 1581 | Edward Fairfax, 1600 | 426 | Cantos 11–20: Armida's enchantments, Tancred and Clorinda, and the city's fall. |
 | **Gerusalemme Liberata, Volume 1** | Torquato Tasso | 1581 | Edward Fairfax, 1600 | 415 | The First Crusade's siege of Jerusalem, cantos 1–10, in Fairfax's Elizabethan ottava rima. |
-| **Mirèio** | Frédéric Mistral | 1859 | Harriet Waters Preston, 1872 | 322 | A farm girl loves a basket-weaver beneath her station and dies on pilgrimage — the poem that won Provençal a Nobel Prize. |
+| **Mirèio** | Frédéric Mistral | 1859 | Harriet Waters Preston, 1872 | 342 | A farm girl loves a basket-weaver beneath her station and dies on pilgrimage — the poem that won Provençal a Nobel Prize. |
 | **Les Fleurs du Mal** | Charles Baudelaire | 1857 | Cyril Scott, 1909 | 244 | The founding book of Symbolism, prosecuted for obscenity the year it appeared. 55 of 123 poems. |
 | **Anglorum Praelia** | Christopher Ocland | 1580 | John Sharrock, 1585 | 235 | English victories in Latin hexameters from Edward III to Mary I, a Tudor schoolroom set text. |
 | **Cantar de Mio Cid** | Anonymous | c. 1200 | Rose, 1919 | 231 | The Cid exiled by his king, winning Valencia and his honour back: Spain's national epic. |
