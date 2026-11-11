@@ -739,6 +739,12 @@ def _clean_english(piece: str) -> str:
     piece = re.sub(r"[|•]", " ", piece)
     piece = re.sub(r"(?<= )[UVX](?= [a-zA-Z]|$)", " ", piece)
     piece = piece.replace("P6rigueux", "Périgueux").replace("Angoul€me", "Angoulême")
+    # The edition's single quote read as "*" (three times: pp. 124, 204, 205
+    # of this book), and a stray "r" in the first paragraph ("in sooth r
+    # esteemed as authors"), which the page does not have.
+    piece = re.sub(r"(?:(?<=:) |^)\* ?(?=[A-Z]|$)", lambda m: " '" if m[0][0] == " " else "'", piece)
+    piece = re.sub(r"(?<=[.!?])\*(?=\s|$)", "'", piece)
+    piece = re.sub(r"\bsooth r\b|^r (?=esteemed\b)", lambda m: "sooth" if m[0].startswith("s") else "", piece)
     return re.sub(r"\s{2,}", " ", piece).strip()
 
 
